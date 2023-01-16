@@ -1,0 +1,15 @@
+Checks:
+	'bugprone*',
+	'cert*',
+	'clang-analyzer*',
+	'concurrency*',
+	'cppcoreguidelines*',
+	'google*',
+	'hicpp-avoid-goto',
+	'hicpp-multiway-paths-covered',
+	'misc*',
+	'modernize*',
+	'-modernize-deprecated-headers',
+	'-modernize-use-trailing-return-type',
+	'performance*',
+	'readibility*'
