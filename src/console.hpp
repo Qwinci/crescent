@@ -67,6 +67,12 @@ inline void print(u64 value) {
 }
 
 template<>
+inline void print(bool value) {
+	extern void print_string(const char* str);
+	print_string(value ? "true" : "false");
+}
+
+template<>
 inline void print(i8 value) {
 	extern void print_number(usize value, bool sign);
 	bool sign = value < 0;

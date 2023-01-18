@@ -9,7 +9,7 @@
 	- [x] General purpose memory allocator
 - [ ] Interrupt handling
 	- [ ] APIC
-	- [ ] Exceptions
+	- [x] Exceptions
 	- [ ] IO-APIC
 - [ ] Elf loading from modules
 - [ ] Basic Round-Robin scheduler

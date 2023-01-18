@@ -1,0 +1,63 @@
+#pragma once
+#include "interrupts/gdt.hpp"
+#include "interrupts/interrupts.hpp"
+#include "types.hpp"
+
+enum class Msr : u32 {
+	FsBase = 0xC0000100,
+	GsBase = 0xC0000101
+};
+
+struct Tss {
+	u16 reserved1;
+	u16 iopb;
+	u32 reserved2[2];
+	u32 ist7_high;
+	u32 ist7_low;
+	u32 ist6_high;
+	u32 ist6_low;
+	u32 ist5_high;
+	u32 ist5_low;
+	u32 ist4_high;
+	u32 ist4_low;
+	u32 ist3_high;
+	u32 ist3_low;
+	u32 ist2_high;
+	u32 ist2_low;
+	u32 ist1_high;
+	u32 ist1_low;
+	u32 reserved3[2];
+	u32 rsp2_high;
+	u32 rsp2_low;
+	u32 rsp1_high;
+	u32 rsp1_low;
+	u32 rsp0_high;
+	u32 rsp0_low;
+	u32 reserved4;
+};
+
+static_assert(sizeof(Tss) == 104);
+
+struct CpuLocal {
+	CpuLocal* self {this};
+	Tss tss {.iopb = sizeof(Tss)};
+	Idt idt;
+	GdtEntry gdt[7] {
+		// Null
+		{0, 0, 0},
+		// Kernel Code
+		{0, 0x9A, 0xA},
+		// Kernel Data
+		{0, 0x92, 0xC},
+		// User Code
+		{0, 0xFA, 0xA},
+		// User Data
+		{0, 0xF2, 0xC},
+		// TSS
+		{as<u32>(cast<usize>(&tss)), 0x89, 0},
+		{as<u64>(cast<usize>(&tss) >> 32)}
+	};
+};
+
+void set_cpu_local(CpuLocal* local);
+CpuLocal* get_cpu_local();

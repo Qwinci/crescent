@@ -1,12 +1,13 @@
+#include "console.hpp"
+#include "cpu/cpu.hpp"
+#include "fb.hpp"
 #include "limine/limine.h"
+#include "memory/map.hpp"
+#include "memory/memory.hpp"
+#include "new.hpp"
+#include "noalloc/string.hpp"
 #include "types.hpp"
 #include "utils.hpp"
-#include "fb.hpp"
-#include "noalloc/string.hpp"
-#include "console.hpp"
-#include "memory/memory.hpp"
-#include "memory/map.hpp"
-#include "new.hpp"
 
 static limine_framebuffer_request FB_REQUEST {.id = LIMINE_FRAMEBUFFER_REQUEST};
 
@@ -133,9 +134,16 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		i += SIZE_2MB;
 	}
 
-	println("mapped");
 	page_map->load();
-	println("map loaded");
+
+	auto data = new CpuLocal;
+	set_cpu_local(data);
+	load_gdt(data->gdt, 7);
+	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
+	println("enabling interrupts");
+	load_idt(&data->idt);
+
+	println("hello");
 
 	while (true) {
 		asm("hlt");
