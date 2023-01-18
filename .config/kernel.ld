@@ -2,6 +2,7 @@ ENTRY(start)
 
 SECTIONS {
 	. = 0xFFFFFFFF80000000 + SIZEOF_HEADERS;
+	PROVIDE(KERNEL_START = .);
 
 	.hash : { *(.hash) }
 	.gnu.hash : { *(.gnu.hash) }
@@ -27,6 +28,24 @@ SECTIONS {
 	}
 
 	.dynamic : { *(.dynamic) }
+
+	.init_array : {
+        __init_array_start = .;
+        crti.o(.init_array)
+        KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
+        KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
+        crtn.o(.init_array)
+        __init_array_end = .;
+    }
+
+    .fini_array : {
+        __fini_array_start = .;
+        crti.o(.fini_array)
+        KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .fini_array.*)))
+        KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .fini_array))
+        crtn.o(.fini_array)
+        __fini_array_end = .;
+    }
 
 	. = DATA_SEGMENT_RELRO_END(0, .);
 

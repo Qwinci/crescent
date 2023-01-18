@@ -2,11 +2,11 @@
 ## An experimental opinionated kernel
 
 ### Todo
-- [ ] Basic logging
-- [ ] Memory
-	- [ ] Page frame allocator
-	- [ ] Page table manager
-	- [ ] General purpose memory allocator
+- [x] Basic logging
+- [x] Memory
+	- [x] Page frame allocator
+	- [x] Page table manager
+	- [x] General purpose memory allocator
 - [ ] Interrupt handling
 	- [ ] APIC
 	- [ ] Exceptions

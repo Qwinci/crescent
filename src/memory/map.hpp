@@ -1,0 +1,95 @@
+#pragma once
+#include "types.hpp"
+#include "utils.hpp"
+
+extern usize HHDM_OFFSET;
+
+class PhysAddr;
+
+class VirtAddr {
+public:
+	constexpr explicit VirtAddr(usize value) : value {value} {}
+	[[nodiscard]] inline PhysAddr to_phys() const;
+	[[nodiscard]] constexpr usize as_usize() const {
+		return value;
+	}
+private:
+	usize value;
+};
+
+class PhysAddr {
+public:
+	constexpr explicit PhysAddr(usize value) : value {value} {}
+	[[nodiscard]] inline VirtAddr to_virt() const {
+		return VirtAddr {value + HHDM_OFFSET};
+	}
+	[[nodiscard]] constexpr usize as_usize() const {
+		return value;
+	}
+private:
+	usize value;
+};
+
+inline PhysAddr VirtAddr::to_phys() const {
+	return PhysAddr {value - HHDM_OFFSET};
+}
+
+enum class PageFlags : u64 {
+	Present = 1 << 0,
+	Rw = 1 << 1,
+	User = 1 << 2,
+	WriteThrough = 1 << 3,
+	CacheDisable = 1 << 4,
+	Accessed = 1 << 5,
+	Dirty = 1 << 6,
+	Huge = 1 << 7,
+	Global = 1ULL << 8,
+	Nx = 1ULL << 63
+};
+
+constexpr PageFlags operator|(PageFlags lhs, PageFlags rhs) {
+	return as<PageFlags>(as<u64>(lhs) | as<u64>(rhs));
+}
+
+constexpr bool operator&(PageFlags lhs, PageFlags rhs) {
+	return as<u64>(lhs) & as<u64>(rhs);
+}
+
+constexpr void operator&=(PageFlags& lhs, PageFlags rhs) {
+	lhs = as<PageFlags>(as<u64>(lhs) & as<u64>(rhs));
+}
+
+constexpr PageFlags operator~(PageFlags lhs) {
+	return as<PageFlags>(~as<u64>(lhs));
+}
+
+constexpr usize SIZE_2MB = 0x200000;
+
+class PageMap {
+public:
+	void map(VirtAddr virt, PhysAddr phys, PageFlags flags);
+	void unmap(VirtAddr virt, bool huge);
+	void load();
+private:
+	struct Entry {
+		u64 value;
+
+		[[nodiscard]] constexpr PhysAddr get_addr() const {
+			return PhysAddr {value & 0x000FFFFFFFFFF000};
+		}
+
+		[[nodiscard]] constexpr PageFlags get_flags() const {
+			return as<PageFlags>(value & 0xFFF0000000000FFF);
+		}
+
+		void set_addr(PhysAddr addr) {
+			value |= addr.as_usize();
+		}
+
+		void set_flags(PageFlags flags) {
+			value |= as<u64>(flags);
+		}
+	};
+	static_assert(sizeof(Entry) == 8);
+	Entry entries[512];
+};
