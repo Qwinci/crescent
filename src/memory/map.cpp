@@ -4,7 +4,6 @@ usize HHDM_OFFSET;
 
 void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags) {
 	auto virt_addr = virt.as_usize();
-	auto phys_addr = phys.as_usize();
 
 	virt_addr >>= 12;
 	auto pt_offset = virt_addr & 0x1FF;
@@ -109,6 +108,39 @@ void PageMap::unmap(VirtAddr virt, bool huge) {
 
 	pt_entry[pt_offset].value = 0;
 }
+
 void PageMap::load() {
 	asm volatile("mov cr3, %0" : : "r"(VirtAddr {cast<usize>(this)}.to_phys().as_usize()));
+}
+
+void PageMap::refresh_page(usize addr) { // NOLINT(readability-convert-member-functions-to-static)
+	asm volatile("invlpg %0" : : "m"(addr));
+}
+
+void PageMap::ensure_kernel_mapping(PhysAddr phys, usize size) {
+	usize i = 0;
+	auto p = phys.as_usize();
+	auto virt = phys.to_virt().as_usize();
+
+	usize align = 0;
+	if (p & (0x1000 - 1)) {
+		align = p & (0x1000 - 1);
+		p &= ~(0x1000 - 1);
+	}
+
+	size += align;
+
+	while ((p & (SIZE_2MB - 1)) && i < size) {
+		auto addr = VirtAddr {virt + i};
+		map(addr, PhysAddr {p + i}, PageFlags::Rw);
+		refresh_page(addr.as_usize());
+		i += 0x1000;
+	}
+
+	while (i < size) {
+		auto addr = VirtAddr {virt + i};
+		map(addr, PhysAddr {p + i}, PageFlags::Rw | PageFlags::Huge);
+		refresh_page(addr.as_usize());
+		i += SIZE_2MB;
+	}
 }

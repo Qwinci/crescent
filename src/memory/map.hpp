@@ -9,6 +9,8 @@ class PhysAddr;
 class VirtAddr {
 public:
 	constexpr explicit VirtAddr(usize value) : value {value} {}
+	template<typename T>
+	inline explicit VirtAddr(T value) : value {cast<usize>(value)} {}
 	[[nodiscard]] inline PhysAddr to_phys() const;
 	[[nodiscard]] constexpr usize as_usize() const {
 		return value;
@@ -20,6 +22,8 @@ private:
 class PhysAddr {
 public:
 	constexpr explicit PhysAddr(usize value) : value {value} {}
+	template<typename T>
+	inline explicit PhysAddr(T value) : value {cast<usize>(value)} {}
 	[[nodiscard]] inline VirtAddr to_virt() const {
 		return VirtAddr {value + HHDM_OFFSET};
 	}
@@ -70,6 +74,8 @@ public:
 	void map(VirtAddr virt, PhysAddr phys, PageFlags flags);
 	void unmap(VirtAddr virt, bool huge);
 	void load();
+	void refresh_page(usize addr);
+	void ensure_kernel_mapping(PhysAddr phys, usize size);
 private:
 	struct Entry {
 		u64 value;
@@ -93,3 +99,9 @@ private:
 	static_assert(sizeof(Entry) == 8);
 	Entry entries[512];
 };
+
+static inline PageMap* get_map() {
+	PageMap* map;
+	asm volatile("mov %0, cr3" : "=r"(map));
+	return cast<PageMap*>(PhysAddr {map}.to_virt().as_usize());
+}

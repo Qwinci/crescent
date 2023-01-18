@@ -10,6 +10,7 @@ namespace noalloc {
 	class String {
 	public:
 		constexpr String(const char* str) : str {str}, l {strlen(str)} {} // NOLINT(google-explicit-constructor)
+		constexpr String(const char* str, usize len) : str {str}, l {len} {}
 
 		[[nodiscard]] constexpr usize len() const {
 			return l;

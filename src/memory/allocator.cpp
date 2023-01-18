@@ -1,6 +1,7 @@
 #include "console.hpp"
 #include "memory.hpp"
 #include "new.hpp"
+#include "std.hpp"
 
 Allocator ALLOCATOR;
 
@@ -175,6 +176,28 @@ void Allocator::dealloc_low(void* ptr, usize size) {
 	}
 
 	n->next = node;
+}
+
+void* Allocator::realloc(void* ptr, usize old_size, usize size) {
+	auto mem = alloc(size);
+	if (!mem) {
+		return nullptr;
+	}
+	auto s = old_size < size ? old_size : size;
+	memcpy(mem, ptr, s);
+	dealloc(ptr, old_size);
+	return mem;
+}
+
+void* Allocator::realloc_low(void* ptr, usize old_size, usize size) {
+	auto mem = alloc_low(size);
+	if (!mem) {
+		return nullptr;
+	}
+	auto s = old_size < size ? old_size : size;
+	memcpy(mem, ptr, s);
+	dealloc_low(ptr, old_size);
+	return mem;
 }
 
 void* operator new(usize size) {

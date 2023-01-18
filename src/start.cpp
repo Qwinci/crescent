@@ -1,3 +1,4 @@
+#include "acpi/common.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "fb.hpp"
@@ -88,6 +89,11 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	auto page_map = new (PAGE_ALLOCATOR.alloc_low(1)) PageMap;
 
+	for (usize i = 0; i < 0x100000000; i += SIZE_2MB) {
+		auto phys = PhysAddr {i};
+		page_map->map(phys.to_virt(), phys, PageFlags::Rw | PageFlags::Huge);
+	}
+
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
 
@@ -144,6 +150,10 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	load_idt(&data->idt);
 
 	println("hello");
+
+	println((void*) locate_acpi_table(rsdp, "APIC"));
+
+	parse_madt(locate_acpi_table(rsdp, "APIC"));
 
 	while (true) {
 		asm("hlt");

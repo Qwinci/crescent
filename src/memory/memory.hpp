@@ -28,6 +28,8 @@ public:
 	void* alloc_low(usize size);
 	void dealloc(void* ptr, usize size);
 	void dealloc_low(void* ptr, usize size);
+	void* realloc(void* ptr, usize old_size, usize size);
+	void* realloc_low(void* ptr, usize old_size, usize size);
 private:
 	struct Node {
 		Node* next;
