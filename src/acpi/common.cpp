@@ -16,12 +16,12 @@ struct RsdpHeader {
 	u8 reserved[3];
 };
 
-struct Xsdt {
+struct [[gnu::packed]] Xsdt {
 	SdtHeader header;
 	u64 ptr[];
 };
 
-struct Rsdt {
+struct [[gnu::packed]] Rsdt {
 	SdtHeader header;
 	u32 ptr[];
 };
@@ -33,10 +33,10 @@ SdtHeader* locate_acpi_table(const void* rsdp, const char* name) {
 		u32 count = (xsdt->header.length - sizeof(SdtHeader)) / 8;
 
 		for (u32 i = 0; i < count; ++i) {
-			if (auto header = cast<SdtHeader*>(PhysAddr {xsdt->ptr[i]}.to_virt().as_usize())) {
-				if (noalloc::String {header->signature, 4} == name) {
-					return header;
-				}
+			if (!xsdt->ptr[i]) continue;
+			auto header = cast<SdtHeader*>(PhysAddr {xsdt->ptr[i]}.to_virt().as_usize());
+			if (noalloc::String {header->signature, 4} == name) {
+				return header;
 			}
 		}
 	}

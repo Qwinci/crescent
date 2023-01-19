@@ -121,3 +121,5 @@ template<typename... Args>
 		asm("hlt");
 	}
 }
+
+#define unreachable(msg) panic("entered unreachable code in ", __FILE_NAME__, ":", __LINE__, " (", __func__, ")")

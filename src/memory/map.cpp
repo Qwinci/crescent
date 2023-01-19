@@ -1,4 +1,5 @@
 #include "map.hpp"
+#include "console.hpp"
 
 usize HHDM_OFFSET;
 

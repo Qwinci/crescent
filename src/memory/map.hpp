@@ -78,7 +78,7 @@ public:
 	void ensure_kernel_mapping(PhysAddr phys, usize size);
 private:
 	struct Entry {
-		u64 value;
+		u64 value {};
 
 		[[nodiscard]] constexpr PhysAddr get_addr() const {
 			return PhysAddr {value & 0x000FFFFFFFFFF000};
@@ -97,7 +97,7 @@ private:
 		}
 	};
 	static_assert(sizeof(Entry) == 8);
-	Entry entries[512];
+	Entry entries[512] {};
 };
 
 static inline PageMap* get_map() {

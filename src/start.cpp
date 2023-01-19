@@ -1,6 +1,8 @@
 #include "acpi/common.hpp"
+#include "acpi/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
+#include "drivers/pit.hpp"
 #include "fb.hpp"
 #include "limine/limine.h"
 #include "memory/map.hpp"
@@ -54,6 +56,8 @@ extern "C" fn __init_array_end[];
 extern "C" fn __fini_array_start[];
 extern "C" fn __fini_array_end[];
 
+[[gnu::interrupt]] void dummy(InterruptFrame*) {}
+
 extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (fn* f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)();
@@ -86,6 +90,14 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 			PAGE_ALLOCATOR.add_memory(entry->base + HHDM_OFFSET, entry->length);
 		}
 	}
+
+	auto data = new CpuLocal;
+	set_cpu_local(data);
+	load_gdt(data->gdt, 7);
+	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
+	println("enabling interrupts");
+	load_idt(&data->idt);
+	enable_interrupts();
 
 	auto page_map = new (PAGE_ALLOCATOR.alloc_low(1)) PageMap;
 
@@ -142,18 +154,30 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	page_map->load();
 
-	auto data = new CpuLocal;
-	set_cpu_local(data);
-	load_gdt(data->gdt, 7);
-	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
-	println("enabling interrupts");
-	load_idt(&data->idt);
-
 	println("hello");
 
-	println((void*) locate_acpi_table(rsdp, "APIC"));
-
 	parse_madt(locate_acpi_table(rsdp, "APIC"));
+
+	data->idt.interrupts[0] = {(void*) dummy, 0x8, 0, false, 0};
+
+	println("performing apic calibrating using PIT");
+	pit_prepare_sleep();
+
+	Lapic::write(Lapic::Reg::LvtTimer, Lapic::INT_MASKED);
+	// set interrupt
+	Lapic::write(Lapic::Reg::LvtTimer, 32);
+	// 16
+	Lapic::write(Lapic::Reg::DivConf, 3);
+	// init count -1
+	Lapic::write(Lapic::Reg::InitCount, 0xFFFFFFFF);
+
+	pit_perform_10ms_sleep();
+
+	Lapic::write(Lapic::Reg::LvtTimer, Lapic::INT_MASKED);
+
+	u32 ticks_in_10ms = 0xFFFFFFFF - Lapic::read(Lapic::Reg::CurrCount);
+	println("ticks in 10ms: ", ticks_in_10ms);
+	println("ticks in 1s: ", ticks_in_10ms * 100);
 
 	while (true) {
 		asm("hlt");

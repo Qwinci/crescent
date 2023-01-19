@@ -1,7 +1,10 @@
 #include "common.hpp"
 #include "console.hpp"
 #include "io.hpp"
+#include "io_apic.hpp"
+#include "memory/map.hpp"
 #include "utils.hpp"
+#include "lapic.hpp"
 
 struct Madt {
 	SdtHeader header;
@@ -10,6 +13,10 @@ struct Madt {
 };
 
 void parse_madt(const void* madt_ptr) {
+	if (!madt_ptr) {
+		panic("parse_madt called with null madt");
+	}
+
 	auto madt = cast<const Madt*>(madt_ptr);
 
 	if (madt->flags & 1) {
@@ -19,10 +26,13 @@ void parse_madt(const void* madt_ptr) {
 
 	usize lapic_phys = madt->lapic_addr;
 
+	u8 bsp_id;
+	asm volatile("mov eax, 1; cpuid; shr ebx, 24" : "=b"(bsp_id));
+
 	for (usize i = sizeof(Madt); i < madt->header.length;) {
 		u8 type = *cast<const u8*>(offset(madt, as<isize>(i)));
 		i += 1;
-		u8 length = *cast<const u8*>(offset(madt, as<isize>(i)));
+		// length
 		i += 1;
 
 		// Processor Local APIC
@@ -36,7 +46,7 @@ void parse_madt(const void* madt_ptr) {
 		}
 		// IO APIC
 		else if (type == 1) {
-			u8 io_apic_id = *cast<const u8*>(offset(madt, as<isize>(i)));
+			// io_apic_id
 			i += 1;
 			// reserved
 			i += 1;
@@ -44,10 +54,14 @@ void parse_madt(const void* madt_ptr) {
 			i += 4;
 			u32 global_int_base = *cast<const u32*>(offset(madt, as<isize>(i)));
 			i += 4;
+
+			auto& apic = IoApic::apics[IoApic::io_apic_count++];
+			apic.base = PhysAddr {as<usize>(io_apic_addr)}.to_virt().as_usize();
+			apic.int_base = global_int_base;
 		}
 		// IO APIC Interrupt Source Override
 		else if (type == 2) {
-			u8 bus_src = *cast<const u8*>(offset(madt, as<isize>(i)));
+			// bus src
 			i += 1;
 			u8 irq_src = *cast<const u8*>(offset(madt, as<isize>(i)));
 			i += 1;
@@ -55,6 +69,11 @@ void parse_madt(const void* madt_ptr) {
 			i += 4;
 			u16 flags = *cast<const u16*>(offset(madt, as<isize>(i)));
 			i += 2;
+
+			bool active_low = flags & 1 << 1;
+			bool level_triggered = flags & 1 << 3;
+
+			IoApic::register_override(irq_src, global_int, active_low, level_triggered);
 		}
 		// IO APIC NMI Interrupt Source
 		else if (type == 3) {
@@ -88,12 +107,34 @@ void parse_madt(const void* madt_ptr) {
 		else if (type == 9) {
 			// reserved
 			i += 2;
-			u32 x2apic_id = *cast<const u32*>(offset(madt, as<isize>(i)));
+			//u32 x2apic_id = *cast<const u32*>(offset(madt, as<isize>(i)));
 			i += 4;
-			u32 flags = *cast<const u32*>(offset(madt, as<isize>(i)));
+			//u32 flags = *cast<const u32*>(offset(madt, as<isize>(i)));
 			i += 4;
-			u32 acpi_id = *cast<const u32*>(offset(madt, as<isize>(i)));
+			//u32 acpi_id = *cast<const u32*>(offset(madt, as<isize>(i)));
 			i += 4;
 		}
 	}
+
+	for (u8 i = 0; i < IoApic::io_apic_count; ++i) {
+		auto& apic = IoApic::apics[i];
+		apic.irq_count = (IoApic::read(i, 1) >> 16 & 0xFF) + 1;
+	}
+
+	Lapic::base = PhysAddr {lapic_phys}.to_virt().as_usize();
+
+	println("assigning kb entaerp");
+
+	IoApic::RedirEntry ps2_kb_entry {
+			.vector = 0x20,
+			.dest = bsp_id
+	};
+
+	IoApic::register_isa_irq(1, ps2_kb_entry);
+
+	// enable lapic and set int vector to 0xFF
+	Lapic::write(Lapic::Reg::SpuriousInt, 0xFF | 0x100);
+	Lapic::write(Lapic::Reg::TaskPriority, 0);
+
+	println("enabled");
 }

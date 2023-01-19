@@ -11,7 +11,7 @@ void pit_prepare_sleep() {
 	// set mode
 	out1(0x43, HARDWARE_ONE_SHOT | ACCESS_LO_HI_BYTE | CHANNEL_2);
 	// set frequency to 100times/s (10ms)
-	constexpr u32 frequency = 1193180 / 100;
+	constexpr u32 frequency = 1193182 / 100;
 	out1(0x42, frequency & 0xFF);
 	io_wait();
 	out1(0x42, frequency >> 8);
@@ -19,7 +19,7 @@ void pit_prepare_sleep() {
 
 void pit_perform_10ms_sleep() {
 	// Reset counter
-	auto init = in1(0x61) & 0xFE;
+	u8 init = in1(0x61) & 0xFE;
 	out1(0x61, init);
 	out1(0x61, init | 1);
 
