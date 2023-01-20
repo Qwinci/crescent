@@ -70,6 +70,14 @@ public:
 	IdtEntry interrupts[256 - 32];
 };
 
+extern Idt* current_idt;
+
+template<typename T>
+static inline u8 register_irq_handler(u8 irq, T fn, u8 ist = 0) {
+	current_idt->interrupts[irq] = {(void*) fn, 0x8, ist, false, 0};
+	return 32 + irq;
+}
+
 void load_idt(Idt* idt);
 
 static inline void enable_interrupts() {

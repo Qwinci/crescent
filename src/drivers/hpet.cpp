@@ -48,9 +48,9 @@ static inline u64 read_reg_64(u32 reg) {
 
 static u32 ns_in_tick = 0;
 
-void initialize_hpet(const void* hpet_ptr) {
+bool initialize_hpet(const void* hpet_ptr) {
 	if (!hpet_ptr) {
-		panic("tried to initialize hpet with null ptr");
+		return false;
 	}
 
 	auto header = cast<const HpetHeader*>(hpet_ptr);
@@ -60,7 +60,8 @@ void initialize_hpet(const void* hpet_ptr) {
 
 	u64 cap = read_reg_64(REG_CAP);
 	if ((cap & COUNTER_SIZE_CAP) == 0) {
-		panic("32bit hpet is not supported");
+		// todo
+		return false;
 	}
 
 	u32 fs_in_tick = cap >> 32;
@@ -70,6 +71,7 @@ void initialize_hpet(const void* hpet_ptr) {
 	conf &= ~CONF_LEGACY_MAPPING_ENABLED;
 	conf |= CONF_ENABLE;
 	write_reg_64(REG_CONF, conf);
+	return true;
 }
 
 void hpet_sleep(u64 us) {

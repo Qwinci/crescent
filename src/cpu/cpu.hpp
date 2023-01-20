@@ -5,7 +5,8 @@
 
 enum class Msr : u32 {
 	FsBase = 0xC0000100,
-	GsBase = 0xC0000101
+	GsBase = 0xC0000101,
+	KernelGsBase = 0xC0000102
 };
 
 struct Tss {
@@ -40,6 +41,7 @@ static_assert(sizeof(Tss) == 104);
 
 struct CpuLocal {
 	CpuLocal* self {this};
+	u64 apic_frequency {};
 	Tss tss {.iopb = sizeof(Tss)};
 	Idt idt;
 	GdtEntry gdt[7] {
@@ -61,3 +63,5 @@ struct CpuLocal {
 
 void set_cpu_local(CpuLocal* local);
 CpuLocal* get_cpu_local();
+void set_msr(Msr msr, u64 value);
+u64 get_msr(Msr msr);

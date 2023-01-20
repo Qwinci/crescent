@@ -7,8 +7,8 @@
 	- [x] Page frame allocator
 	- [x] Page table manager
 	- [x] General purpose memory allocator
-- [ ] Interrupt handling
-	- [ ] APIC
+- [x] Interrupt handling
+	- [x] APIC
 	- [x] Exceptions
 	- [x] IO-APIC
 - [ ] Elf loading from modules
@@ -19,6 +19,7 @@
 - [ ] Filesystems
 	- [ ] FAT32
 - [ ] Drivers
+	- [ ] SMP
 	- [ ] AHCI SATA
 	- [ ] NVMe
 	- [ ] PS2

@@ -34,6 +34,13 @@ struct Lapic {
 
 	static void write(Reg reg, u32 value);
 	static u32 read(Reg reg);
+
+	static void calibrate_timer();
+
+	static void start_periodic(u64 frequency);
+	static void start_oneshot(u64 us, u8 irq);
+	static void eoi();
+
 private:
 	static usize base;
 

@@ -139,7 +139,7 @@ void parse_madt(const void* madt_ptr) {
 	println("assigning kb entaerp");
 
 	IoApic::RedirEntry ps2_kb_entry {
-			.vector = 0x20,
+			.vector = 0x21,
 			.dest = bsp_id
 	};
 
