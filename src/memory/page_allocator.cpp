@@ -110,6 +110,7 @@ void PageAllocator::insert_node(Node* node) {
 			try_merge_node(node);
 			return;
 		}
+		n = n->next;
 	}
 }
 

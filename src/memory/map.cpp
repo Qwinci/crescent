@@ -21,6 +21,11 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags) {
 	if (flags & PageFlags::Huge) {
 		flags &= ~PageFlags::Huge;
 		huge = true;
+
+		phys = PhysAddr {phys.as_usize() & ~(SIZE_2MB - 1)};
+	}
+	else {
+		phys = PhysAddr {phys.as_usize() & ~(0x1000 - 1)};
 	}
 
 	Entry* pdp_entry;
@@ -143,5 +148,10 @@ void PageMap::ensure_kernel_mapping(PhysAddr phys, usize size) {
 		map(addr, PhysAddr {p + i}, PageFlags::Rw | PageFlags::Huge);
 		refresh_page(addr.as_usize());
 		i += SIZE_2MB;
+	}
+}
+void PageMap::map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count) {
+	for (usize i = 0; i < count; ++i) {
+		map(virt.offset(i * 0x1000), phys.offset(i * 0x1000), flags);
 	}
 }

@@ -9,11 +9,22 @@ class PhysAddr;
 class VirtAddr {
 public:
 	constexpr explicit VirtAddr(usize value) : value {value} {}
+
 	template<typename T>
 	inline explicit VirtAddr(T value) : value {cast<usize>(value)} {}
+
 	[[nodiscard]] inline PhysAddr to_phys() const;
+
 	[[nodiscard]] constexpr usize as_usize() const {
 		return value;
+	}
+
+	[[nodiscard]] constexpr VirtAddr offset(isize offset) const {
+		return VirtAddr {value + offset};
+	}
+
+	[[nodiscard]] constexpr VirtAddr offset(usize offset) const {
+		return VirtAddr {value + offset};
 	}
 private:
 	usize value;
@@ -22,13 +33,24 @@ private:
 class PhysAddr {
 public:
 	constexpr explicit PhysAddr(usize value) : value {value} {}
+
 	template<typename T>
 	inline explicit PhysAddr(T value) : value {cast<usize>(value)} {}
+
 	[[nodiscard]] inline VirtAddr to_virt() const {
 		return VirtAddr {value + HHDM_OFFSET};
 	}
+
 	[[nodiscard]] constexpr usize as_usize() const {
 		return value;
+	}
+
+	[[nodiscard]] constexpr PhysAddr offset(isize offset) const {
+		return PhysAddr {value + offset};
+	}
+
+	[[nodiscard]] constexpr PhysAddr offset(usize offset) const {
+		return PhysAddr {value + offset};
 	}
 private:
 	usize value;
@@ -72,6 +94,7 @@ constexpr usize SIZE_2MB = 0x200000;
 class PageMap {
 public:
 	void map(VirtAddr virt, PhysAddr phys, PageFlags flags);
+	void map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count);
 	void unmap(VirtAddr virt, bool huge);
 	void load();
 	void refresh_page(usize addr);

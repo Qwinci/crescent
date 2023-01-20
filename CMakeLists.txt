@@ -9,7 +9,7 @@ set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg)
 set(QEMU_FLAGS -m 2G -machine q35 -smp 2
-        -d int -no-reboot -no-shutdown)
+        -d int -no-reboot -no-shutdown -cpu qemu64,+invtsc)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
 

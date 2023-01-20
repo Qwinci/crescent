@@ -56,8 +56,14 @@ void parse_madt(const void* madt_ptr) {
 			i += 4;
 
 			auto& apic = IoApic::apics[IoApic::io_apic_count++];
-			apic.base = PhysAddr {as<usize>(io_apic_addr)}.to_virt().as_usize();
+			auto addr = PhysAddr {as<usize>(io_apic_addr)};
+			apic.base = addr.to_virt().as_usize();
 			apic.int_base = global_int_base;
+			get_map()->map_multiple(
+					addr.to_virt(),
+					addr,
+					PageFlags::Rw | PageFlags::Nx | PageFlags::Huge | PageFlags::CacheDisable,
+					1);
 		}
 		// IO APIC Interrupt Source Override
 		else if (type == 2) {
@@ -121,7 +127,14 @@ void parse_madt(const void* madt_ptr) {
 		apic.irq_count = (IoApic::read(i, 1) >> 16 & 0xFF) + 1;
 	}
 
-	Lapic::base = PhysAddr {lapic_phys}.to_virt().as_usize();
+	auto lapic_phys_addr = PhysAddr {lapic_phys};
+	get_map()->map_multiple(
+			lapic_phys_addr.to_virt(),
+			lapic_phys_addr,
+			PageFlags::Rw | PageFlags::Nx | PageFlags::Huge | PageFlags::CacheDisable,
+			1);
+
+	Lapic::base = lapic_phys_addr.to_virt().as_usize();
 
 	println("assigning kb entaerp");
 

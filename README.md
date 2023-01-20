@@ -10,12 +10,12 @@
 - [ ] Interrupt handling
 	- [ ] APIC
 	- [x] Exceptions
-	- [ ] IO-APIC
+	- [x] IO-APIC
 - [ ] Elf loading from modules
 - [ ] Basic Round-Robin scheduler
 - [ ] ACPI
 	- [ ] FADT
-	- [ ] MADT
+	- [x] MADT
 - [ ] Filesystems
 	- [ ] FAT32
 - [ ] Drivers

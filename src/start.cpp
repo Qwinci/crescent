@@ -11,6 +11,7 @@
 #include "noalloc/string.hpp"
 #include "types.hpp"
 #include "utils.hpp"
+#include "drivers/hpet.hpp"
 
 static limine_framebuffer_request FB_REQUEST {.id = LIMINE_FRAMEBUFFER_REQUEST};
 
@@ -56,7 +57,10 @@ extern "C" fn __init_array_end[];
 extern "C" fn __fini_array_start[];
 extern "C" fn __fini_array_end[];
 
-[[gnu::interrupt]] void dummy(InterruptFrame*) {}
+[[gnu::interrupt]] void dummy(InterruptFrame*) {
+	println("dummy");
+	Lapic::write(Lapic::Reg::Eoi, 0);
+}
 
 extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (fn* f = __init_array_start; f != __init_array_end; ++f) {
@@ -106,8 +110,18 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		page_map->map(phys.to_virt(), phys, PageFlags::Rw | PageFlags::Huge);
 	}
 
+	auto* entries = new MemoryMap::Entry[MEMMAP_REQUEST.response->entry_count];
+	usize entry_count = 0;
+
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
+
+		if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
+			auto& copy_entry = entries[entry_count++];
+			copy_entry.base = entry->base;
+			copy_entry.type = MemoryType::Usable;
+			copy_entry.size = entry->length;
+		}
 
 		if (entry->type != LIMINE_MEMMAP_USABLE &&
 			entry->type != LIMINE_MEMMAP_FRAMEBUFFER &&
@@ -136,6 +150,16 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		}
 	}
 
+
+	for (usize i = 0; i < entry_count; ++i) {
+		const auto& entry = entries[i];
+		if (entry.type == MemoryType::Usable) {
+			PAGE_ALLOCATOR.add_memory(entry.base + HHDM_OFFSET, entry.size);
+		}
+	}
+
+	ALLOCATOR.dealloc(entries, entry_count * sizeof(MemoryMap::Entry));
+
 	extern char KERNEL_START[];
 	extern char KERNEL_END[];
 
@@ -160,24 +184,31 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	data->idt.interrupts[0] = {(void*) dummy, 0x8, 0, false, 0};
 
-	println("performing apic calibrating using PIT");
-	pit_prepare_sleep();
+	initialize_hpet(locate_acpi_table(rsdp, "HPET"));
 
-	Lapic::write(Lapic::Reg::LvtTimer, Lapic::INT_MASKED);
-	// set interrupt
-	Lapic::write(Lapic::Reg::LvtTimer, 32);
+	constexpr u32 ONE_SHOT = 0 << 17;
+	constexpr u32 PERIODIC = 1 << 17;
+	constexpr u32 TSC = 2 << 17;
+
+	Lapic::write(Lapic::Reg::LvtTimer, 32 | ONE_SHOT | Lapic::INT_MASKED);
 	// 16
-	Lapic::write(Lapic::Reg::DivConf, 3);
-	// init count -1
+	Lapic::write(Lapic::Reg::DivConf, 0);
 	Lapic::write(Lapic::Reg::InitCount, 0xFFFFFFFF);
+	auto value = Lapic::read(Lapic::Reg::LvtTimer) & ~Lapic::INT_MASKED;
+	Lapic::write(Lapic::Reg::LvtTimer, value);
 
-	pit_perform_10ms_sleep();
+	hpet_sleep(10 * 1000);
 
+	auto end = Lapic::read(Lapic::Reg::CurrCount);
 	Lapic::write(Lapic::Reg::LvtTimer, Lapic::INT_MASKED);
 
-	u32 ticks_in_10ms = 0xFFFFFFFF - Lapic::read(Lapic::Reg::CurrCount);
+	auto ticks_in_10ms = (0xFFFFFFFF - end) * 16;
+	auto ticks_in_1ms = ticks_in_10ms / 10;
+	auto ticks_in_1us = ticks_in_1ms / 1000;
+	auto ticks_in_100ns = ticks_in_1us / 10;
 	println("ticks in 10ms: ", ticks_in_10ms);
-	println("ticks in 1s: ", ticks_in_10ms * 100);
+	println("ticks in 1ms:", ticks_in_1ms);
+	println("ticks in 100ns: ", ticks_in_100ns);
 
 	while (true) {
 		asm("hlt");
