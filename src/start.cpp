@@ -58,7 +58,7 @@ extern "C" fn __fini_array_start[];
 extern "C" fn __fini_array_end[];
 
 [[gnu::interrupt]] void dummy(InterruptFrame*) {
-	println("dummy");
+	println("timer tick");
 	Lapic::write(Lapic::Reg::Eoi, 0);
 }
 
@@ -190,25 +190,69 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	constexpr u32 PERIODIC = 1 << 17;
 	constexpr u32 TSC = 2 << 17;
 
+	u32 eax;
+	asm volatile("cpuid" : "=a"(eax) : "a"(0x80000000));
+	if (eax >= 80000007) {
+		u32 edx;
+		asm volatile("cpuid" : "=d"(edx) : "a"(0x80000007));
+		bool invariant_tsc = edx & 1 << 8;
+		println("invariant tsc supported: ", invariant_tsc);
+		if (invariant_tsc) {
+			println("doing tsc frequency test");
+			u32 start_low, start_high;
+			u32 end_low, end_high;
+			asm volatile("rdtsc" : "=a"(start_low), "=d"(start_high));
+			hpet_sleep(10 * 1000);
+			asm volatile("rdtsc" : "=a"(end_low), "=d"(end_high));
+			auto start = (u64) start_low | (u64) start_high << 32;
+			auto end = (u64) end_low | (u64) end_high << 32;
+			auto diff = end - start;
+			auto tsc_ticks_in_sec = diff * 100;
+			constexpr u64 GHZ = 1000000000;
+			println("tsc frequency: ", tsc_ticks_in_sec, "hz", " (", tsc_ticks_in_sec / GHZ, "ghz)");
+
+			println("doing tsc sleep for 10s");
+			u32 low, high;
+			u64 full;
+			asm volatile("rdtsc" : "=a"(low), "=d"(high));
+			start = (u64) low | (u64) high << 32;
+			end = start + tsc_ticks_in_sec * 10;
+			while (true) {
+				asm volatile("rdtsc" : "=a"(low), "=d"(high));
+				full = (u64) low | (u64) high << 32;
+				if (full >= end) break;
+			}
+			println("tsc sleep done");
+		}
+	}
+
+	pit_prepare_sleep();
+
 	Lapic::write(Lapic::Reg::LvtTimer, 32 | ONE_SHOT | Lapic::INT_MASKED);
 	// 16
-	Lapic::write(Lapic::Reg::DivConf, 0);
+	Lapic::write(Lapic::Reg::DivConf, 3);
 	Lapic::write(Lapic::Reg::InitCount, 0xFFFFFFFF);
 	auto value = Lapic::read(Lapic::Reg::LvtTimer) & ~Lapic::INT_MASKED;
 	Lapic::write(Lapic::Reg::LvtTimer, value);
 
-	hpet_sleep(10 * 1000);
+	//hpet_sleep(10 * 1000);
+	pit_perform_10ms_sleep();
 
 	auto end = Lapic::read(Lapic::Reg::CurrCount);
 	Lapic::write(Lapic::Reg::LvtTimer, Lapic::INT_MASKED);
 
-	auto ticks_in_10ms = (0xFFFFFFFF - end) * 16;
+	auto ticks_in_10ms = (0xFFFFFFFF - end);
+	auto ticks_in_1s = ticks_in_10ms * 100;
 	auto ticks_in_1ms = ticks_in_10ms / 10;
 	auto ticks_in_1us = ticks_in_1ms / 1000;
 	auto ticks_in_100ns = ticks_in_1us / 10;
-	println("ticks in 10ms: ", ticks_in_10ms);
-	println("ticks in 1ms:", ticks_in_1ms);
-	println("ticks in 100ns: ", ticks_in_100ns);
+	println("ticks in 10ms with divider 16: ", ticks_in_10ms);
+	println("ticks in 1ms with divider 16: ", ticks_in_1ms);
+	println("ticks in 100ns with divider 16: ", ticks_in_100ns);
+
+	println("sleeping for 10s using the apic");
+	Lapic::write(Lapic::Reg::InitCount, ticks_in_1s * 10);
+	Lapic::write(Lapic::Reg::LvtTimer, 32 | ONE_SHOT);
 
 	while (true) {
 		asm("hlt");
