@@ -1,7 +1,9 @@
 #pragma once
+#include "fb.hpp"
+#include "interrupts/interrupts.hpp"
 #include "types.hpp"
 #include "utils.hpp"
-#include "fb.hpp"
+#include "utils/spinlock.hpp"
 
 struct PsfFont {
 	u32 magic;
@@ -97,9 +99,15 @@ inline void print(i64 value) {
 	print_number(as<usize>(value), sign);
 }
 
+extern Spinlock print_lock;
+
 template<typename... Args>
 inline void print(Args... args) {
+	disable_interrupts();
+	print_lock.lock();
 	(print(args), ...);
+	print_lock.unlock();
+	enable_interrupts();
 }
 
 template<typename... Args>

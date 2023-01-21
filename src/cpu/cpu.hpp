@@ -42,6 +42,7 @@ static_assert(sizeof(Tss) == 104);
 struct CpuLocal {
 	CpuLocal* self {this};
 	u64 apic_frequency {};
+	u64 tsc_frequency {};
 	Tss tss {.iopb = sizeof(Tss)};
 	Idt idt;
 	GdtEntry gdt[7] {
@@ -60,6 +61,7 @@ struct CpuLocal {
 		{as<u64>(cast<usize>(&tss) >> 32)}
 	};
 };
+static_assert(sizeof(CpuLocal) == 24 + sizeof(Tss) + sizeof(Idt) + sizeof(GdtEntry) * 7);
 
 void set_cpu_local(CpuLocal* local);
 CpuLocal* get_cpu_local();

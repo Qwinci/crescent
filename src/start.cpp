@@ -13,6 +13,7 @@
 #include "utils.hpp"
 #include "drivers/hpet.hpp"
 #include "timer/timer.hpp"
+#include "scheduling/scheduler.hpp"
 
 static limine_framebuffer_request FB_REQUEST {.id = LIMINE_FRAMEBUFFER_REQUEST};
 
@@ -25,6 +26,8 @@ static limine_module_request MODULE_REQUEST {.id = LIMINE_MODULE_REQUEST};
 static limine_rsdp_request RSDP_REQUEST {.id = LIMINE_RSDP_REQUEST};
 
 static limine_kernel_address_request KERNEL_ADDRESS_REQUEST {.id = LIMINE_KERNEL_ADDRESS_REQUEST};
+
+static limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
 
 [[gnu::used]] u8 stack[0x2000];
 
@@ -63,6 +66,13 @@ extern "C" fn __fini_array_end[];
 	Lapic::eoi();
 }
 
+[[noreturn]] void ap_entry(limine_smp_info* info) {
+	println("cpu ", info->lapic_id, " online!");
+	while (true) {
+		asm("hlt");
+	}
+}
+
 extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (fn* f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)();
@@ -89,6 +99,15 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	set_fg(0x00FF00);
 
+	for (usize i = 0; i < SMP_REQUEST.response->cpu_count; ++i) {
+		auto& cpu = SMP_REQUEST.response->cpus[i];
+		if (cpu->lapic_id == SMP_REQUEST.response->bsp_lapic_id) {
+			continue;
+		}
+
+		cpu->goto_address = ap_entry;
+	}
+
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
 		if (entry->type == LIMINE_MEMMAP_USABLE) {
@@ -112,6 +131,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	}
 
 	auto* entries = new MemoryMap::Entry[MEMMAP_REQUEST.response->entry_count];
+	usize max_entry_count = MEMMAP_REQUEST.response->entry_count;
 	usize entry_count = 0;
 
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
@@ -159,7 +179,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		}
 	}
 
-	ALLOCATOR.dealloc(entries, entry_count * sizeof(MemoryMap::Entry));
+	ALLOCATOR.dealloc(entries, max_entry_count * sizeof(MemoryMap::Entry));
 
 	extern char KERNEL_START[];
 	extern char KERNEL_END[];
@@ -179,9 +199,9 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	page_map->load();
 
-	parse_madt(locate_acpi_table(rsdp, "APIC"));
-
 	init_timers(rsdp);
+
+	parse_madt(locate_acpi_table(rsdp, "APIC"));
 
 	Lapic::calibrate_timer();
 
@@ -190,6 +210,8 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	println("hello");
 
 	//Lapic::start_periodic(1);
+
+	test_task();
 
 	while (true) {
 		asm("hlt");

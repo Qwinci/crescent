@@ -1,5 +1,6 @@
 #include "console.hpp"
 
+Spinlock print_lock {};
 
 namespace {
 	u32 fg;

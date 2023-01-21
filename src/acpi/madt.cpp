@@ -2,9 +2,13 @@
 #include "console.hpp"
 #include "io.hpp"
 #include "io_apic.hpp"
-#include "memory/map.hpp"
-#include "utils.hpp"
 #include "lapic.hpp"
+#include "memory/map.hpp"
+#include "memory/memory.hpp"
+#include "memory/std.hpp"
+#include "new.hpp"
+#include "timer/timer.hpp"
+#include "utils.hpp"
 
 struct Madt {
 	SdtHeader header;
@@ -12,7 +16,16 @@ struct Madt {
 	u32 flags;
 };
 
+[[noreturn]] void ap_entry(u8 apic_id) {
+	println("cpu ", apic_id, " online!");
+	while (true) {
+		asm volatile("hlt");
+	}
+}
+
 void parse_madt(const void* madt_ptr) {
+	usize cpu_count = 0;
+
 	if (!madt_ptr) {
 		panic("parse_madt called with null madt");
 	}
@@ -43,6 +56,8 @@ void parse_madt(const void* madt_ptr) {
 			i += 1;
 			u32 flags = *cast<const u32*>(offset(madt, as<isize>(i)));
 			i += 4;
+
+			++cpu_count;
 		}
 		// IO APIC
 		else if (type == 1) {
@@ -150,4 +165,100 @@ void parse_madt(const void* madt_ptr) {
 	Lapic::write(Lapic::Reg::TaskPriority, 0);
 
 	println("enabled");
+
+	return;
+
+	if (cpu_count == 1) {
+		return;
+	}
+
+	struct [[gnu::packed]] InitInfo {
+		void* entry;
+		void* stack;
+		u32 page_table;
+		u8 apic_id;
+		u8 done;
+	};
+
+	extern char smp_tramp_start[];
+	extern char smp_tramp_end[];
+
+	constexpr u32 DEST_MODE_INIT = 5 << 8;
+	constexpr u32 DEST_MODE_SIPI = 6 << 8;
+	constexpr u32 DELIVERY_STATUS = 1 << 12;
+	constexpr u32 INIT_DEASSERT_CLEAR = 1 << 14;
+	constexpr u32 INIT_DEASSERT = 1 << 15;
+
+	usize tramp_size = smp_tramp_end - smp_tramp_start;
+
+	void* tramp_base = ALLOCATOR.alloc_low(tramp_size + sizeof(InitInfo));
+	auto phys = VirtAddr {tramp_base}.to_phys();
+	if (phys.as_usize() > SIZE_2MB / 2) {
+		panic("smp tramp is above 1mb (");
+	}
+	auto addr = VirtAddr {phys.as_usize()};
+	get_map()->map(addr, phys, PageFlags::Rw | PageFlags::Huge);
+	memcpy(tramp_base, smp_tramp_start, tramp_size);
+
+	u8* tramp_ptr = cast<u8*>(tramp_base);
+	for (usize i = 0; i < tramp_size; ++i) {
+		if (*cast<u32*>(tramp_ptr + i) == 0xCAFEBABE) {
+			*cast<u32*>(tramp_ptr + i) = as<u32>(phys.as_usize());
+			println("patched address");
+			break;
+		}
+	}
+
+	volatile auto* info = new (cast<void*>(cast<usize>(tramp_base) + tramp_size)) InitInfo();
+	auto map_phys = VirtAddr {get_map()}.to_phys().as_usize();
+	info->page_table = as<u32>(map_phys);
+	info->entry = cast<void*>(ap_entry);
+
+	for (usize i = 0; i < cpu_count; ++i) {
+		if (i == bsp_id) {
+			continue;
+		}
+
+		u32 value = DEST_MODE_INIT | INIT_DEASSERT_CLEAR;
+		info->apic_id = i;
+		info->stack = cast<void*>(cast<usize>(PAGE_ALLOCATOR.alloc(2)) + 0x4000);
+
+		Lapic::write(as<Lapic::Reg>(as<u32>(Lapic::Reg::IntCmdBase) + 0x10), i << 24);
+		Lapic::write(Lapic::Reg::IntCmdBase, value);
+		while (Lapic::read(Lapic::Reg::IntCmdBase) & DELIVERY_STATUS) asm volatile("pause" : : : "memory");
+		println("after first write");
+
+		value = DEST_MODE_INIT | INIT_DEASSERT;
+		Lapic::write(as<Lapic::Reg>(as<u32>(Lapic::Reg::IntCmdBase) + 0x10), i << 24);
+		Lapic::write(Lapic::Reg::IntCmdBase, value);
+		while (Lapic::read(Lapic::Reg::IntCmdBase) & DELIVERY_STATUS) asm volatile("pause" : : : "memory");
+		println("after second write");
+
+		udelay(10 * 1000);
+		println("after delay");
+
+		for (u8 j = 0; j < 2; ++j) {
+			value = 1 | DEST_MODE_SIPI | INIT_DEASSERT_CLEAR;
+			Lapic::write(as<Lapic::Reg>(as<u32>(Lapic::Reg::IntCmdBase) + 0x10), i << 24);
+			Lapic::write(Lapic::Reg::IntCmdBase, value);
+
+			udelay(j == 0 ? 1000 : 1000 * 1000);
+			println("after third write");
+
+			while (Lapic::read(Lapic::Reg::IntCmdBase) & DELIVERY_STATUS) asm volatile("pause" : : : "memory");
+			println("after fourth write");
+
+			if (info->done) {
+				break;
+			}
+		}
+
+		if (info->done) {
+			println("info done");
+			info->done = false;
+		}
+		else {
+			PAGE_ALLOCATOR.dealloc(cast<void*>(cast<usize>(info->stack) - 0x2000), 2);
+		}
+	}
 }
