@@ -2,6 +2,7 @@
 #include "acpi/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
+#include "drivers/hpet.hpp"
 #include "drivers/pit.hpp"
 #include "fb.hpp"
 #include "limine/limine.h"
@@ -9,11 +10,11 @@
 #include "memory/memory.hpp"
 #include "new.hpp"
 #include "noalloc/string.hpp"
+#include "scheduling/scheduler.hpp"
+#include "timer/timer.hpp"
+#include "timer/timer_int.hpp"
 #include "types.hpp"
 #include "utils.hpp"
-#include "drivers/hpet.hpp"
-#include "timer/timer.hpp"
-#include "scheduling/scheduler.hpp"
 
 static limine_framebuffer_request FB_REQUEST {.id = LIMINE_FRAMEBUFFER_REQUEST};
 
@@ -60,11 +61,6 @@ extern "C" fn __init_array_start[];
 extern "C" fn __init_array_end[];
 extern "C" fn __fini_array_start[];
 extern "C" fn __fini_array_end[];
-
-[[gnu::interrupt]] void timer_handler(InterruptFrame*) {
-	println("timer");
-	Lapic::eoi();
-}
 
 [[noreturn]] void ap_entry(limine_smp_info* info) {
 	println("cpu ", info->lapic_id, " online!");
@@ -207,9 +203,11 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	register_irq_handler(0, timer_handler, 0);
 
+	scheduler_init();
+
 	println("hello");
 
-	//Lapic::start_periodic(1);
+	start_lapic_timer();
 
 	test_task();
 

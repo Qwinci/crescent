@@ -42,8 +42,21 @@ void Lapic::calibrate_timer() {
 
 void Lapic::start_oneshot(u64 us, u8 irq) {
 	write(Reg::DivConf, 3);
-	write(Reg::LvtTimer, irq | ONESHOT);
-	write(Lapic::Reg::InitCount, get_cpu_local()->apic_frequency / 1000 / 1000 * us);
+	write(Reg::LvtTimer, (32 + irq) | ONESHOT);
+	u64 value = 0;
+	if (us >= 1000 * 1000) {
+		auto seconds = us / (1000 * 1000);
+		auto us_part = us % (1000 * 1000);
+		value = get_cpu_local()->apic_frequency / 16 * seconds;
+		value += get_cpu_local()->apic_frequency / 16 / (1000 * 1000 / us_part);
+	}
+	else {
+		value = get_cpu_local()->apic_frequency / 16 / (1000 * 1000 / us);
+	}
+	if (value >= UINT32_MAX) {
+		panic("lapic timer overflow");
+	}
+	write(Lapic::Reg::InitCount, value);
 }
 
 void Lapic::start_periodic(u64 frequency) {

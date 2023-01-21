@@ -10,6 +10,7 @@ struc Process
 	.last_user_timestamp: resq 1
 	.kernel_cpu_time_used_ns: resq 1
 	.last_kernel_timestamp: resq 1
+	.sleep_end: resq 1
 endstruc
 
 %define STATE_READY_TO_RUN 0
@@ -54,8 +55,14 @@ endstruc
 extern current_task
 extern ready_to_run_tasks
 extern ready_to_run_tasks_end
-
+extern delay_task_switch
+extern task_switch_delayed
 switch_task:
+	cmp qword [delay_task_switch], 0
+	je .do_switch
+	mov byte [task_switch_delayed], 1
+	ret
+.do_switch:
 	push rbx
 	push rbp
 	push r12
