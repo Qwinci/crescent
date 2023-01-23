@@ -26,6 +26,10 @@ public:
 	[[nodiscard]] constexpr VirtAddr offset(usize offset) const {
 		return VirtAddr {value + offset};
 	}
+
+	constexpr operator void*() const { // NOLINT(google-explicit-constructor)
+		return cast<void*>(value);
+	}
 private:
 	usize value;
 };
@@ -90,6 +94,7 @@ constexpr PageFlags operator~(PageFlags lhs) {
 }
 
 constexpr usize SIZE_2MB = 0x200000;
+constexpr usize SIZE_4GB = 0x100000000;
 
 class PageMap {
 public:
@@ -99,6 +104,7 @@ public:
 	void load();
 	void refresh_page(usize addr);
 	void ensure_kernel_mapping(PhysAddr phys, usize size);
+	PhysAddr virt_to_phys(VirtAddr addr);
 private:
 	struct Entry {
 		u64 value {};

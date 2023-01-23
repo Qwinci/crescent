@@ -115,6 +115,45 @@ void PageMap::unmap(VirtAddr virt, bool huge) {
 	pt_entry[pt_offset].value = 0;
 }
 
+PhysAddr PageMap::virt_to_phys(VirtAddr addr) {
+	auto virt_addr = addr.as_usize();
+
+	virt_addr >>= 12;
+	auto pt_offset = virt_addr & 0x1FF;
+	virt_addr >>= 9;
+	auto pd_offset = virt_addr & 0x1FF;
+	virt_addr >>= 9;
+	auto pdp_offset = virt_addr & 0x1FF;
+	virt_addr >>= 9;
+	auto pml4_offset = virt_addr & 0x1FF;
+
+	Entry* pdp_entry;
+	if (entries[pml4_offset].get_flags() & PageFlags::Present) {
+		pdp_entry = cast<Entry*>(entries[pml4_offset].get_addr().to_virt().as_usize());
+	}
+	else {
+		return PhysAddr {nullptr};
+	}
+
+	Entry* pd_entry;
+	if (pdp_entry[pdp_offset].get_flags() & PageFlags::Present) {
+		pd_entry = cast<Entry*>(pdp_entry[pdp_offset].get_addr().to_virt().as_usize());
+	}
+	else {
+		return PhysAddr {nullptr};
+	}
+
+	Entry* pt_entry;
+	if (pd_entry[pd_offset].get_flags() & PageFlags::Present) {
+		pt_entry = cast<Entry*>(pd_entry[pd_offset].get_addr().to_virt().as_usize());
+	}
+	else {
+		return PhysAddr {nullptr};
+	}
+
+	return pt_entry[pt_offset].get_addr();
+}
+
 void PageMap::load() {
 	asm volatile("mov cr3, %0" : : "r"(VirtAddr {cast<usize>(this)}.to_phys().as_usize()));
 }

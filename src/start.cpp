@@ -6,6 +6,7 @@
 #include "limine/limine.h"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
+#include "memory/vmem.hpp"
 #include "new.hpp"
 #include "noalloc/string.hpp"
 #include "timer/timer.hpp"
@@ -100,41 +101,46 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		cpu->goto_address = ap_entry;
 	}
 
+	auto max_phys = MEMMAP_REQUEST.response->entries[MEMMAP_REQUEST.response->entry_count - 1]->base;
+	bool bitmap_init = false;
+	auto bitmap_size = PageAllocator::get_bitmap_real_size(max_phys);
+
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
-		if (entry->type == LIMINE_MEMMAP_USABLE) {
-			PAGE_ALLOCATOR.add_memory(entry->base + HHDM_OFFSET, entry->length);
+		if (entry->type == LIMINE_MEMMAP_USABLE && entry->length >= bitmap_size) {
+			entry->length -= bitmap_size;
+			PAGE_ALLOCATOR.init_bitmap(entry->base + entry->length, max_phys);
+			bitmap_init = true;
+			break;
 		}
 	}
 
-	auto data = new CpuLocal;
-	load_gdt(data->gdt, 7);
-	set_cpu_local(data);
-	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
-	println("enabling interrupts");
-	load_idt(&data->idt);
-	enable_interrupts();
+	if (!bitmap_init) {
+		panic("not enough memory for allocator bitmap");
+	}
 
-	auto page_map = new (PAGE_ALLOCATOR.alloc_low(1)) PageMap;
+	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
+		auto entry = MEMMAP_REQUEST.response->entries[i];
+		if (entry->type == LIMINE_MEMMAP_USABLE) {
+			PAGE_ALLOCATOR.add_mem(entry->base, entry->length);
+		}
+	}
 
-	for (usize i = 0; i < 0x100000000; i += SIZE_2MB) {
+	vm_kernel_init(HHDM_OFFSET + max_phys, 0xFFFFFFFF80000000 - (HHDM_OFFSET + max_phys));
+
+	auto page_map_mem = PAGE_ALLOCATOR.alloc_low_new(1);
+	if (!page_map_mem) {
+		panic("failed to allocate memory for page map");
+	}
+	auto page_map = new (PhysAddr {page_map_mem}.to_virt()) PageMap;
+
+	for (usize i = 0; i < SIZE_4GB; i += SIZE_2MB) {
 		auto phys = PhysAddr {i};
 		page_map->map(phys.to_virt(), phys, PageFlags::Rw | PageFlags::Huge);
 	}
 
-	auto* entries = new MemoryMap::Entry[MEMMAP_REQUEST.response->entry_count];
-	usize max_entry_count = MEMMAP_REQUEST.response->entry_count;
-	usize entry_count = 0;
-
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
-
-		if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
-			auto& copy_entry = entries[entry_count++];
-			copy_entry.base = entry->base;
-			copy_entry.type = MemoryType::Usable;
-			copy_entry.size = entry->length;
-		}
 
 		if (entry->type != LIMINE_MEMMAP_USABLE &&
 			entry->type != LIMINE_MEMMAP_FRAMEBUFFER &&
@@ -163,16 +169,6 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		}
 	}
 
-
-	for (usize i = 0; i < entry_count; ++i) {
-		const auto& entry = entries[i];
-		if (entry.type == MemoryType::Usable) {
-			PAGE_ALLOCATOR.add_memory(entry.base + HHDM_OFFSET, entry.size);
-		}
-	}
-
-	ALLOCATOR.dealloc(entries, max_entry_count * sizeof(MemoryMap::Entry));
-
 	extern char KERNEL_START[];
 	extern char KERNEL_END[];
 
@@ -190,6 +186,17 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	}
 
 	page_map->load();
+	println("page table loaded");
+
+	auto data = new CpuLocal;
+	println("loading gdt");
+	load_gdt(data->gdt, 7);
+	println("gdt loaded");
+	set_cpu_local(data);
+	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
+	println("enabling interrupts");
+	load_idt(&data->idt);
+	enable_interrupts();
 
 	init_timers(rsdp);
 

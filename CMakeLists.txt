@@ -13,7 +13,7 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 2
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
 
-add_executable(crescent ${SRC})
+add_executable(crescent ${SRC} thirdparty/tinyvmem/vmem.cpp)
 target_include_directories(crescent PRIVATE src thirdparty)
 
 target_compile_options(crescent PRIVATE

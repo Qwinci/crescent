@@ -1,7 +1,9 @@
 #include "console.hpp"
+#include "map.hpp"
 #include "memory.hpp"
 #include "new.hpp"
 #include "std.hpp"
+#include "vmem.hpp"
 
 Allocator ALLOCATOR;
 
@@ -29,19 +31,31 @@ constexpr u16 index_to_size(u8 index) {
 }
 
 void* Allocator::alloc_low(usize size) {
-	if (size >= 0x1000) {
-		auto count = (size + 0x1000 - 1) / 0x1000;
-		return PAGE_ALLOCATOR.alloc_low(count);
+	if (size == PAGE_SIZE) {
+		auto mem = PAGE_ALLOCATOR.alloc_low_new(1);
+		if (!mem) {
+			return nullptr;
+		}
+		return PhysAddr {mem}.to_virt();
+	}
+	else if (size > PAGE_SIZE) {
+		auto count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+		auto mem = PAGE_ALLOCATOR.alloc_low_new(count);
+		if (!mem) {
+			return nullptr;
+		}
+		return PhysAddr {mem}.to_virt();
 	}
 
 	auto index = size_to_index(size);
 
 	auto& list = low_freelists[index];
 	if (!list.root) {
-		auto mem = PAGE_ALLOCATOR.alloc_low(1);
-		if (!mem) {
+		auto m = PAGE_ALLOCATOR.alloc_low_new(1);
+		if (!m) {
 			panic("memory allocation of ", size, " bytes failed");
 		}
+		void* mem = PhysAddr {m}.to_virt();
 
 		auto align_size = index_to_size(index);
 
@@ -65,19 +79,27 @@ void* Allocator::alloc_low(usize size) {
 }
 
 void* Allocator::alloc(usize size) {
-	if (size >= 0x1000) {
-		auto count = (size + 0x1000 - 1) / 0x1000;
-		return PAGE_ALLOCATOR.alloc(count);
+	if (size == PAGE_SIZE) {
+		auto mem = PAGE_ALLOCATOR.alloc_new();
+		if (!mem) {
+			return nullptr;
+		}
+		return PhysAddr {mem}.to_virt();
+	}
+	else if (size > PAGE_SIZE) {
+		auto count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+		return vm_kernel_alloc_backed(count);
 	}
 
 	auto index = size_to_index(size);
 
 	auto& list = freelists[index];
 	if (!list.root) {
-		auto mem = PAGE_ALLOCATOR.alloc(1);
-		if (!mem) {
+		auto m = PAGE_ALLOCATOR.alloc_new();
+		if (!m) {
 			panic("memory allocation of ", size, " bytes failed");
 		}
+		void* mem = PhysAddr {m}.to_virt();
 
 		auto align_size = index_to_size(index);
 
@@ -103,9 +125,13 @@ void* Allocator::alloc(usize size) {
 }
 
 void Allocator::dealloc(void* ptr, usize size) {
-	if (size >= 0x1000) {
-		auto count = (size + 0x1000 - 1) / 0x1000;
-		return PAGE_ALLOCATOR.dealloc(ptr, count);
+	if (size == PAGE_SIZE) {
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {ptr}.to_phys().as_usize()));
+	}
+	else if (size > PAGE_SIZE) {
+		auto count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+		vm_kernel_dealloc_backed(ptr, count);
+		return;
 	}
 
 	auto index = size_to_index(size);
@@ -114,7 +140,7 @@ void Allocator::dealloc(void* ptr, usize size) {
 	auto node = new (ptr) Node;
 
 	if (list.len + 1 == 0x1000 / align_size) {
-		PAGE_ALLOCATOR.dealloc(list.root, 1);
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {list.root}.to_phys().as_usize()));
 		list.root = nullptr;
 		list.len = 0;
 		return;
@@ -141,9 +167,13 @@ void Allocator::dealloc(void* ptr, usize size) {
 }
 
 void Allocator::dealloc_low(void* ptr, usize size) {
-	if (size >= 0x1000) {
-		auto count = (size + 0x1000 - 1) / 0x1000;
-		return PAGE_ALLOCATOR.dealloc(ptr, count);
+	if (size == PAGE_SIZE) {
+		return PAGE_ALLOCATOR.dealloc_low_new(cast<void*>(VirtAddr {ptr}.to_phys().as_usize()), 1);
+	}
+	else if (size > PAGE_SIZE) {
+		auto count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+		PAGE_ALLOCATOR.dealloc_low_new(cast<void*>(VirtAddr {ptr}.to_phys().as_usize()), count);
+		return;
 	}
 
 	auto index = size_to_index(size);
@@ -152,7 +182,7 @@ void Allocator::dealloc_low(void* ptr, usize size) {
 	auto node = new (ptr) Node;
 
 	if (list.len + 1 == 0x1000 / align_size) {
-		PAGE_ALLOCATOR.dealloc(list.root, 1);
+		PAGE_ALLOCATOR.dealloc_low_new(cast<void*>(VirtAddr {list.root}.to_phys().as_usize()), 1);
 		list.root = nullptr;
 		list.len = 0;
 		return;

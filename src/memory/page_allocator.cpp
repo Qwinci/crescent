@@ -1,143 +1,73 @@
+#include "console.hpp"
+#include "map.hpp"
 #include "memory.hpp"
-#include "utils.hpp"
 #include "new.hpp"
+#include "utils.hpp"
 
 PageAllocator PAGE_ALLOCATOR;
 
-void PageAllocator::try_merge_node(Node* node) {
-	if (cast<usize>(node) + node->size * 0x1000 == cast<usize>(node->next)) {
-		auto next = node->next;
-		node->size += next->size;
-		if (next->next) {
-			next->next->prev = node;
-		}
-		else {
-			end = node;
-		}
-		node->next = next->next;
-	}
-
-	if (node->prev && cast<usize>(node->prev) + node->prev->size * 0x1000 == cast<usize>(node)) {
-		auto prev = node->prev;
-		prev->size += node->size;
-		if (node->next) {
-			node->next->prev = prev;
-		}
-		else {
-			end = prev;
-		}
-		prev->next = node->next;
-	}
+void PageAllocator::init_bitmap(usize base, usize max_phys) {
+	map.init(cast<u64*>(base + HHDM_OFFSET), max_phys / PAGE_SIZE);
 }
 
-void* PageAllocator::alloc(usize count) {
-	auto node = end;
-	while (node) {
-		if (node->size >= count) {
-			auto remaining = node->size - count;
-			if (remaining == 0) {
-				remove_node(node);
-			}
-			else {
-				node->size -= count;
-			}
-
-			return cast<void*>(cast<usize>(node) + remaining * 0x1000);
-		}
-
-		node = node->next;
-	}
-
-	return nullptr;
-}
-
-void* PageAllocator::alloc_low(usize count) {
-	auto node = root;
-	while (node) {
-		if (node->size >= count) {
-			auto remaining = node->size - count;
-			remove_node(node);
-			if (remaining > 0) {
-				auto new_node = new (cast<void*>(cast<usize>(node) + count * 0x1000)) Node();
-				new_node->size = remaining;
-				insert_node(new_node);
-			}
-
-			return node;
-		}
-
-		node = node->next;
-	}
-
-	return nullptr;
-}
-
-void PageAllocator::dealloc(void *ptr, usize count) {
-	auto node = new (ptr) Node();
-	node->size = count;
-	insert_node(node);
-}
-
-void PageAllocator::insert_node(Node* node) {
-	if (!root) {
-		root = node;
-		end = node;
+void PageAllocator::add_mem(usize base, usize size) {
+	if (size < PAGE_SIZE) {
 		return;
 	}
 
-	if (node < root) {
+	auto base_addr = base;
+
+	base = PhysAddr {base}.to_virt().as_usize();
+
+	for (usize i = 0; i < size; i += PAGE_SIZE) {
+		auto node = new (cast<void*>(base + i)) Node;
 		node->next = root;
-		root->prev = node;
 		root = node;
-		try_merge_node(node);
-		return;
+		map[(base_addr + i) / PAGE_SIZE] = false;
 	}
-	if (node > end) {
-		end->next = node;
-		node->prev = end;
-		end = node;
-		try_merge_node(node);
-		return;
+}
+
+void* PageAllocator::alloc_new() {
+	if (!root) {
+		return nullptr;
 	}
 
-	auto n = root;
-	while (true) {
-		auto next = n->next;
-		if (node < next) {
-			next->prev = node;
-			node->next = next;
-			n->next = node;
-			try_merge_node(node);
-			return;
+	auto node = root;
+	root = root->next;
+
+	return cast<void*>(VirtAddr {node}.to_phys().as_usize());
+}
+
+void* PageAllocator::alloc_low_new(usize count) {
+	auto max = map.size() > SIZE_4GB ? (SIZE_4GB / PAGE_SIZE) : map.size();
+	for (usize i = 0; i < max; ++i) {
+		bool found = true;
+		for (usize j = 0; j < count; ++j) {
+			if (map[i + j]) {
+				found = false;
+				break;
+			}
 		}
-		n = n->next;
+
+		if (found) {
+			for (usize j = 0; j < count; ++j) {
+				map[i + j] = true;
+			}
+			return cast<void*>(i * PAGE_SIZE);
+		}
 	}
+
+	return nullptr;
 }
 
-void PageAllocator::add_memory(usize base, usize size) {
-	if (size < 0x1000) {
-		return;
-	}
-
-	auto count = size / 0x1000;
-
-	auto node = new (cast<void*>(base)) Node();
-	node->size = count;
-	insert_node(node);
+void PageAllocator::dealloc_new(void* ptr) {
+	auto node = new (PhysAddr {ptr}.to_virt()) Node;
+	node->next = root;
+	root = node;
 }
 
-void PageAllocator::remove_node(Node* node) {
-	if (node->prev) {
-		node->prev->next = node->next;
-	}
-	else {
-		root = node->next;
-	}
-
-	if (node->next) {
-		node->next->prev = node->prev;
-	}
-	else {
-		end = node->prev;
+void PageAllocator::dealloc_low_new(void* ptr, usize count) {
+	for (usize i = 0; i < count; ++i) {
+		map[cast<usize>(ptr) / PAGE_SIZE + i] = false;
 	}
 }
