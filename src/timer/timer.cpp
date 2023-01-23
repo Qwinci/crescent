@@ -4,7 +4,6 @@
 #include "cpu/cpu.hpp"
 #include "drivers/hpet.hpp"
 #include "drivers/tsc.hpp"
-#include "timer_int.hpp"
 #include "utils/cpuid.hpp"
 
 void (*udelay_ptr)(u64 us);
@@ -53,14 +52,5 @@ void init_timers(const void* rsdp) {
 			while (read_timestamp() < end);
 		};
 		println("info: using tsc for udelay");
-	}
-}
-
-u64 get_current_timer_ns() {
-	if (tsc_ticks_in_sec) {
-		return read_timestamp() + tsc_ticks_in_sec * 1000000000ULL;
-	}
-	else {
-		return timer_ns_since_boot;
 	}
 }

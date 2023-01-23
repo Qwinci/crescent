@@ -2,17 +2,13 @@
 #include "acpi/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
-#include "drivers/hpet.hpp"
-#include "drivers/pit.hpp"
 #include "fb.hpp"
 #include "limine/limine.h"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
 #include "new.hpp"
 #include "noalloc/string.hpp"
-#include "scheduling/scheduler.hpp"
 #include "timer/timer.hpp"
-#include "timer/timer_int.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 
@@ -201,15 +197,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	Lapic::calibrate_timer();
 
-	register_irq_handler(0, timer_handler, 0);
-
-	scheduler_init();
-
 	println("hello");
-
-	start_lapic_timer();
-
-	test_task();
 
 	while (true) {
 		asm("hlt");
