@@ -71,3 +71,9 @@ add_custom_target(debug
         -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         ${QEMU_FLAGS} -S -s
         DEPENDS crescent USES_TERMINAL VERBATIM)
+
+add_custom_target(debug_kvm
+        COMMAND qemu-system-x86_64
+        -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
+        ${QEMU_FLAGS} -enable-kvm -S -s
+        DEPENDS crescent USES_TERMINAL VERBATIM)

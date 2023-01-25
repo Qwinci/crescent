@@ -44,7 +44,7 @@ struct CpuLocal {
 	u64 apic_frequency {};
 	u64 tsc_frequency {};
 	Tss tss {.iopb = sizeof(Tss)};
-	Idt idt;
+	Idt idt {};
 	GdtEntry gdt[7] {
 		// Null
 		{0, 0, 0},

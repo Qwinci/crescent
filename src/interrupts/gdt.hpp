@@ -1,9 +1,10 @@
 #pragma once
+#include "console.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 
 struct GdtEntry {
-	constexpr GdtEntry(u32 base, u8 access_byte, u8 flags) {
+	inline GdtEntry(u32 base, u8 access_byte, u8 flags) {
 		value = as<u64>(access_byte) << 40 | as<u64>(flags) << 52;
 
 		u64 base_low = base & 0xFFFF;
@@ -11,6 +12,9 @@ struct GdtEntry {
 		u64 base_high = base >> 24 & 0xFF;
 
 		value |= base_low << 16 | base_middle << 32 | base_high << 56;
+
+		println("gdt base: ", base, " access byte: ", access_byte, " flags: ", flags);
+		println("gdt has value ", value);
 	}
 	constexpr GdtEntry(u64 base) : value {base} {} // NOLINT(google-explicit-constructor)
 

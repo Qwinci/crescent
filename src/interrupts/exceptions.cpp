@@ -49,7 +49,6 @@
 	while (true) asm("hlt");
 }
 
-
 [[noreturn, gnu::interrupt]] void division_exception(InterruptFrame* frame) GENERIC_FAULT(division error)
 [[noreturn, gnu::interrupt]] void debug_exception(InterruptFrame* frame) GENERIC_FAULT(debug exception)
 [[noreturn, gnu::interrupt]] void nmi_exception(InterruptFrame* frame) GENERIC_FAULT(nmi exception)

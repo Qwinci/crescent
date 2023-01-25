@@ -3,6 +3,17 @@
 #include "utils.hpp"
 #include "exceptions.hpp"
 
+struct InterruptCtx {
+	u64 rax, rbx, rcx, rdx, rdi, rsi, rbp, r8, r9, r10, r11, r12, r13, r14, r15;
+	u64 vec;
+	u64 error;
+	u64 ip;
+	u64 cs;
+	u64 flags;
+	u64 sp;
+	u64 ss;
+};
+
 struct InterruptFrame {
 	u64 ip;
 	u64 cs;

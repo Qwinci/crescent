@@ -10,6 +10,7 @@
 #include "new.hpp"
 #include "noalloc/string.hpp"
 #include "timer/timer.hpp"
+#include "timer/timer_int.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 
@@ -105,7 +106,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	bool bitmap_init = false;
 	auto bitmap_size = PageAllocator::get_bitmap_real_size(max_phys);
 
-	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
+	/*for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
 		if (entry->type == LIMINE_MEMMAP_USABLE && entry->length >= bitmap_size) {
 			entry->length -= bitmap_size;
@@ -117,7 +118,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	if (!bitmap_init) {
 		panic("not enough memory for allocator bitmap");
-	}
+	}*/
 
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
@@ -188,8 +189,13 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	page_map->load();
 	println("page table loaded");
 
-	auto data = new CpuLocal;
-	println("loading gdt");
+	auto data = new CpuLocal();
+	println("loading gdt with cpulocal ", (void*) data);
+	println("data->gdt: ", (void*) data->gdt);
+	println("gdt:");
+	for (i = 0; i < 7; ++i) {
+		println((void*) data->gdt[i].value);
+	}
 	load_gdt(data->gdt, 7);
 	println("gdt loaded");
 	set_cpu_local(data);
@@ -200,9 +206,13 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	init_timers(rsdp);
 
+	data->idt.interrupts[0] = {(void*) timer_int, 0x8, 0, false, 0};
+
 	parse_madt(locate_acpi_table(rsdp, "APIC"));
 
 	Lapic::calibrate_timer();
+
+	Lapic::start_oneshot(1000, 0);
 
 	println("hello");
 

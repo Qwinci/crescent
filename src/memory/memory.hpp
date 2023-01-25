@@ -27,7 +27,8 @@ private:
 			data = ptr;
 			count = size;
 			for (usize i = 0; i < size / 64; ++i) {
-				data[i] = UINT64_MAX;
+				//data[i] = UINT64_MAX;
+				data[i] = 0;
 			}
 		}
 
@@ -65,6 +66,15 @@ private:
 	};
 
 	Bitmap map {};
+
+	struct BitmapNode {
+		usize base {};
+		Bitmap map {};
+		BitmapNode* next {};
+	};
+
+	BitmapNode* bitmap_root {};
+	BitmapNode* bitmap_end {};
 
 	struct Node {
 		Node* next;

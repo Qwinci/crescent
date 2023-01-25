@@ -38,7 +38,7 @@ struct Lapic {
 	static void calibrate_timer();
 
 	static void start_periodic(u64 frequency);
-	static void start_oneshot(u64 us, u8 irq);
+	static void start_oneshot(u64 frequency, u8 irq);
 	static void eoi();
 
 private:

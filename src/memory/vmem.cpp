@@ -34,6 +34,7 @@ void* vm_kernel_alloc_backed(usize count) {
 		if (!page) {
 			panic("failed to allocate physical memory in vm_kernel_alloc_backed");
 		}
+		println("info: vm_kernel_alloc_backed mapping ", (void*) VirtAddr {mem}.offset(i).as_usize(), " to ", page);
 		get_map()->map(VirtAddr {mem}.offset(i), PhysAddr {page}, PageFlags::Rw);
 		get_map()->refresh_page(cast<usize>(mem) + i);
 	}
