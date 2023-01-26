@@ -6,10 +6,6 @@
 
 PageAllocator PAGE_ALLOCATOR;
 
-void PageAllocator::init_bitmap(usize base, usize max_phys) {
-	map.init(cast<u64*>(base + HHDM_OFFSET), max_phys / PAGE_SIZE);
-}
-
 void PageAllocator::add_mem(usize base, usize size) {
 	if (size < PAGE_SIZE) {
 		return;
@@ -17,20 +13,10 @@ void PageAllocator::add_mem(usize base, usize size) {
 
 	Bitmap bitmap {};
 	auto bitmap_real_size = get_bitmap_real_size(size);
+	auto bitmap_size = get_bitmap_size(size - bitmap_real_size - sizeof(BitmapNode));
 	auto end = base + size;
 	bitmap.init(cast<u64*>(PhysAddr {end - bitmap_real_size}.to_virt().as_usize()), size / PAGE_SIZE);
 	end -= bitmap_real_size;
-
-	/*auto base_addr = base;
-
-	base = PhysAddr {base}.to_virt().as_usize();
-
-	for (usize i = 0; i < size; i += PAGE_SIZE) {
-		auto node = new (cast<void*>(base + i)) Node;
-		node->next = root;
-		root = node;
-		map[(base_addr + i) / PAGE_SIZE] = false;
-	}*/
 
 	end -= sizeof(BitmapNode);
 	auto n = new (PhysAddr {end}.to_virt()) BitmapNode;
@@ -50,9 +36,12 @@ void PageAllocator::add_mem(usize base, usize size) {
 		bitmap_end = n;
 	}
 
-	for (usize i = 0; i < size - (bitmap_real_size + sizeof(BitmapNode)); i += PAGE_SIZE) {
-		auto node = new (PhysAddr {base + i}.to_virt()) Node;
+	for (usize i = 0; i < bitmap_size; ++i) {
+		auto node = new (PhysAddr {base + i * PAGE_SIZE}.to_virt()) Node;
 		node->next = root;
+		if (root) {
+			root->prev = node;
+		}
 		root = node;
 	}
 }
@@ -64,6 +53,18 @@ void* PageAllocator::alloc_new() {
 
 	auto node = root;
 	root = root->next;
+	if (root) {
+		root->prev = nullptr;
+	}
+
+	auto phys = VirtAddr {node}.to_phys().as_usize();
+
+	for (auto map = bitmap_root; map; map = map->next) {
+		if (phys >= map->base && phys <= map->base + map->map.size() * PAGE_SIZE) {
+			map->map[(phys - map->base) / PAGE_SIZE] = true;
+			break;
+		}
+	}
 
 	return cast<void*>(VirtAddr {node}.to_phys().as_usize());
 }
@@ -81,28 +82,20 @@ void* PageAllocator::alloc_low_new(usize count) {
 
 			if (found) {
 				for (usize j = 0; j < count; ++j) {
+					auto n = cast<Node*>(PhysAddr {node->base + (i + j) * PAGE_SIZE}.to_virt().as_usize());
+					if (n->prev) {
+						n->prev->next = n->next;
+					}
+					else {
+						root = n->next;
+					}
+					if (n->next) {
+						n->next->prev = n->prev;
+					}
 					node->map[i + j] = true;
 				}
 				return cast<void*>(node->base + i * PAGE_SIZE);
 			}
-		}
-	}
-
-	auto max = map.size() > SIZE_4GB ? (SIZE_4GB / PAGE_SIZE) : map.size();
-	for (usize i = 0; i < max; ++i) {
-		bool found = true;
-		for (usize j = 0; j < count; ++j) {
-			if (map[i + j]) {
-				found = false;
-				break;
-			}
-		}
-
-		if (found) {
-			for (usize j = 0; j < count; ++j) {
-				map[i + j] = true;
-			}
-			return cast<void*>(i * PAGE_SIZE);
 		}
 	}
 
@@ -112,11 +105,40 @@ void* PageAllocator::alloc_low_new(usize count) {
 void PageAllocator::dealloc_new(void* ptr) {
 	auto node = new (PhysAddr {ptr}.to_virt()) Node;
 	node->next = root;
+	node->prev = nullptr;
+	if (root) {
+		root->prev = node;
+	}
 	root = node;
+
+	auto phys = cast<usize>(ptr);
+
+	for (auto map = bitmap_root; map; map = map->next) {
+		if (phys >= map->base && phys <= map->base + map->map.size() * PAGE_SIZE) {
+			map->map[(phys - map->base) / PAGE_SIZE] = false;
+			break;
+		}
+	}
 }
 
 void PageAllocator::dealloc_low_new(void* ptr, usize count) {
-	for (usize i = 0; i < count; ++i) {
-		map[cast<usize>(ptr) / PAGE_SIZE + i] = false;
+	auto phys = cast<usize>(ptr);
+	auto virt = VirtAddr {ptr};
+
+	for (auto map = bitmap_root; map; map = map->next) {
+		if (phys >= map->base && phys <= map->base + map->map.size() * PAGE_SIZE) {
+			for (usize i = 0; i < count; ++i) {
+				auto node = new (virt.offset(i * PAGE_SIZE)) Node;
+				node->next = root;
+				node->prev = nullptr;
+				if (root) {
+					root->prev = node;
+				}
+				root = node;
+
+				map->map[(phys - map->base) / PAGE_SIZE + i] = false;
+			}
+			break;
+		}
 	}
 }

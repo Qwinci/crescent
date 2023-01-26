@@ -10,7 +10,6 @@ public:
 	void dealloc_new(void* ptr);
 	void dealloc_low_new(void* ptr, usize count);
 	void add_mem(usize base, usize size);
-	void init_bitmap(usize base, usize max_phys);
 	static constexpr usize get_bitmap_real_size(usize max_addr) {
 		auto count = max_addr / PAGE_SIZE / 8;
 		return count % 8 == 0 ? count : count + 8 - (count % 8);
@@ -65,8 +64,6 @@ private:
 		}
 	};
 
-	Bitmap map {};
-
 	struct BitmapNode {
 		usize base {};
 		Bitmap map {};
@@ -77,6 +74,7 @@ private:
 	BitmapNode* bitmap_end {};
 
 	struct Node {
+		Node* prev;
 		Node* next;
 	};
 

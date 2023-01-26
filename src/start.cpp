@@ -103,22 +103,6 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	}
 
 	auto max_phys = MEMMAP_REQUEST.response->entries[MEMMAP_REQUEST.response->entry_count - 1]->base;
-	bool bitmap_init = false;
-	auto bitmap_size = PageAllocator::get_bitmap_real_size(max_phys);
-
-	/*for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
-		auto entry = MEMMAP_REQUEST.response->entries[i];
-		if (entry->type == LIMINE_MEMMAP_USABLE && entry->length >= bitmap_size) {
-			entry->length -= bitmap_size;
-			PAGE_ALLOCATOR.init_bitmap(entry->base + entry->length, max_phys);
-			bitmap_init = true;
-			break;
-		}
-	}
-
-	if (!bitmap_init) {
-		panic("not enough memory for allocator bitmap");
-	}*/
 
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
@@ -190,14 +174,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	println("page table loaded");
 
 	auto data = new CpuLocal();
-	println("loading gdt with cpulocal ", (void*) data);
-	println("data->gdt: ", (void*) data->gdt);
-	println("gdt:");
-	for (i = 0; i < 7; ++i) {
-		println((void*) data->gdt[i].value);
-	}
 	load_gdt(data->gdt, 7);
-	println("gdt loaded");
 	set_cpu_local(data);
 	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
 	println("enabling interrupts");

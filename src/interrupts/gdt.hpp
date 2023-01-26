@@ -12,9 +12,6 @@ struct GdtEntry {
 		u64 base_high = base >> 24 & 0xFF;
 
 		value |= base_low << 16 | base_middle << 32 | base_high << 56;
-
-		println("gdt base: ", base, " access byte: ", access_byte, " flags: ", flags);
-		println("gdt has value ", value);
 	}
 	constexpr GdtEntry(u64 base) : value {base} {} // NOLINT(google-explicit-constructor)
 
