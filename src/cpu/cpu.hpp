@@ -2,6 +2,7 @@
 #include "interrupts/gdt.hpp"
 #include "interrupts/interrupts.hpp"
 #include "types.hpp"
+#include "utils/cpuid.hpp"
 
 enum class Msr : u32 {
 	FsBase = 0xC0000100,
@@ -40,6 +41,11 @@ struct Tss {
 static_assert(sizeof(Tss) == 104);
 
 struct CpuLocal {
+	inline CpuLocal() {
+		id = cpuid(1).ebx >> 24;
+	}
+	inline explicit CpuLocal(u8 id) : id {id} {}
+
 	CpuLocal* self {this};
 	u64 apic_frequency {};
 	u64 tsc_frequency {};
@@ -60,8 +66,8 @@ struct CpuLocal {
 		{as<u32>(cast<usize>(&tss)), 0x89, 0},
 		{as<u64>(cast<usize>(&tss) >> 32)}
 	};
-	u8 id;
-	u8 reserved[7];
+	u8 id {};
+	u8 reserved[7] {};
 };
 static_assert(sizeof(CpuLocal) == 24 + sizeof(Tss) + sizeof(Idt) + sizeof(GdtEntry) * 7 + 8);
 
