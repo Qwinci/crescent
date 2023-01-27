@@ -1,25 +1,39 @@
 #include "exceptions.hpp"
+#include "acpi/lapic.hpp"
 #include "console.hpp"
+#include "cpu/cpu.hpp"
 #include "interrupts.hpp"
 
 #define GENERIC_FAULT(Name) { \
+	disable_interrupts(); \
+	print_lock.lock(); \
 	set_fg(0xFF0000); \
-	println(#Name); \
-	println("IP: ", Fmt::Hex, ctx->ip); \
+	println_nolock(#Name, "on cpu ", get_cpu_local()->id); \
+	println_nolock("IP: ", Fmt::Hex, ctx->ip); \
 	while (true) asm("hlt"); \
 }
 
 [[noreturn]] void double_fault_exception(InterruptCtx* ctx) {
+	disable_interrupts();
+	print_lock.lock();
 	set_fg(0xFF0000);
-	println("double fault");
-	println("IP: ", Fmt::Hex, ctx->ip);
+
+	println_nolock("double fault on cpu ", get_cpu_local()->id);
+	println_nolock("IP: ", Fmt::Hex, ctx->ip);
+	print_lock.unlock();
+
 	while (true) asm("hlt");
 }
 
 [[noreturn]] void gp_fault_exception(InterruptCtx* ctx) {
+	disable_interrupts();
+	print_lock.lock();
 	set_fg(0xFF0000);
-	println("general protection fault");
-	println("IP: ", Fmt::Hex, ctx->ip);
+
+	println_nolock("general protection fault on cpu ", get_cpu_local()->id);
+	println_nolock("IP: ", Fmt::Hex, ctx->ip);
+	print_lock.unlock();
+
 	while (true) asm("hlt");
 }
 
@@ -37,16 +51,20 @@
 	bool shadow_stack = code & 1 << 6;
 	bool software_guard_extensions = code & 1 << 15;*/
 
+	disable_interrupts();
+	print_lock.lock();
+	Lapic::send_ipi_all(Lapic::Msg::Halt);
 	set_fg(0xFF0000);
-	println("page fault at address ", Fmt::Hex, addr);
-	println("IP: ", ctx->ip);
-	println(
+	println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on cpu ", get_cpu_local()->id);
+	println_nolock(Fmt::Hex, "IP: ", ctx->ip);
+	println_nolock(
 			"Present: ", present,
 			", Write: ", write,
 			", User: ", user,
 			", Reserved Write: ", reserved_write,
 			", Instruction Fetch: ", inst_fetch
 			);
+	print_lock.unlock();
 	while (true) asm("hlt");
 }
 

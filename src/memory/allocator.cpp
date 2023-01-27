@@ -30,6 +30,8 @@ constexpr u16 index_to_size(u8 index) {
 	return pow(2, index + 3);
 }
 
+extern Spinlock alloc_lock;
+
 void* Allocator::alloc(usize size) {
 	if (size == PAGE_SIZE) {
 		auto mem = PAGE_ALLOCATOR.alloc_new();
@@ -45,9 +47,10 @@ void* Allocator::alloc(usize size) {
 
 	auto index = size_to_index(size);
 
+	alloc_lock.lock();
 	auto& list = freelists[index];
 	if (!list.root) {
-		auto m = PAGE_ALLOCATOR.alloc_new();
+		auto m = PAGE_ALLOCATOR.alloc_new(false);
 		if (!m) {
 			panic("memory allocation of ", size, " bytes failed");
 		}
@@ -66,12 +69,14 @@ void* Allocator::alloc(usize size) {
 			node = new_node;
 		}
 
+		alloc_lock.unlock();
 		return mem;
 	}
 	else {
 		auto node = list.root;
 		list.root = node->next;
 		list.len -= 1;
+		alloc_lock.unlock();
 		return node;
 	}
 }
@@ -86,15 +91,18 @@ void Allocator::dealloc(void* ptr, usize size) {
 		return;
 	}
 
+	alloc_lock.lock();
+
 	auto index = size_to_index(size);
 	auto align_size = index_to_size(index);
 	auto& list = freelists[index];
 	auto node = new (ptr) Node;
 
 	if (list.len + 1 == 0x1000 / align_size) {
-		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {list.root}.to_phys().as_usize()));
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {list.root}.to_phys().as_usize()), false);
 		list.root = nullptr;
 		list.len = 0;
+		alloc_lock.unlock();
 		return;
 	}
 
@@ -102,6 +110,7 @@ void Allocator::dealloc(void* ptr, usize size) {
 
 	if (!list.root) {
 		list.root = node;
+		alloc_lock.unlock();
 		return;
 	}
 
@@ -110,12 +119,15 @@ void Allocator::dealloc(void* ptr, usize size) {
 		if (n->next > node) {
 			node->next = n->next;
 			n->next = node;
+			alloc_lock.unlock();
 			return;
 		}
 		n = n->next;
 	}
 
 	n->next = node;
+
+	alloc_lock.unlock();
 }
 
 void* Allocator::realloc(void* ptr, usize old_size, usize size) {

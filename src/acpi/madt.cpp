@@ -16,13 +16,6 @@ struct Madt {
 	u32 flags;
 };
 
-[[noreturn]] void ap_entry(u8 apic_id) {
-	println("cpu ", apic_id, " online!");
-	while (true) {
-		asm volatile("hlt");
-	}
-}
-
 void parse_madt(const void* madt_ptr) {
 	usize cpu_count = 0;
 
@@ -121,24 +114,21 @@ void parse_madt(const void* madt_ptr) {
 	}
 
 	auto lapic_phys_addr = PhysAddr {lapic_phys};
-	get_map()->map_multiple(
+	get_map()->map(
 			lapic_phys_addr.to_virt(),
 			lapic_phys_addr,
-			PageFlags::Rw | PageFlags::Nx | PageFlags::Huge | PageFlags::CacheDisable,
-			1);
+			PageFlags::Rw | PageFlags::Nx | PageFlags::Huge | PageFlags::CacheDisable);
 
 	Lapic::base = lapic_phys_addr.to_virt().as_usize();
 
 	println("assigning kb entaerp");
 
-	IoApic::RedirEntry ps2_kb_entry {
+	/*IoApic::RedirEntry ps2_kb_entry {
 			.vector = 0x21,
 			.dest = bsp_id
 	};
 
-	IoApic::register_isa_irq(1, ps2_kb_entry);
+	IoApic::register_isa_irq(1, ps2_kb_entry);*/
 
-	// enable lapic and set int vector to 0xFF
-	Lapic::write(Lapic::Reg::SpuriousInt, 0xFF | 0x100);
-	Lapic::write(Lapic::Reg::TaskPriority, 0);
+	Lapic::init();
 }

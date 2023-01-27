@@ -1,4 +1,5 @@
 #include "limine/limine.h"
+#include "acpi/lapic.hpp"
 #include "arch.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
@@ -18,34 +19,39 @@ static limine_rsdp_request RSDP_REQUEST {.id = LIMINE_RSDP_REQUEST};
 static limine_kernel_address_request KERNEL_ADDRESS_REQUEST {.id = LIMINE_KERNEL_ADDRESS_REQUEST};
 static limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
 
-static PageMap* kernel_pmap {};
+static atomic_uint_fast8_t cpus_init = 0;
+static Spinlock smp_lock {};
+extern PageMap* kernel_map;
 
 [[noreturn]] static void arch_ap_entry(limine_smp_info* info) {
-	if (!kernel_pmap) {
+	if (!kernel_map) {
 		panic("kernel_pmap is null");
 	}
 
-	kernel_pmap->load();
+	kernel_map->load();
 
-	println("creating cpu local");
 	auto data = new CpuLocal(info->lapic_id);
-	println("cpu local created, loading gdt");
 	load_gdt(data->gdt, 7);
-	println("gdt loaded");
 	set_cpu_local(data);
 	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
-	println("enabling interrupts");
 	set_exceptions();
 	load_idt(&data->idt);
 	enable_interrupts();
 
-	println("cpu ", info->lapic_id, " online!");
+	Lapic::init();
+
+	smp_lock.lock();
+	Lapic::calibrate_timer();
+	smp_lock.unlock();
 
 	auto fn = cast<__attribute__((noreturn)) void (*)(u8)>(info->extra_argument);
+
+	atomic_fetch_add_explicit(&cpus_init, 1, memory_order_relaxed);
+
 	fn(info->lapic_id);
 }
 
-void arch_init_smp(__attribute__((noreturn)) void (*fn)(u8 id)) {
+void arch_init_smp(void (*fn)(u8 id)) {
 	for (usize i = 0; i < SMP_REQUEST.response->cpu_count; ++i) {
 		auto& cpu = SMP_REQUEST.response->cpus[i];
 		if (cpu->lapic_id == SMP_REQUEST.response->bsp_lapic_id) {
@@ -54,6 +60,10 @@ void arch_init_smp(__attribute__((noreturn)) void (*fn)(u8 id)) {
 
 		cpu->extra_argument = cast<u64>(fn);
 		cpu->goto_address = arch_ap_entry;
+	}
+
+	while (cpus_init != SMP_REQUEST.response->cpu_count - 1) {
+		__builtin_ia32_pause();
 	}
 }
 
@@ -108,6 +118,8 @@ void arch_init_mem() {
 	}
 	auto page_map = new (PhysAddr {page_map_mem}.to_virt()) PageMap;
 
+	kernel_map = page_map;
+
 	for (usize i = 0; i < SIZE_4GB; i += SIZE_2MB) {
 		auto phys = PhysAddr {i};
 		page_map->map(phys.to_virt(), phys, PageFlags::Rw | PageFlags::Huge);
@@ -158,6 +170,4 @@ void arch_init_mem() {
 	}
 
 	page_map->load();
-
-	kernel_pmap = page_map;
 }

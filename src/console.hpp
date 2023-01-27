@@ -108,12 +108,20 @@ inline void print(Args... args) {
 
 template<typename... Args>
 inline void println(Args... args) {
-	disable_interrupts();
+	auto prev = disable_interrupts_with_prev();
 	print_lock.lock();
 	(print(args), ...);
 	print("\n");
 	print_lock.unlock();
-	enable_interrupts();
+	if (prev) {
+		enable_interrupts();
+	}
+}
+
+template<typename... Args>
+inline void println_nolock(Args... args) {
+	(print(args), ...);
+	print("\n");
 }
 
 void init_console(const Framebuffer* framebuffer, const PsfFont* font);
@@ -123,8 +131,15 @@ void set_bg(u32 color);
 template<typename... Args>
 [[noreturn]] inline void panic(Args... args) {
 	set_fg(0xFF0000);
+	auto prev = disable_interrupts_with_prev();
+	print_lock.lock();
 	print("KERNEL PANIC: ");
 	print(args...);
+	print("\n");
+	print_lock.unlock();
+	if (prev) {
+		enable_interrupts();
+	}
 	while (true) {
 		asm("hlt");
 	}

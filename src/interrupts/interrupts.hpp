@@ -53,5 +53,11 @@ static inline void enable_interrupts() {
 }
 
 static inline void disable_interrupts() {
-	asm volatile("sti");
+	asm volatile("cli");
+}
+
+static inline bool disable_interrupts_with_prev() {
+	u16 flags;
+	asm volatile("pushfw; pop %0; cli" : "=r"(flags));
+	return flags & 1 << 9;
 }

@@ -7,8 +7,8 @@ constexpr usize PAGE_SIZE = 0x1000;
 
 class PageAllocator {
 public:
-	void* alloc_new();
-	void dealloc_new(void* ptr);
+	void* alloc_new(bool lock = true);
+	void dealloc_new(void* ptr, bool lock = true);
 	void add_mem(usize base, usize size);
 private:
 	struct Node {

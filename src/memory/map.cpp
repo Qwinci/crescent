@@ -3,6 +3,8 @@
 
 usize HHDM_OFFSET;
 
+PageMap* kernel_map;
+
 void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags) {
 	auto virt_addr = virt.as_usize();
 

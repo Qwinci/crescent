@@ -32,17 +32,27 @@ struct Lapic {
 		DivConf = 0x3E0
 	};
 
+	static void init();
+
 	static void write(Reg reg, u32 value);
 	static u32 read(Reg reg);
 
 	static void calibrate_timer();
 
 	static void start_periodic(u64 frequency);
-	static void start_oneshot(u64 frequency, u8 irq);
+	static void start_oneshot(u64 frequency, u8 vec);
 	static void eoi();
 
+	enum class Msg {
+		None,
+		Halt
+	};
+
+	static void send_ipi_all(Msg msg);
 private:
+	static Msg current_msg;
 	static usize base;
 
 	friend void parse_madt(const void* madt_ptr);
+	friend void ipi_handler(struct InterruptCtx* ctx);
 };

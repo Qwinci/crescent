@@ -130,7 +130,6 @@ private:
 };
 
 static inline PageMap* get_map() {
-	PageMap* map;
-	asm volatile("mov %0, cr3" : "=r"(map));
-	return cast<PageMap*>(PhysAddr {map}.to_virt().as_usize());
+	extern PageMap* kernel_map;
+	return kernel_map;
 }

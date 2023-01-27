@@ -12,6 +12,7 @@ struct PRegionList {
 
 PageAllocator PAGE_ALLOCATOR;
 PRegionList region_list {};
+Spinlock alloc_lock;
 
 void PageAllocator::add_mem(usize base, usize size) {
 	auto virt = PhysAddr {base}.to_virt();
@@ -53,7 +54,11 @@ void PageAllocator::add_mem(usize base, usize size) {
 	}
 }
 
-void* PageAllocator::alloc_new() {
+void* PageAllocator::alloc_new(bool lock) {
+	if (lock) {
+		alloc_lock.lock();
+	}
+
 	if (!root) {
 		return nullptr;
 	}
@@ -61,11 +66,24 @@ void* PageAllocator::alloc_new() {
 	auto node = root;
 	root = root->next;
 
+	if (lock) {
+		alloc_lock.unlock();
+	}
+
 	return cast<void*>(VirtAddr {node}.to_phys().as_usize());
 }
 
-void PageAllocator::dealloc_new(void* ptr) {
+void PageAllocator::dealloc_new(void* ptr, bool lock) {
 	auto node = new (PhysAddr {ptr}.to_virt()) Node;
+
+	if (lock) {
+		alloc_lock.lock();
+	}
+
 	node->next = root;
 	root = node;
+
+	if (lock) {
+		alloc_lock.unlock();
+	}
 }
