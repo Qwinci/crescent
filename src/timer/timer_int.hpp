@@ -1,5 +1,5 @@
 #pragma once
 
-struct InterruptFrame;
+struct InterruptCtx;
 
-[[gnu::interrupt]] void timer_int(InterruptFrame*);
+void timer_int(InterruptCtx*);

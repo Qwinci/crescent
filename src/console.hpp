@@ -103,17 +103,17 @@ extern Spinlock print_lock;
 
 template<typename... Args>
 inline void print(Args... args) {
-	disable_interrupts();
-	print_lock.lock();
 	(print(args), ...);
-	print_lock.unlock();
-	enable_interrupts();
 }
 
 template<typename... Args>
 inline void println(Args... args) {
+	disable_interrupts();
+	print_lock.lock();
 	(print(args), ...);
 	print("\n");
+	print_lock.unlock();
+	enable_interrupts();
 }
 
 void init_console(const Framebuffer* framebuffer, const PsfFont* font);

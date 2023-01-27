@@ -1,8 +1,10 @@
+extern int_handler
+
 section .text
 %assign i 0
 %rep 256
 stub%+i:
-%if i <= 0x7 || i == 0x9 || i == 0xF || i == 0x10 || (i >= 0x12 && i != 0x15 && i != 0x1D && i != 0x1E)
+%if i != 8 && i != 10 && i != 11 && i != 12 && i != 13 && i != 14 && i != 17 && i != 21 && i != 29 && i != 30
 	push 0
 %endif
 	push i

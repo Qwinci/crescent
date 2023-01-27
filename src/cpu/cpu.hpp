@@ -60,8 +60,10 @@ struct CpuLocal {
 		{as<u32>(cast<usize>(&tss)), 0x89, 0},
 		{as<u64>(cast<usize>(&tss) >> 32)}
 	};
+	u8 id;
+	u8 reserved[7];
 };
-static_assert(sizeof(CpuLocal) == 24 + sizeof(Tss) + sizeof(Idt) + sizeof(GdtEntry) * 7);
+static_assert(sizeof(CpuLocal) == 24 + sizeof(Tss) + sizeof(Idt) + sizeof(GdtEntry) * 7 + 8);
 
 void set_cpu_local(CpuLocal* local);
 CpuLocal* get_cpu_local();

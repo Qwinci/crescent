@@ -48,7 +48,7 @@ void init_timers(const void* rsdp) {
 
 		udelay_ptr = [](u64 us) {
 			auto start = read_timestamp();
-			auto end = start + tsc_ticks_in_sec / 1000 / 1000;
+			auto end = start + (tsc_ticks_in_sec / 1000 / 1000) * us;
 			while (read_timestamp() < end);
 		};
 		println("info: using tsc for udelay");

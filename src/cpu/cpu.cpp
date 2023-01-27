@@ -14,7 +14,6 @@ u64 get_msr(Msr msr) {
 
 void set_cpu_local(CpuLocal* local) {
 	set_msr(Msr::GsBase, cast<u64>(local));
-	auto d = get_msr(Msr::GsBase);
 }
 
 CpuLocal* get_cpu_local() {

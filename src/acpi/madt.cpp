@@ -48,19 +48,8 @@ void parse_madt(const void* madt_ptr) {
 		// length
 		i += 1;
 
-		// Processor Local APIC
-		if (type == 0) {
-			u8 acpi_cpu_id = *cast<const u8*>(offset(madt, as<isize>(i)));
-			i += 1;
-			u8 apic_id = *cast<const u8*>(offset(madt, as<isize>(i)));
-			i += 1;
-			u32 flags = *cast<const u32*>(offset(madt, as<isize>(i)));
-			i += 4;
-
-			++cpu_count;
-		}
 		// IO APIC
-		else if (type == 1) {
+		if (type == 1) {
 			// io_apic_id
 			i += 1;
 			// reserved
@@ -124,17 +113,6 @@ void parse_madt(const void* madt_ptr) {
 			i += 8;
 			lapic_phys = lapic_addr;
 		}
-		// Processor Local x2APIC
-		else if (type == 9) {
-			// reserved
-			i += 2;
-			//u32 x2apic_id = *cast<const u32*>(offset(madt, as<isize>(i)));
-			i += 4;
-			//u32 flags = *cast<const u32*>(offset(madt, as<isize>(i)));
-			i += 4;
-			//u32 acpi_id = *cast<const u32*>(offset(madt, as<isize>(i)));
-			i += 4;
-		}
 	}
 
 	for (u8 i = 0; i < IoApic::io_apic_count; ++i) {
@@ -163,6 +141,4 @@ void parse_madt(const void* madt_ptr) {
 	// enable lapic and set int vector to 0xFF
 	Lapic::write(Lapic::Reg::SpuriousInt, 0xFF | 0x100);
 	Lapic::write(Lapic::Reg::TaskPriority, 0);
-
-	println("enabled");
 }

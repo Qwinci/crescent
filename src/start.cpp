@@ -6,6 +6,7 @@
 #include "limine/limine.h"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
+#include "memory/pmm.hpp"
 #include "memory/vmem.hpp"
 #include "new.hpp"
 #include "noalloc/string.hpp"
@@ -26,7 +27,8 @@ static limine_rsdp_request RSDP_REQUEST {.id = LIMINE_RSDP_REQUEST};
 
 static limine_kernel_address_request KERNEL_ADDRESS_REQUEST {.id = LIMINE_KERNEL_ADDRESS_REQUEST};
 
-static limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
+// todo
+[[gnu::unused]] static limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
 
 [[gnu::used]] u8 stack[0x2000];
 
@@ -93,16 +95,17 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	set_fg(0x00FF00);
 
-	for (usize i = 0; i < SMP_REQUEST.response->cpu_count; ++i) {
+	/*for (usize i = 0; i < SMP_REQUEST.response->cpu_count; ++i) {
 		auto& cpu = SMP_REQUEST.response->cpus[i];
 		if (cpu->lapic_id == SMP_REQUEST.response->bsp_lapic_id) {
 			continue;
 		}
 
 		cpu->goto_address = ap_entry;
-	}
+	}*/
 
-	auto max_phys = MEMMAP_REQUEST.response->entries[MEMMAP_REQUEST.response->entry_count - 1]->base;
+	auto max_phys_entry = MEMMAP_REQUEST.response->entries[MEMMAP_REQUEST.response->entry_count - 1];
+	auto max_phys = max_phys_entry->base + max_phys_entry->length;
 
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
@@ -111,9 +114,14 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		}
 	}
 
-	vm_kernel_init(HHDM_OFFSET + max_phys, 0xFFFFFFFF80000000 - (HHDM_OFFSET + max_phys));
+	if (max_phys < SIZE_4GB) {
+		max_phys = SIZE_4GB;
+	}
+	auto aligned_max_phys = ALIGNUP(max_phys, SIZE_2MB);
 
-	auto page_map_mem = PAGE_ALLOCATOR.alloc_low_new(1);
+	vm_kernel_init(HHDM_OFFSET + aligned_max_phys, 0xFFFFFFFF80000000 - (HHDM_OFFSET + aligned_max_phys));
+
+	auto page_map_mem = PAGE_ALLOCATOR.alloc_new();
 	if (!page_map_mem) {
 		panic("failed to allocate memory for page map");
 	}
@@ -127,9 +135,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
 
-		if (entry->type != LIMINE_MEMMAP_USABLE &&
-			entry->type != LIMINE_MEMMAP_FRAMEBUFFER &&
-			entry->type != LIMINE_MEMMAP_KERNEL_AND_MODULES) {
+		if (entry->base + entry->length < SIZE_4GB) {
 			continue;
 		}
 
@@ -173,23 +179,27 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	page_map->load();
 	println("page table loaded");
 
+	println("creating cpu local");
 	auto data = new CpuLocal();
+	println("cpu local created, loading gdt");
 	load_gdt(data->gdt, 7);
+	println("gdt loaded");
 	set_cpu_local(data);
 	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
 	println("enabling interrupts");
+	set_exceptions();
 	load_idt(&data->idt);
 	enable_interrupts();
 
 	init_timers(rsdp);
 
-	data->idt.interrupts[0] = {(void*) timer_int, 0x8, 0, false, 0};
-
 	parse_madt(locate_acpi_table(rsdp, "APIC"));
 
 	Lapic::calibrate_timer();
 
-	Lapic::start_oneshot(1000, 0);
+	register_int_handler(timer_vec, timer_int);
+
+	Lapic::start_oneshot(1, 0);
 
 	println("hello");
 

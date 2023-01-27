@@ -16,9 +16,9 @@ void Lapic::write(Reg reg, u32 value) {
 
 constexpr u32 ONESHOT = 0;
 constexpr u32 PERIODIC = 1 << 17;
-constexpr u32 TSC = 2 << 17;
+[[maybe_unused]] constexpr u32 TSC = 2 << 17;
 
-[[gnu::interrupt]] static void tmp_handler(InterruptFrame*) {
+static void tmp_handler(InterruptCtx*) {
 	Lapic::eoi();
 }
 
@@ -26,8 +26,17 @@ void Lapic::calibrate_timer() {
 	println("info: calibrating apic timer");
 
 	write(Reg::DivConf, 3);
-	auto irq = register_irq_handler(0, tmp_handler);
-	write(Reg::LvtTimer, irq | ONESHOT);
+
+	Handler old_handler = nullptr;
+	if (!timer_vec) {
+		timer_vec = alloc_int_handler(tmp_handler);
+	}
+	else {
+		old_handler = get_int_handler(timer_vec);
+		register_int_handler(timer_vec, tmp_handler);
+	}
+
+	write(Reg::LvtTimer, timer_vec | ONESHOT);
 	write(Lapic::Reg::InitCount, 0xFFFFFFFF);
 
 	// wait 10ms
@@ -38,6 +47,8 @@ void Lapic::calibrate_timer() {
 	get_cpu_local()->apic_frequency = ticks_in_1s;
 
 	println("info: apic frequency: ", ticks_in_1s);
+
+	register_int_handler(timer_vec, old_handler);
 }
 
 void Lapic::start_oneshot(u64 frequency, u8 irq) {

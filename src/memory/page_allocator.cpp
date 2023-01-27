@@ -3,45 +3,52 @@
 #include "memory.hpp"
 #include "new.hpp"
 #include "utils.hpp"
+#include "pmm.hpp"
+
+struct PRegionList {
+	PRegion* root {};
+	PRegion* end {};
+};
 
 PageAllocator PAGE_ALLOCATOR;
+PRegionList region_list {};
 
 void PageAllocator::add_mem(usize base, usize size) {
-	if (size < PAGE_SIZE) {
-		return;
-	}
+	auto virt = PhysAddr {base}.to_virt();
 
-	Bitmap bitmap {};
-	auto bitmap_real_size = get_bitmap_real_size(size);
-	auto bitmap_size = get_bitmap_size(size - bitmap_real_size - sizeof(BitmapNode));
-	auto end = base + size;
-	bitmap.init(cast<u64*>(PhysAddr {end - bitmap_real_size}.to_virt().as_usize()), size / PAGE_SIZE);
-	end -= bitmap_real_size;
+	auto p_count = size / PAGE_SIZE;
 
-	end -= sizeof(BitmapNode);
-	auto n = new (PhysAddr {end}.to_virt()) BitmapNode;
-	n->base = base;
-	n->map = bitmap;
-	n->next = nullptr;
+	auto region = new (virt) PRegion;
+	region->base = base;
+	region->p_count = p_count;
+	region->next = nullptr;
 
-	if (!bitmap_root) {
-		bitmap_root = n;
-		bitmap_end = n;
+	if (!region_list.end) {
+		region_list.root = region;
+		region_list.end = region;
 	}
 	else {
-		if (!bitmap_end) {
-			__builtin_unreachable();
-		}
-		bitmap_end->next = n;
-		bitmap_end = n;
+		region_list.end->next = region;
+		region_list.end = region;
 	}
 
-	for (usize i = 0; i < bitmap_size; ++i) {
-		auto node = new (PhysAddr {base + i * PAGE_SIZE}.to_virt()) Node;
+	auto used = ALIGNUP(sizeof(PRegion) + p_count * sizeof(Page), PAGE_SIZE);
+
+	for (usize i = 0; i < used / PAGE_SIZE; ++i) {
+		auto& page = region->pages[i];
+		page.phys = base + i * PAGE_SIZE;
+		page.queue = Page::Queue::None;
+	}
+
+	for (usize i = used / PAGE_SIZE; i < p_count; ++i) {
+		auto& page = region->pages[i];
+		page.phys = base + i * PAGE_SIZE;
+		page.queue = Page::Queue::Free;
+	}
+
+	for (usize i = used; i < size; i += PAGE_SIZE) {
+		auto node = new (virt.offset(i)) Node;
 		node->next = root;
-		if (root) {
-			root->prev = node;
-		}
 		root = node;
 	}
 }
@@ -53,92 +60,12 @@ void* PageAllocator::alloc_new() {
 
 	auto node = root;
 	root = root->next;
-	if (root) {
-		root->prev = nullptr;
-	}
-
-	auto phys = VirtAddr {node}.to_phys().as_usize();
-
-	for (auto map = bitmap_root; map; map = map->next) {
-		if (phys >= map->base && phys <= map->base + map->map.size() * PAGE_SIZE) {
-			map->map[(phys - map->base) / PAGE_SIZE] = true;
-			break;
-		}
-	}
 
 	return cast<void*>(VirtAddr {node}.to_phys().as_usize());
-}
-
-void* PageAllocator::alloc_low_new(usize count) {
-	for (auto node = bitmap_root; node; node = node->next) {
-		for (usize i = 0; i < node->map.size(); ++i) {
-			bool found = true;
-			for (usize j = 0; j < count; ++j) {
-				if (node->map[i + j]) {
-					found = false;
-					break;
-				}
-			}
-
-			if (found) {
-				for (usize j = 0; j < count; ++j) {
-					auto n = cast<Node*>(PhysAddr {node->base + (i + j) * PAGE_SIZE}.to_virt().as_usize());
-					if (n->prev) {
-						n->prev->next = n->next;
-					}
-					else {
-						root = n->next;
-					}
-					if (n->next) {
-						n->next->prev = n->prev;
-					}
-					node->map[i + j] = true;
-				}
-				return cast<void*>(node->base + i * PAGE_SIZE);
-			}
-		}
-	}
-
-	return nullptr;
 }
 
 void PageAllocator::dealloc_new(void* ptr) {
 	auto node = new (PhysAddr {ptr}.to_virt()) Node;
 	node->next = root;
-	node->prev = nullptr;
-	if (root) {
-		root->prev = node;
-	}
 	root = node;
-
-	auto phys = cast<usize>(ptr);
-
-	for (auto map = bitmap_root; map; map = map->next) {
-		if (phys >= map->base && phys <= map->base + map->map.size() * PAGE_SIZE) {
-			map->map[(phys - map->base) / PAGE_SIZE] = false;
-			break;
-		}
-	}
-}
-
-void PageAllocator::dealloc_low_new(void* ptr, usize count) {
-	auto phys = cast<usize>(ptr);
-	auto virt = VirtAddr {ptr};
-
-	for (auto map = bitmap_root; map; map = map->next) {
-		if (phys >= map->base && phys <= map->base + map->map.size() * PAGE_SIZE) {
-			for (usize i = 0; i < count; ++i) {
-				auto node = new (virt.offset(i * PAGE_SIZE)) Node;
-				node->next = root;
-				node->prev = nullptr;
-				if (root) {
-					root->prev = node;
-				}
-				root = node;
-
-				map->map[(phys - map->base) / PAGE_SIZE + i] = false;
-			}
-			break;
-		}
-	}
 }

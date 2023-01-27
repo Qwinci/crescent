@@ -1,6 +1,10 @@
 #include "timer_int.hpp"
+#include "acpi/lapic.hpp"
 #include "console.hpp"
 
-[[gnu::interrupt]] void timer_int(InterruptFrame*) {
+u16 timer_vec {};
+
+void timer_int(InterruptCtx*) {
 	println("timer int");
+	Lapic::eoi();
 }
