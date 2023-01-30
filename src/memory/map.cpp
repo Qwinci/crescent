@@ -1,11 +1,12 @@
 #include "map.hpp"
 #include "console.hpp"
+#include "memory.hpp"
 
 usize HHDM_OFFSET;
 
 PageMap* kernel_map;
 
-void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags) {
+void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	auto virt_addr = virt.as_usize();
 
 	virt_addr >>= 12;
@@ -35,7 +36,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags) {
 		pdp_entry = cast<Entry*>(entries[pml4_offset].get_addr().to_virt().as_usize());
 	}
 	else {
-		auto frame = new Entry[512];
+		auto frame = new Entry[512]();
 		entries[pml4_offset].set_flags(flags);
 		entries[pml4_offset].set_addr(VirtAddr {cast<usize>(frame)}.to_phys());
 		pdp_entry = frame;
@@ -46,26 +47,51 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags) {
 		pd_entry = cast<Entry*>(pdp_entry[pdp_offset].get_addr().to_virt().as_usize());
 	}
 	else {
-		auto frame = new Entry[512];
+		auto frame = new Entry[512]();
 		pdp_entry[pdp_offset].set_flags(flags);
 		pdp_entry[pdp_offset].set_addr(VirtAddr {cast<usize>(frame)}.to_phys());
 		pd_entry = frame;
 	}
 
 	if (huge) {
+		if (pd_entry[pd_offset].get_flags() & PageFlags::Present) {
+			auto* pt_entry = cast<Entry*>(pd_entry[pd_offset].get_addr().to_virt().as_usize());
+			ALLOCATOR.dealloc(pt_entry, 0x1000);
+		}
+
 		pd_entry[pd_offset].set_flags(flags | PageFlags::Huge);
 		pd_entry[pd_offset].set_addr(phys);
+		refresh_page(virt.as_usize());
 		return;
 	}
 
 	Entry* pt_entry;
+
+	if ((pd_entry[pd_offset].get_flags() & PageFlags::Huge) && split) {
+		auto frame = new Entry[512]();
+		auto old_addr = pd_entry[pd_offset].get_addr();
+		auto old_flags = pd_entry[pd_offset].get_flags();
+		old_flags &= ~PageFlags::Huge;
+		pd_entry[pd_offset].set_addr(VirtAddr {frame}.to_phys());
+		pd_entry[pd_offset].set_flags(old_flags);
+		for (u16 i = 0; i < 512; ++i) {
+			frame[i].set_flags(old_flags);
+			frame[i].set_addr(old_addr.offset(as<usize>(i) * 0x1000));
+			refresh_page(virt.offset(as<usize>(i) * 0x1000).as_usize());
+		}
+	}
+	else if (pd_entry[pd_offset].get_flags() & PageFlags::Huge) {
+		pd_entry[pd_offset].set_flags(flags | PageFlags::Huge);
+		return;
+	}
+
 	if (pd_entry[pd_offset].get_flags() & PageFlags::Present) {
 		pt_entry = cast<Entry*>(pd_entry[pd_offset].get_addr().to_virt().as_usize());
 	}
 	else {
-		auto frame = new Entry[512];
+		auto frame = new Entry[512]();
 		pd_entry[pd_offset].set_flags(flags);
-		pd_entry[pd_offset].set_addr(VirtAddr {cast<usize>(frame)}.to_phys());
+		pd_entry[pd_offset].set_addr(VirtAddr {frame}.to_phys());
 		pt_entry = frame;
 	}
 
@@ -191,8 +217,8 @@ void PageMap::ensure_kernel_mapping(PhysAddr phys, usize size) {
 		i += SIZE_2MB;
 	}
 }
-void PageMap::map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count) {
+void PageMap::map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count, bool split) {
 	for (usize i = 0; i < count; ++i) {
-		map(virt.offset(i * 0x1000), phys.offset(i * 0x1000), flags);
+		map(virt.offset(i * 0x1000), phys.offset(i * 0x1000), flags, split);
 	}
 }

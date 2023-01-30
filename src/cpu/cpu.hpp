@@ -4,6 +4,10 @@
 #include "types.hpp"
 #include "utils/cpuid.hpp"
 
+#ifdef WITH_SCHED_MULTI
+#include "sched/sched.hpp"
+#endif
+
 enum class Msr : u32 {
 	FsBase = 0xC0000100,
 	GsBase = 0xC0000101,
@@ -50,26 +54,9 @@ struct CpuLocal {
 	u64 apic_frequency {};
 	u64 tsc_frequency {};
 	Tss tss {.iopb = sizeof(Tss)};
-	Idt idt {};
-	GdtEntry gdt[7] {
-		// Null
-		{0, 0, 0},
-		// Kernel Code
-		{0, 0x9A, 0xA},
-		// Kernel Data
-		{0, 0x92, 0xC},
-		// User Code
-		{0, 0xFA, 0xA},
-		// User Data
-		{0, 0xF2, 0xC},
-		// TSS
-		{as<u32>(cast<usize>(&tss)), 0x89, 0},
-		{as<u64>(cast<usize>(&tss) >> 32)}
-	};
 	u8 id {};
 	u8 reserved[7] {};
 };
-static_assert(sizeof(CpuLocal) == 24 + sizeof(Tss) + sizeof(Idt) + sizeof(GdtEntry) * 7 + 8);
 
 void set_cpu_local(CpuLocal* local);
 CpuLocal* get_cpu_local();

@@ -46,7 +46,7 @@ void set_exceptions();
 void register_int_handler(u8 vec, Handler handler);
 [[nodiscard]] u16 alloc_int_handler(Handler handler);
 Handler get_int_handler(u8 vec);
-void load_idt(Idt* idt);
+void load_idt();
 
 static inline void enable_interrupts() {
 	asm volatile("sti");

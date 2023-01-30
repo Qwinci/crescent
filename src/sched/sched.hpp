@@ -26,6 +26,5 @@ void test_sched();
 void sched_init();
 void sched_queue_task(Task* task);
 void sched();
-extern Spinlock sched_lock;
 Task* create_kernel_task(const char* name, void (*fn)());
 void unblock_task(Task* task);

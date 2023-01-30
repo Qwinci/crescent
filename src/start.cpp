@@ -20,7 +20,7 @@ using fn = void (*)();
 extern "C" fn __init_array_start[]; // NOLINT(bugprone-reserved-identifier)
 extern "C" fn __init_array_end[]; // NOLINT(bugprone-reserved-identifier)
 
-[[noreturn]] void ap_entry(u8 id) {
+[[noreturn]] void ap_entry(u8 id, u32 acpi_id) {
 	//println("hello from cpu ", id);
 	while (true) asm("hlt");
 }
@@ -42,11 +42,11 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	arch_init_mem();
 
 	auto data = new CpuLocal();
-	load_gdt(data->gdt, 7);
+	load_gdt(&data->tss);
 	set_cpu_local(data);
 	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
 	set_exceptions();
-	load_idt(&data->idt);
+	load_idt();
 	enable_interrupts();
 
 	init_timers(rsdp);
@@ -62,12 +62,14 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	sched_init();
 
-	start_timer();
+	//start_timer();
 
 	auto task = create_kernel_task("test task", test_task);
-	sched_lock.lock();
 	sched_queue_task(task);
 	sched();
+	println("back in kernel");
+	sched();
+	println("back again");
 
 	while (true) {
 		asm("hlt");

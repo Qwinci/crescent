@@ -23,19 +23,44 @@ static atomic_uint_fast8_t cpus_init = 0;
 static Spinlock smp_lock {};
 extern PageMap* kernel_map;
 
-[[noreturn]] static void arch_ap_entry(limine_smp_info* info) {
+struct StartInfo {
+	u8 lapic_id;
+	u32 acpi_id;
+	__attribute__((noreturn)) void (*fn)(u8, u32);
+	u8* stack;
+};
+
+[[noreturn]] void arch_ap_entry(StartInfo* info);
+
+[[noreturn]] void arch_ap_entry_start(limine_smp_info* info) {
 	if (!kernel_map) {
 		panic("kernel_pmap is null");
 	}
 
+	auto start_info = cast<StartInfo*>(info->extra_argument);
+
 	kernel_map->load();
 
+	asm volatile(R"(
+		mov rdi, %0;
+		mov rsp, %1;
+		xor rbp, rbp;
+		jmp %2;)" :
+				 : "rm"(start_info),
+				   "rm"(start_info->stack),
+				   "A"(&arch_ap_entry));
+	__builtin_unreachable();
+}
+
+[[noreturn]] void arch_ap_entry(StartInfo* info) {
 	auto data = new CpuLocal(info->lapic_id);
-	load_gdt(data->gdt, 7);
+	smp_lock.lock();
+	load_gdt(&data->tss);
+	smp_lock.unlock();
 	set_cpu_local(data);
 	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
 	set_exceptions();
-	load_idt(&data->idt);
+	load_idt();
 	enable_interrupts();
 
 	Lapic::init();
@@ -44,22 +69,34 @@ extern PageMap* kernel_map;
 	Lapic::calibrate_timer();
 	smp_lock.unlock();
 
-	auto fn = cast<__attribute__((noreturn)) void (*)(u8)>(info->extra_argument);
+	auto fn = info->fn;
+	auto lapic_id = info->lapic_id;
+	auto acpi_id = info->acpi_id;
+
+	delete info;
 
 	atomic_fetch_add_explicit(&cpus_init, 1, memory_order_relaxed);
 
-	fn(info->lapic_id);
+	fn(lapic_id, acpi_id);
 }
 
-void arch_init_smp(void (*fn)(u8 id)) {
+void arch_init_smp(void (*fn)(u8 id, u32 acpi_id)) {
 	for (usize i = 0; i < SMP_REQUEST.response->cpu_count; ++i) {
 		auto& cpu = SMP_REQUEST.response->cpus[i];
 		if (cpu->lapic_id == SMP_REQUEST.response->bsp_lapic_id) {
 			continue;
 		}
 
-		cpu->extra_argument = cast<u64>(fn);
-		cpu->goto_address = arch_ap_entry;
+		u8* stack = new u8[0x2000]();
+		stack += 0x2000;
+		auto data = new StartInfo {
+				as<u8>(cpu->lapic_id),
+				cpu->processor_id,
+				cast<__attribute__((noreturn)) void (*)(u8, u32)>(fn),
+				stack};
+
+		cpu->extra_argument = cast<u64>(data);
+		cpu->goto_address = arch_ap_entry_start;
 	}
 
 	while (cpus_init != SMP_REQUEST.response->cpu_count - 1) {
@@ -159,7 +196,7 @@ void arch_init_mem() {
 	auto size = KERNEL_END - KERNEL_START;
 
 	usize i = 0;
-	while ((kernel_phys + i) & (SIZE_2MB - 1) && i < size) {
+	while (((kernel_phys + i) & (SIZE_2MB - 1) || (kernel_virt + i) & (SIZE_2MB - 1)) && i < size) {
 		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Rw);
 		i += 0x1000;
 	}

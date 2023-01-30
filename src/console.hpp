@@ -131,15 +131,12 @@ void set_bg(u32 color);
 template<typename... Args>
 [[noreturn]] inline void panic(Args... args) {
 	set_fg(0xFF0000);
-	auto prev = disable_interrupts_with_prev();
+	disable_interrupts();
 	print_lock.lock();
 	print("KERNEL PANIC: ");
 	print(args...);
 	print("\n");
 	print_lock.unlock();
-	if (prev) {
-		enable_interrupts();
-	}
 	while (true) {
 		asm("hlt");
 	}

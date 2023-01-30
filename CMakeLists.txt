@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 project(crescent)
 include(.config/toolchain.cmake)
+include(CMakeOptions.cmake)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 set(CMAKE_C_STANDARD 23)
@@ -9,7 +10,9 @@ set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg)
 set(QEMU_FLAGS -m 2G -machine q35 -smp 2
-        -d int -no-reboot -no-shutdown -cpu qemu64,+invtsc)
+        -d int -no-reboot -no-shutdown -cpu qemu64,+invtsc
+        -drive file=nvm.img,if=none,id=nvm,format=raw
+        -device nvme,serial=deadbeef,drive=nvm)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
 
@@ -27,10 +30,16 @@ target_link_options(crescent PRIVATE
         -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld
         -static -static-pie -nostdlib)
 
+find_program(XORRISO xorriso REQUIRED)
+find_program(CP cp REQUIRED)
+find_program(GIT git REQUIRED)
+find_program(MAKE make REQUIRED)
+find_program(MKDIR mkdir REQUIRED)
+
 add_custom_command(TARGET crescent POST_BUILD
-        COMMAND mkdir -p ${PROJECT_BINARY_DIR}/iso_root
-        COMMAND cp crescent ${FILES} ${PROJECT_BINARY_DIR}/iso_root
-        COMMAND xorriso -as mkisofs
+        COMMAND ${MKDIR} -p ${PROJECT_BINARY_DIR}/iso_root
+        COMMAND ${CP} crescent ${FILES} ${PROJECT_BINARY_DIR}/iso_root
+        COMMAND ${XORRISO} -as mkisofs
         -b limine-cd.bin -no-emul-boot
         -boot-load-size 4 -boot-info-table
         --efi-boot limine-cd-efi.bin
@@ -42,16 +51,22 @@ add_custom_command(TARGET crescent POST_BUILD
 
 if (NOT EXISTS ${PROJECT_BINARY_DIR}/limine)
     execute_process(
-            COMMAND git clone https://github.com/limine-bootloader/limine.git
+            COMMAND ${GIT} clone https://github.com/limine-bootloader/limine.git
             -b v4.x-branch-binary --depth=1 ${PROJECT_BINARY_DIR}/limine
     )
-    execute_process(COMMAND make -C ${PROJECT_BINARY_DIR}/limine)
-    execute_process(COMMAND mkdir -p ${PROJECT_BINARY_DIR}/iso_root)
-    execute_process(COMMAND cp
+    execute_process(COMMAND ${MAKE} -C ${PROJECT_BINARY_DIR}/limine)
+    execute_process(COMMAND ${MKDIR} -p ${PROJECT_BINARY_DIR}/iso_root)
+    execute_process(COMMAND ${CP}
             ${PROJECT_BINARY_DIR}/limine/limine.sys
             ${PROJECT_BINARY_DIR}/limine/limine-cd.bin
             ${PROJECT_BINARY_DIR}/limine/limine-cd-efi.bin
             ${PROJECT_BINARY_DIR}/iso_root)
+endif ()
+
+if (NOT EXISTS ${PROJECT_BINARY_DIR}/nvm.img)
+    find_program(DD dd REQUIRED)
+    execute_process(COMMAND ${DD} if=/dev/zero of=${PROJECT_BINARY_DIR}/nvm.img bs=1M count=50
+            OUTPUT_QUIET ERROR_QUIET)
 endif ()
 
 add_custom_target(run_kvm

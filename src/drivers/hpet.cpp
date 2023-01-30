@@ -56,7 +56,8 @@ bool initialize_hpet(const void* hpet_ptr) {
 	auto header = cast<const HpetHeader*>(hpet_ptr);
 	auto addr = PhysAddr {header->base.address};
 	base = addr.to_virt().as_usize();
-	get_map()->map(addr.to_virt(), addr, PageFlags::Rw | PageFlags::Huge | PageFlags::CacheDisable);
+	get_map()->map(addr.to_virt(), addr, PageFlags::Rw | PageFlags::CacheDisable, true);
+	get_map()->refresh_page(addr.to_virt().as_usize());
 
 	u64 cap = read_reg_64(REG_CAP);
 	if ((cap & COUNTER_SIZE_CAP) == 0) {

@@ -17,8 +17,7 @@ struct Madt {
 };
 
 void parse_madt(const void* madt_ptr) {
-	usize cpu_count = 0;
-
+	println("hello");
 	if (!madt_ptr) {
 		panic("parse_madt called with null madt");
 	}
@@ -38,7 +37,7 @@ void parse_madt(const void* madt_ptr) {
 	for (usize i = sizeof(Madt); i < madt->header.length;) {
 		u8 type = *cast<const u8*>(offset(madt, as<isize>(i)));
 		i += 1;
-		// length
+		u8 length = *cast<const u8*>(offset(madt, as<isize>(i)));
 		i += 1;
 
 		// IO APIC
@@ -56,11 +55,7 @@ void parse_madt(const void* madt_ptr) {
 			auto addr = PhysAddr {as<usize>(io_apic_addr)};
 			apic.base = addr.to_virt().as_usize();
 			apic.int_base = global_int_base;
-			get_map()->map_multiple(
-					addr.to_virt(),
-					addr,
-					PageFlags::Rw | PageFlags::Nx | PageFlags::Huge | PageFlags::CacheDisable,
-					1);
+			get_map()->map(addr.to_virt(), addr, PageFlags::Rw | PageFlags::Nx | PageFlags::CacheDisable, true);
 		}
 		// IO APIC Interrupt Source Override
 		else if (type == 2) {
@@ -106,6 +101,9 @@ void parse_madt(const void* madt_ptr) {
 			i += 8;
 			lapic_phys = lapic_addr;
 		}
+		else {
+			i += length - 2;
+		}
 	}
 
 	for (u8 i = 0; i < IoApic::io_apic_count; ++i) {
@@ -117,7 +115,8 @@ void parse_madt(const void* madt_ptr) {
 	get_map()->map(
 			lapic_phys_addr.to_virt(),
 			lapic_phys_addr,
-			PageFlags::Rw | PageFlags::Nx | PageFlags::Huge | PageFlags::CacheDisable);
+			PageFlags::Rw | PageFlags::Nx | PageFlags::CacheDisable);
+	get_map()->refresh_page(lapic_phys_addr.to_virt().as_usize());
 
 	Lapic::base = lapic_phys_addr.to_virt().as_usize();
 

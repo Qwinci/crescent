@@ -96,7 +96,12 @@ void Lapic::send_ipi_all(Msg msg) {
 		ipi_vec = alloc_int_handler(ipi_handler);
 	}
 	current_msg = msg;
-	u32 value = as<u32>(ipi_vec) | 1 << 12 | 1 << 15 | 3 << 18;
+	u32 value = as<u32>(ipi_vec) | 1 << 15 | 3 << 18;
 	write(Reg::IntCmdBase, value);
+
+	while (read(Reg::IntCmdBase) & 1 << 12) {
+		__builtin_ia32_pause();
+	}
+
 	msg_lock.unlock();
 }

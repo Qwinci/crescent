@@ -98,8 +98,8 @@ constexpr usize SIZE_4GB = 0x100000000;
 
 class PageMap {
 public:
-	void map(VirtAddr virt, PhysAddr phys, PageFlags flags);
-	void map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count);
+	void map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split = false);
+	void map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count, bool split = false);
 	void unmap(VirtAddr virt, bool huge);
 	void load();
 	void refresh_page(usize addr);
@@ -118,10 +118,12 @@ private:
 		}
 
 		void set_addr(PhysAddr addr) {
+			value &= 0xFFF0000000000FFF;
 			value |= addr.as_usize();
 		}
 
 		void set_flags(PageFlags flags) {
+			value &= 0x000FFFFFFFFFF000;
 			value |= as<u64>(flags);
 		}
 	};

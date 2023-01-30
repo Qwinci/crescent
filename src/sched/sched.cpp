@@ -1,5 +1,6 @@
 #include "sched.hpp"
 #include "console.hpp"
+#include "cpu/cpu.hpp"
 #include "memory/std.hpp"
 #include "timer/timer_int.hpp"
 #include "utils.hpp"
@@ -8,10 +9,35 @@ Task* current_task {};
 Task* ready_tasks {};
 Task* ready_tasks_end {};
 
+static void after_switch_from(Task* old_task, Task* this_task) {
+	println("switched from '", (const char*) old_task->name, "' to '", (const char*) this_task->name, "'");
+
+	auto local = get_cpu_local();
+
+	local->tss.rsp0_low = as<u32>(this_task->kernel_rsp);
+	local->tss.rsp0_high = as<u32>(this_task->kernel_rsp >> 32);
+
+	this_task->status = TaskStatus::Running;
+
+	if (old_task->map != this_task->map) {
+		cast<PageMap*>(this_task->map)->load();
+	}
+
+	if (old_task->status == TaskStatus::Running) {
+		sched_queue_task(old_task);
+	}
+}
+
+static void after_init_switch(Task* old_task) {
+	after_switch_from(old_task, current_task);
+}
+
 Task* create_kernel_task(const char* name, void (*fn)()) {
 	u8* stack = new u8[0x2000]();
-	stack += 0x2000 - sizeof(fn);
+	stack += 0x2000 - sizeof(fn) * 2;
 	*cast<decltype(fn)*>(stack) = fn;
+	stack -= sizeof(fn);
+	*cast<decltype(&after_init_switch)*>(stack) = after_init_switch;
 	// space for 6 registers (all zeros)
 	stack -= 6 * 8;
 
@@ -26,22 +52,21 @@ Task* create_kernel_task(const char* name, void (*fn)()) {
 	return task;
 }
 
-extern "C" void switch_task(Task* task);
-
-Spinlock sched_lock {};
+/// Returns the task that switches back to us
+extern "C" Task* switch_task(Task* old_task, Task* new_task);
 
 void sched() {
 	if (ready_tasks) {
 		auto task = ready_tasks;
 		ready_tasks = task->next;
-		if (!ready_tasks) {
-			ready_tasks_end = nullptr;
-		}
 		println("switching to task '", as<const char*>(task->name), "'");
-		switch_task(task);
+		auto this_task = current_task;
+		current_task = task;
+		auto prev = switch_task(this_task, task);
+		after_switch_from(prev, current_task);
 	}
 	else {
-		// todo idle
+		panic("todo idle");
 	}
 }
 
@@ -66,7 +91,6 @@ static void block_task() {
 }
 
 void unblock_task(Task* task) {
-	sched_lock.lock();
 	// todo priority if should replace current task
 	sched_queue_task(task);
 	sched();
@@ -103,7 +127,8 @@ void sched_sleep(u64 us) {
 [[noreturn]] void test_task() {
 	while (true) {
 		println("test task");
-		sched_sleep(1000 * 1000);
+		//sched_sleep(1000 * 1000);
+		sched();
 	}
 }
 
@@ -126,7 +151,6 @@ void test_sched() {
 	current_task = this_task;
 
 	auto task = create_kernel_task("test task", test_task);
-	sched_lock.lock();
 	sched_queue_task(task);
 	sched();
 }

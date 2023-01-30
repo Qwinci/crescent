@@ -80,4 +80,8 @@ SECTIONS {
 	.shstrtab 0 : { *(.shstrtab) }
 	.strtab 0 : { *(.strtab) }
 	.symtab 0 : { *(.symtab) }
+
+	/DISCARD/ : {
+		*(.note.*)
+	}
 }

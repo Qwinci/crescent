@@ -55,6 +55,7 @@ struc Task
 	.reserved: resb 7
 endstruc
 
+; Task* switch_task(Task* old_task, Task* new_task)
 switch_task:
 	push rbx
 	push rbp
@@ -63,56 +64,12 @@ switch_task:
 	push r14
 	push r15
 
-	mov rax, [current_task]
+	mov qword [rdi + Task.rsp], rsp
 
-	mov qword [rax + Task.rsp], rsp
+	; load the new rsp
+	mov rsp, [rsi + Task.rsp]
 
-	; if the current task is not running then skip adding it to list of ready tasks
-	cmp byte [rax + Task.status], STATUS_RUNNING
-	jne .skip_add
-
-	; if ready tasks is empty then skip setting the next field of the last task
-	mov rbx, [ready_tasks_end]
-	test rbx, rbx
-	je .skip_next
-
-	mov qword [rbx + Task.next], rax
-.skip_next:
-	mov qword [ready_tasks_end], rax
-
-	; if ready tasks was not empty then skip setting ready tasks to the current task
-	jne .skip_add
-
-	mov qword [ready_tasks], rax
-.skip_add:
-
-	; set the new tasks status to running
-	mov byte [rdi + Task.status], STATUS_RUNNING
-
-	; set the current task to the new task
-	mov qword [current_task], rdi
-
-	; load new rsp
-	mov rsp, [rdi + Task.rsp]
-
-	; check if the task uses the same page map
-	mov rcx, cr3
-	cmp qword [rdi + Task.map], rcx
-	je .same_map
-	; if not then load the new one
-	mov rdx, [rdi + Task.map]
-	mov cr3, rdx
-
-.same_map:
-	mov rax, [rdi + Task.kernel_rsp]
-
-	mov rsi, [gs:0]
-
-	mov dword [rsi + CpuLocal.tss + Tss.rsp0_low], eax
-	shr rax, 32
-	mov dword [rsi + CpuLocal.tss + Tss.rsp0_high], eax
-
-	mov dword [sched_lock], 0
+	mov rax, rdi
 
 	pop r15
 	pop r14

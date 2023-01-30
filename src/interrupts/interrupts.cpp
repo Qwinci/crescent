@@ -2,6 +2,8 @@
 
 extern void* int_stubs[];
 
+Idt* idt {};
+
 Idt::Idt() {
 	for (u16 i = 0; i < 32; ++i) {
 		interrupts[i] = {int_stubs[i], 0x8, 0, true, 0};
@@ -40,7 +42,10 @@ Handler get_int_handler(u8 vec) {
 	return handlers[vec];
 }
 
-void load_idt(Idt* idt) {
+void load_idt() {
+	if (!idt) {
+		idt = new Idt();
+	}
 	asm volatile("cli");
 	Idtr idtr {.size = 0x1000 - 1, .offset = cast<u64>(idt)};
 	asm volatile("lidt %0" : : "m"(idtr));
@@ -72,3 +77,5 @@ void set_exceptions() {
 	handlers[29] = vmm_communication_exception;
 	handlers[30] = security_exception;
 }
+
+usize irq_disable_count {};
