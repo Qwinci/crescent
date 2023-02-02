@@ -1,5 +1,5 @@
 # Crescent
-## An experimental opinionated kernel
+## An experimental kernel
 
 ### Todo
 - [x] Basic logging
