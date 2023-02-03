@@ -9,7 +9,6 @@ stub%+i:
 %endif
 	push i
 	jmp int_common
-	ret
 %assign i i + 1
 %endrep
 

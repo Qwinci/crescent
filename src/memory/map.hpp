@@ -100,11 +100,14 @@ class PageMap {
 public:
 	void map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split = false);
 	void map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count, bool split = false);
-	void unmap(VirtAddr virt, bool huge);
+	void unmap(VirtAddr virt, bool huge, bool dealloc);
 	void load();
 	void refresh_page(usize addr);
 	void ensure_kernel_mapping(PhysAddr phys, usize size);
 	PhysAddr virt_to_phys(VirtAddr addr);
+	PageMap* create_high_half_shared();
+
+	void destroy_lower_half();
 private:
 	struct Entry {
 		u64 value {};

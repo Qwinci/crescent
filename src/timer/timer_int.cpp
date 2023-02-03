@@ -2,14 +2,15 @@
 #include "acpi/lapic.hpp"
 #include "console.hpp"
 #include "sched/sched.hpp"
+#include "utils/misc.hpp"
 
 u16 timer_vec {};
 static u64 timer_us = 0;
 static usize current_us = 0;
-constexpr usize US_IN_SEC = 1000 * 1000;
 
+extern SchedLevel levels[32];
 extern Task* sleeping_tasks;
-extern Task* sleeping_tasks_end;
+extern Task* current_task;
 
 void start_timer() {
 	current_us = US_IN_SEC;
@@ -26,39 +27,51 @@ constexpr T min(T value1, T value2) {
 	return value1 < value2 ? value1 : value2;
 }
 
-void timer_int(InterruptCtx*) {
-	println("timer int");
+void timer_int(InterruptCtx* ctx) {
 	Lapic::eoi();
 	timer_us += current_us;
 
-	u64 next_timestamp = US_IN_SEC;
+	auto flags = enter_critical();
 
-	current_us = US_IN_SEC;
+	bool all_empty = true;
+	for (const auto& level : levels) {
+		if (!level.is_empty()) {
+			all_empty = false;
+			break;
+		}
+	}
 
-	bool done = false;
+	auto& level = levels[current_task->task_level];
+	u64 next_timestamp = level.slice_us;
 
+	bool sleep = false;
 	while (sleeping_tasks) {
 		if (sleeping_tasks->sleep_end > timer_us) {
-			next_timestamp = min(next_timestamp, max(sleeping_tasks->sleep_end - timer_us, US_IN_SEC));
+			next_timestamp = min(next_timestamp, sleeping_tasks->sleep_end - timer_us);
 			break;
 		}
 		else {
 			auto task = sleeping_tasks;
-			sleeping_tasks = sleeping_tasks->next;
-			Lapic::start_oneshot(US_IN_SEC / next_timestamp, timer_vec);
-			unblock_task(task);
-			done = true;
-			break;
-			// todo multiple sleeping tasks (sched delay)
+			sleeping_tasks = task->next;
+			sched_unblock(task);
+			sleep = true;
 		}
 	}
-	if (!sleeping_tasks) {
-		sleeping_tasks_end = nullptr;
+
+	if (current_task->status == TaskStatus::Running) {
+		current_task->decrease_level();
 	}
 
-	if (!done) {
-		Lapic::start_oneshot(US_IN_SEC / next_timestamp, timer_vec);
+	if (all_empty && !sleep) {
+		next_timestamp = US_IN_SEC;
 	}
+
+	current_us = next_timestamp;
+
+	leave_critical(flags);
+
+	Lapic::start_oneshot(US_IN_SEC / next_timestamp, timer_vec);
+	sched();
 }
 
 u64 get_timer_us() {

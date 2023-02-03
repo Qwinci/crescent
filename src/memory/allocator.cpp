@@ -4,6 +4,7 @@
 #include "new.hpp"
 #include "std.hpp"
 #include "vmem.hpp"
+#include "utils/math.hpp"
 
 Allocator ALLOCATOR;
 
@@ -27,7 +28,7 @@ constexpr u8 size_to_index(u16 size) {
 }
 
 constexpr u16 index_to_size(u8 index) {
-	return pow(2, index + 3);
+	return pow2(index + 3);
 }
 
 extern Spinlock alloc_lock;

@@ -3,12 +3,13 @@
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "interrupts.hpp"
+#include "utils/misc.hpp"
 
 #define GENERIC_FAULT(Name) { \
 	disable_interrupts(); \
 	print_lock.lock(); \
 	set_fg(0xFF0000); \
-	println_nolock(#Name, "on cpu ", get_cpu_local()->id); \
+	println_nolock(#Name, " on cpu ", get_cpu_local()->id); \
 	println_nolock("IP: ", Fmt::Hex, ctx->ip); \
 	while (true) asm("hlt"); \
 }

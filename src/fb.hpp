@@ -25,3 +25,5 @@ struct Framebuffer {
 		}
 	}
 };
+
+extern Framebuffer current_fb;

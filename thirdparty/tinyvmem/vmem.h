@@ -53,8 +53,8 @@ we allocate a boundary tag to manage it. */
 #define FREELISTS_N sizeof(void *) * CHAR_BIT
 #define HASHTABLES_N 16
 
-#define TAILQ_ENTRY(type) struct {type** prev; type* next;}
-#define LIST_ENTRY(type) struct {type** prev; type* next;}
+#define TAILQ_ENTRY(type) struct {type* next; type** prev;}
+#define LIST_ENTRY(type) struct {type* next; type** prev;}
 #define LIST_HEAD(head_name, type) struct head_name {type* root;}
 #define TAILQ_HEAD(head_name, type) struct head_name {type* root; type** end;}
 

@@ -51,8 +51,13 @@ struc Task
 	.kernel_rsp: resq 1
 	.next: resq 1
 	.map: resq 1
+	.sleep_end: resq 1
+	.stack_base: resq 1
+	.stack_size: resq 1
 	.status: resb 1
-	.reserved: resb 7
+	.task_level: resb 1
+	.user: resb 1
+	.reserved: resb 5
 endstruc
 
 ; Task* switch_task(Task* old_task, Task* new_task)
@@ -77,4 +82,5 @@ switch_task:
 	pop r12
 	pop rbp
 	pop rbx
+
 	ret

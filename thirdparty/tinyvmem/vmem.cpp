@@ -10,6 +10,7 @@
 #include "console.hpp"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
+#include "std/string.h"
 
 #define __KERNEL__
 
@@ -62,12 +63,6 @@ void vmem_unlock() {
 	lock.unlock();
 }
 
-char* strcpy(char* dest, const char* src) {
-	char* d = dest;
-	while (*src) *dest++ = *src++;
-	return d;
-}
-
 #define ASSERT(expr) ((expr) ? (void) 0 : panic(__FILE_NAME__, ":", __LINE__, ": assertion '", #expr, "' failed"))
 #define vmem_printf(...)
 
@@ -81,7 +76,7 @@ char* strcpy(char* dest, const char* src) {
 } while (0)
 #define LIST_INSERT_HEAD(head, elem, field) do { \
 	if (((elem)->field.next = (head)->root) != nullptr) \
-			(head)->root->field.prev = &(elem)->field.next;\
+			(head)->root->field.prev = &(elem)->field.next; \
 	(head)->root = (elem); \
 	(elem)->field.prev = &(head)->root; \
 } while (0)
@@ -114,12 +109,13 @@ for ((var) = ((head)->root); (var); (var) = ((var)->field.next))
 #define TAILQ_PREV(elem, head_name, field) (*(((head_name*)(void*)((elem)->field.prev))->end))
 #define TAILQ_NEXT(elem, field) ((elem)->field.next)
 #define TAILQ_REMOVE(head, elem, field) do { \
-	if (((elem)->field.next) != nullptr) \
-		(elem)->field.next->field.prev = (elem)->field.prev; \
+	if (auto next = (elem)->field.next) \
+		next->field.prev = (elem)->field.prev; \
 	else \
 		(head)->end = (elem)->field.prev; \
 	*(elem)->field.prev = (elem)->field.next; \
 } while (0)
+
 /* We need to keep a global freelist of segments because allocating virtual memory (e.g allocating a segment) requires segments to describe it. (kernel only)
 In non-kernel code, this is handled by the host `malloc` and `free` standard library functions */
 static VmemSegment static_segs[128];

@@ -58,7 +58,7 @@ struct StartInfo {
 	load_gdt(&data->tss);
 	smp_lock.unlock();
 	set_cpu_local(data);
-	asm volatile("mov ax, 0x28; ltr ax" : : : "ax");
+	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	set_exceptions();
 	load_idt();
 	enable_interrupts();
@@ -106,6 +106,16 @@ void arch_init_smp(void (*fn)(u8 id, u32 acpi_id)) {
 
 void* arch_get_rsdp() {
 	return RSDP_REQUEST.response->address;
+}
+
+void* arch_get_module(const char* name) {
+	for (usize i = 0; i < MODULE_REQUEST.response->module_count; ++i) {
+		auto module = MODULE_REQUEST.response->modules[i];
+		if (noalloc::String(module->cmdline) == name) {
+			return module->address;
+		}
+	}
+	return nullptr;
 }
 
 const PsfFont* arch_get_font() {

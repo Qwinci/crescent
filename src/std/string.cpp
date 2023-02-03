@@ -36,6 +36,9 @@ extern "C" char* strncpy(char* dest, const char* src, size_t size) {
 		*dest++ = *src++;
 		++len;
 	}
+	if (*src && len == size) {
+		dest[-1] = 0;
+	}
 	return d;
 }
 

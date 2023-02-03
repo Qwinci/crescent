@@ -1,17 +1,18 @@
 #include "sched.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
-#include "memory/std.hpp"
+#include "memory/memory.hpp"
+#include "memory/pmm.hpp"
+#include "memory/vmem.hpp"
+#include "std/string.h"
 #include "timer/timer_int.hpp"
+#include "usermode/usermode.hpp"
 #include "utils.hpp"
 
 Task* current_task {};
-Task* ready_tasks {};
-Task* ready_tasks_end {};
+SchedLevel levels[SCHED_MAX_LEVEL] {};
 
 static void after_switch_from(Task* old_task, Task* this_task) {
-	println("switched from '", (const char*) old_task->name, "' to '", (const char*) this_task->name, "'");
-
 	auto local = get_cpu_local();
 
 	local->tss.rsp0_low = as<u32>(this_task->kernel_rsp);
@@ -19,12 +20,24 @@ static void after_switch_from(Task* old_task, Task* this_task) {
 
 	this_task->status = TaskStatus::Running;
 
-	if (old_task->map != this_task->map) {
-		cast<PageMap*>(this_task->map)->load();
-	}
-
 	if (old_task->status == TaskStatus::Running) {
 		sched_queue_task(old_task);
+	}
+	else if (old_task->status == TaskStatus::Exited) {
+		if (old_task->user) {
+			ALLOCATOR.dealloc(cast<void*>(old_task->kernel_rsp - 0x2000), 0x2000);
+
+			auto* map = cast<PageMap*>(PhysAddr {old_task->map}.to_virt().as_usize());
+
+			vm_user_dealloc_backed(map, cast<void*>(old_task->stack_base), ALIGNUP(old_task->stack_size, 0x1000) / 0x1000);
+
+			map->destroy_lower_half();
+			delete map;
+		}
+		else {
+			ALLOCATOR.dealloc(cast<void*>(old_task->stack_base), old_task->stack_size);
+		}
+		delete old_task;
 	}
 }
 
@@ -32,22 +45,74 @@ static void after_init_switch(Task* old_task) {
 	after_switch_from(old_task, current_task);
 }
 
+struct UserInitStackFrame {
+	u64 r15, r14, r13, r12, rbp, rbx;
+	decltype(after_init_switch)* after_init_switch;
+	decltype(usermode_ret)* usermode_ret;
+	void (*fn)(void*);
+	void* arg;
+	u64 null_rbp;
+	u64 null_rip;
+};
+
+Task* create_user_task(const char* name, PageMap* map, void (*fn)(void* arg), void* arg) {
+	auto task = new Task;
+
+	u8* kernel_stack = new u8[0x2000];
+	kernel_stack += 0x2000;
+	task->kernel_rsp = cast<u64>(kernel_stack);
+
+	u8* stack = cast<u8*>(vm_user_alloc_backed(map, 2, AllocFlags::Rw));
+	task->stack_base = cast<u64>(stack);
+	task->stack_size = 0x2000;
+
+	u8* stack_kview = cast<u8*>(vm_user_alloc_kernel_mapping(map, stack, 2));
+
+	auto* init_frame = cast<UserInitStackFrame*>(stack_kview + 0x2000 - sizeof(UserInitStackFrame));
+
+	stack += 0x2000 - sizeof(UserInitStackFrame);
+
+	init_frame->after_init_switch = after_init_switch;
+	init_frame->usermode_ret = usermode_ret;
+	init_frame->fn = fn;
+	init_frame->arg = arg;
+	init_frame->null_rbp = 0;
+	init_frame->null_rip = 0;
+
+	vm_user_dealloc_kernel_mapping(map, stack_kview, 2);
+
+	strncpy(task->name, name, 128);
+	task->status = TaskStatus::Ready;
+
+	task->rsp = cast<u64>(stack);
+	task->map = VirtAddr {map}.to_phys().as_usize();
+	task->task_level = SCHED_MAX_LEVEL - 1;
+	task->user = true;
+
+	return task;
+}
+
 Task* create_kernel_task(const char* name, void (*fn)()) {
+	auto task = new Task;
+
 	u8* stack = new u8[0x2000]();
-	stack += 0x2000 - sizeof(fn) * 2;
+	task->stack_base = cast<u64>(stack);
+	task->stack_size = 0x2000;
+
+	stack += 0x2000 - sizeof(fn);
 	*cast<decltype(fn)*>(stack) = fn;
 	stack -= sizeof(fn);
 	*cast<decltype(&after_init_switch)*>(stack) = after_init_switch;
 	// space for 6 registers (all zeros)
 	stack -= 6 * 8;
 
-	auto task = new Task;
-	memcpy(task->name, name, 128);
+	strncpy(task->name, name, 128);
 	task->status = TaskStatus::Ready;
 
 	task->rsp = cast<u64>(stack);
-	task->next = nullptr;
 	task->map = VirtAddr {get_map()}.to_phys().as_usize();
+	task->task_level = SCHED_MAX_LEVEL - 1;
+	task->user = false;
 
 	return task;
 }
@@ -55,81 +120,135 @@ Task* create_kernel_task(const char* name, void (*fn)()) {
 /// Returns the task that switches back to us
 extern "C" Task* switch_task(Task* old_task, Task* new_task);
 
-void sched() {
-	if (ready_tasks) {
-		auto task = ready_tasks;
-		ready_tasks = task->next;
-		println("switching to task '", as<const char*>(task->name), "'");
-		auto this_task = current_task;
-		current_task = task;
-		auto prev = switch_task(this_task, task);
-		after_switch_from(prev, current_task);
+static Task* get_next_task_from_level(u8 level_num) {
+	auto& level = levels[level_num];
+
+	if (level.ready_tasks) {
+		auto task = level.ready_tasks;
+		level.ready_tasks = task->next;
+		return task;
 	}
 	else {
-		panic("todo idle");
+		return nullptr;
 	}
 }
 
+static void switch_wrapper(Task* this_task, Task* new_task) {
+	if (this_task->map != new_task->map) {
+		cast<PageMap*>(PhysAddr {new_task->map}.to_virt().as_usize())->load();
+	}
+
+	auto prev = switch_task(this_task, new_task);
+
+	if (prev->map != current_task->map) {
+		cast<PageMap*>(PhysAddr {current_task->map}.to_virt().as_usize())->load();
+	}
+
+	after_switch_from(prev, current_task);
+}
+
+void sched() {
+	auto flags = enter_critical();
+
+	Task* task = nullptr;
+	for (u8 i = SCHED_MAX_LEVEL; i > 0; --i) {
+		if (!levels[i - 1].is_empty()) {
+			task = get_next_task_from_level(i - 1);
+			break;
+		}
+	}
+
+	if (!task) {
+		if (current_task->status != TaskStatus::Running) {
+			panic("todo idle");
+		}
+		else {
+			return;
+		}
+	}
+
+	//println("switching to task '", as<const char*>(task->name), "' (level ", task->task_level, ", map ", (void*) task->map, ")");
+	auto this_task = current_task;
+	current_task = task;
+	switch_wrapper(this_task, current_task);
+
+	leave_critical(flags);
+}
+
 void sched_queue_task(Task* task) {
-	if (!ready_tasks) {
-		ready_tasks = task;
-		ready_tasks_end = task;
+	auto& level = levels[task->task_level];
+
+	if (!level.ready_tasks) {
+		level.ready_tasks = task;
+		level.ready_tasks_end = task;
 	}
 	else {
-		ready_tasks_end->next = task;
-		ready_tasks_end = task;
+		level.ready_tasks_end->next = task;
+		level.ready_tasks_end = task;
 	}
 }
 
 Task* sleeping_tasks {};
 Task* sleeping_tasks_end {};
-static Spinlock sched_misc_lock {};
 
-static void block_task() {
-	sched_misc_lock.unlock();
+void sched_block(TaskStatus status) {
+	auto flags = enter_critical();
+	current_task->status = status;
+	leave_critical(flags);
 	sched();
 }
 
-void unblock_task(Task* task) {
-	// todo priority if should replace current task
+void sched_unblock(Task* task) {
+	if (task->task_level < SCHED_MAX_LEVEL - 1) {
+		task->task_level += 1;
+	}
 	sched_queue_task(task);
-	sched();
 }
 
 void sched_sleep(u64 us) {
+	auto flags = enter_critical();
+
 	auto end = get_timer_us() + us;
-	sched_misc_lock.lock();
 
 	current_task->status = TaskStatus::Sleeping;
-	current_task->sleep_end = us;
+	current_task->sleep_end = end;
 
 	if (!sleeping_tasks) {
 		sleeping_tasks = current_task;
 		sleeping_tasks_end = current_task;
 		current_task->next = nullptr;
-		block_task();
 	}
 	else {
-		for (auto task = sleeping_tasks; task->next; task = task->next) {
+		Task* task;
+		for (task = sleeping_tasks; task->next; task = task->next) {
 			if (task->next->sleep_end > end) {
-				current_task->next = task->next;
-				task->next = current_task;
-				block_task();
+				break;
 			}
 		}
-		sleeping_tasks_end->next = current_task;
-		sleeping_tasks_end = current_task;
-		current_task->next = nullptr;
-		block_task();
+		current_task->next = task->next;
+		task->next = current_task;
+
+		if (!task->next) {
+			sleeping_tasks_end = current_task;
+		}
 	}
+
+	leave_critical(flags);
+	sched_block(TaskStatus::Sleeping);
+}
+
+[[noreturn]] void sched_exit() {
+	current_task->status = TaskStatus::Exited;
+	sched();
+	__builtin_unreachable();
 }
 
 [[noreturn]] void test_task() {
-	while (true) {
+	for (usize i = 0; i < 2; ++i) {
 		println("test task");
-		//sched_sleep(1000 * 1000);
-		sched();
+		sched_sleep(1000 * 1000);
 	}
+	sched_exit();
 }
 
 void sched_init() {
@@ -138,19 +257,12 @@ void sched_init() {
 	this_task->map = VirtAddr {get_map()}.to_phys().as_usize();
 	memcpy(this_task->name, "kernel main", sizeof("kernel main"));
 	this_task->next = nullptr;
-	current_task = this_task;
-}
-
-void test_sched() {
-	auto this_task = new Task;
-	this_task->status = TaskStatus::Running;
-	this_task->map = VirtAddr {get_map()}.to_phys().as_usize();
-	this_task->kernel_rsp = 1234;
-	memcpy(this_task->name, "kernel main", sizeof("kernel main"));
-	this_task->next = nullptr;
+	this_task->task_level = SCHED_MAX_LEVEL - 1;
 	current_task = this_task;
 
-	auto task = create_kernel_task("test task", test_task);
-	sched_queue_task(task);
-	sched();
+	constexpr usize inc = (SCHED_SLICE_MAX_US - SCHED_SLICE_MIN_US) / SCHED_MAX_LEVEL;
+
+	for (u8 i = 0; i < SCHED_MAX_LEVEL; ++i) {
+		levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;
+	}
 }

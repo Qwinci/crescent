@@ -8,7 +8,8 @@ set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 20)
 set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
-        ${PROJECT_SOURCE_DIR}/limine.cfg)
+        ${PROJECT_SOURCE_DIR}/limine.cfg
+        ${PROJECT_BINARY_DIR}/usertest)
 set(QEMU_FLAGS -m 2G -machine q35 -smp 2
         -d int -no-reboot -no-shutdown -cpu qemu64,+invtsc
         -drive file=nvm.img,if=none,id=nvm,format=raw
@@ -16,7 +17,11 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 2
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
 
+add_executable(usertest tests/main.cpp tests/main.asm)
+target_link_options(usertest PRIVATE -nostdlib -static -static-pie)
+
 add_executable(crescent ${SRC} thirdparty/tinyvmem/vmem.cpp)
+add_dependencies(crescent usertest)
 target_include_directories(crescent PRIVATE src thirdparty)
 
 target_compile_options(crescent PRIVATE

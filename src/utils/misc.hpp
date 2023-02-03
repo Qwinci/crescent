@@ -1,8 +1,5 @@
-//
-// Created by visa on 31.1.2023.
-//
+#pragma once
 
-#ifndef CRESCENT_MISC_HPP
-#define CRESCENT_MISC_HPP
-
-#endif //CRESCENT_MISC_HPP
+static inline void swapgs() {
+	asm volatile("swapgs" : : : "memory");
+}

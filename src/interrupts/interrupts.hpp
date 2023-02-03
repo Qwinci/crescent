@@ -4,7 +4,7 @@
 #include "exceptions.hpp"
 
 struct InterruptCtx {
-	u64 rax, rbx, rcx, rdx, rdi, rsi, rbp, r8, r9, r10, r11, r12, r13, r14, r15;
+	u64 r15, r14, r13, r12, r11, r10, r9, r8, rbp, rsi, rdi, rdx, rcx, rbx, rax;
 	u64 vec;
 	u64 error;
 	u64 ip;
@@ -36,7 +36,6 @@ struct IdtEntry {
 
 struct Idt {
 	Idt();
-private:
 	IdtEntry interrupts[256];
 };
 
@@ -60,4 +59,14 @@ static inline bool disable_interrupts_with_prev() {
 	u16 flags;
 	asm volatile("pushfw; pop %0; cli" : "=r"(flags));
 	return flags & 1 << 9;
+}
+
+static inline bool enter_critical() {
+	return disable_interrupts_with_prev();
+}
+
+static inline void leave_critical(bool flags) {
+	if (flags) {
+		enable_interrupts();
+	}
 }

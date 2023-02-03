@@ -14,6 +14,8 @@ endstruc
 
 smp_tramp_start:
 	cli
+	cld
+
 	in al, 0x70
 	and al, 0x7F
 	out 0x70, al

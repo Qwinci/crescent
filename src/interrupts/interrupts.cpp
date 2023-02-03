@@ -1,14 +1,13 @@
 #include "interrupts.hpp"
+#include "console.hpp"
+#include "utils/misc.hpp"
 
 extern void* int_stubs[];
 
 Idt* idt {};
 
 Idt::Idt() {
-	for (u16 i = 0; i < 32; ++i) {
-		interrupts[i] = {int_stubs[i], 0x8, 0, true, 0};
-	}
-	for (u16 i = 32; i < 256; ++i) {
+	for (u16 i = 0; i < 256; ++i) {
 		interrupts[i] = {int_stubs[i], 0x8, 0, false, 0};
 	}
 }
@@ -21,7 +20,15 @@ struct [[gnu::packed]] Idtr {
 static Handler handlers[256] {};
 
 extern "C" void int_handler(InterruptCtx* ctx) {
+	if (ctx->cs == 0x2b) {
+		swapgs();
+	}
+
 	handlers[ctx->vec](ctx);
+
+	if (ctx->cs == 0x2b) {
+		swapgs();
+	}
 }
 
 void register_int_handler(u8 vec, Handler handler) {
@@ -77,5 +84,3 @@ void set_exceptions() {
 	handlers[29] = vmm_communication_exception;
 	handlers[30] = security_exception;
 }
-
-usize irq_disable_count {};

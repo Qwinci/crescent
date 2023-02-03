@@ -31,20 +31,20 @@ inline void print(Fmt value) {
 	set_fmt(value);
 }
 
-template<>
-inline void print(const char* value) {
-	extern void print_string(const char* str);
-	print_string(value);
-}
-
-template<>
-inline void print(void* value) {
+template<typename T>
+inline void print(T* value) {
 	extern void print_number(usize value, bool sign);
 	extern Fmt get_fmt();
 	auto fmt = get_fmt();
 	print(Fmt::Hex);
 	print_number(cast<usize>(value), false);
 	print(fmt);
+}
+
+template<>
+inline void print(const char* value) {
+	extern void print_string(const char* str);
+	print_string(value);
 }
 
 template<>
@@ -108,14 +108,12 @@ inline void print(Args... args) {
 
 template<typename... Args>
 inline void println(Args... args) {
-	auto prev = disable_interrupts_with_prev();
+	auto flags = enter_critical();
 	print_lock.lock();
 	(print(args), ...);
 	print("\n");
 	print_lock.unlock();
-	if (prev) {
-		enable_interrupts();
-	}
+	leave_critical(flags);
 }
 
 template<typename... Args>

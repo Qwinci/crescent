@@ -99,7 +99,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	pt_entry[pt_offset].set_addr(phys);
 }
 
-void PageMap::unmap(VirtAddr virt, bool huge) {
+void PageMap::unmap(VirtAddr virt, bool huge, bool dealloc) {
 	auto virt_addr = virt.as_usize();
 
 	virt_addr >>= 12;
@@ -141,6 +141,40 @@ void PageMap::unmap(VirtAddr virt, bool huge) {
 	}
 
 	pt_entry[pt_offset].value = 0;
+
+	if (!dealloc) {
+		return;
+	}
+
+	bool can_dealloc = true;
+	for (usize i = 0; i < 512; ++i) {
+		if (pt_entry[i].get_flags() & PageFlags::Present) {
+			can_dealloc = false;
+			break;
+		}
+	}
+
+	if (can_dealloc) {
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(pd_entry[pd_offset].get_addr().as_usize()));
+		refresh_page(pd_entry[pd_offset].get_addr().to_virt().as_usize());
+		pd_entry[pd_offset].value = 0;
+	}
+	else {
+		return;
+	}
+
+	for (usize i = 0; i < 512; ++i) {
+		if (pd_entry[i].get_flags() & PageFlags::Present) {
+			can_dealloc = false;
+			break;
+		}
+	}
+
+	if (can_dealloc) {
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(pdp_entry[pdp_offset].get_addr().as_usize()));
+		refresh_page(pdp_entry[pdp_offset].get_addr().to_virt().as_usize());
+		pdp_entry[pdp_offset].value = 0;
+	}
 }
 
 PhysAddr PageMap::virt_to_phys(VirtAddr addr) {
@@ -220,5 +254,44 @@ void PageMap::ensure_kernel_mapping(PhysAddr phys, usize size) {
 void PageMap::map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count, bool split) {
 	for (usize i = 0; i < count; ++i) {
 		map(virt.offset(i * 0x1000), phys.offset(i * 0x1000), flags, split);
+	}
+}
+
+PageMap* PageMap::create_high_half_shared() {
+	auto map = new PageMap();
+	for (usize i = 256; i < 512; ++i) {
+		map->entries[i] = entries[i];
+	}
+	return map;
+}
+
+void PageMap::destroy_lower_half() {
+	for (usize i = 0; i < 256; ++i) {
+		auto addr = entries[i].get_addr();
+		if (addr.as_usize() == 0) {
+			continue;
+		}
+
+		auto* pdp_entry = cast<Entry*>(addr.to_virt().as_usize());
+		for (usize pdp_i = 0; pdp_i < 512; ++pdp_i) {
+			auto pd_addr = pdp_entry[pdp_i].get_addr();
+			if (pd_addr.as_usize() == 0) {
+				continue;
+			}
+
+			auto* pd_entry = cast<Entry*>(pd_addr.to_virt().as_usize());
+			for (usize pd_i = 0; pd_i < 512; ++pd_i) {
+				auto pt_addr = pd_entry[pd_i].get_addr();
+				if (pt_addr.as_usize() == 0) {
+					continue;
+				}
+
+				PAGE_ALLOCATOR.dealloc_new(cast<void*>(pt_addr.as_usize()));
+			}
+
+			PAGE_ALLOCATOR.dealloc_new(cast<void*>(pd_addr.as_usize()));
+		}
+
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(addr.as_usize()));
 	}
 }
