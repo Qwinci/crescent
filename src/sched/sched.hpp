@@ -62,5 +62,5 @@ void sched_sleep(u64 us);
 void sched_queue_task(Task* task);
 void sched();
 Task* create_kernel_task(const char* name, void (*fn)());
-Task* create_user_task(const char* name, PageMap* map, void (*fn)(void* arg), void* arg);
+Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg);
 extern Task* current_task;

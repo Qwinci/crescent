@@ -1,5 +1,6 @@
 #include "common.hpp"
 #include "console.hpp"
+#include "cpu/cpu.hpp"
 #include "io.hpp"
 #include "io_apic.hpp"
 #include "lapic.hpp"
@@ -28,8 +29,6 @@ void parse_madt(const void* madt_ptr) {
 		out1(0xA1, 0xFF);
 		out1(0x21, 0xFF);
 	}
-
-	usize lapic_phys = madt->lapic_addr;
 
 	u8 bsp_id;
 	asm volatile("mov eax, 1; cpuid; shr ebx, 24" : "=b"(bsp_id));
@@ -93,14 +92,6 @@ void parse_madt(const void* madt_ptr) {
 			u8 lint = *cast<const u8*>(offset(madt, as<isize>(i)));
 			i += 1;
 		}
-		// Local APIC Address Override
-		else if (type == 5) {
-			// reserved
-			i += 2;
-			u64 lapic_addr = *cast<const u64*>(offset(madt, as<isize>(i)));
-			i += 8;
-			lapic_phys = lapic_addr;
-		}
 		else {
 			i += length - 2;
 		}
@@ -111,7 +102,7 @@ void parse_madt(const void* madt_ptr) {
 		apic.irq_count = (IoApic::read(i, 1) >> 16 & 0xFF) + 1;
 	}
 
-	auto lapic_phys_addr = PhysAddr {lapic_phys};
+	auto lapic_phys_addr = PhysAddr {get_msr(Msr::Ia32ApicBase) & ~(0xFFF)};
 	get_map()->map(
 			lapic_phys_addr.to_virt(),
 			lapic_phys_addr,

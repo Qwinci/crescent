@@ -1,5 +1,7 @@
 #include "console.hpp"
 #include "pci.hpp"
+#include "timer/timer.hpp"
+#include "utils/math.hpp"
 
 #define SUBMISSION_Q_TAIL_DOORBELL(x, stride) (0x1000 + 2 * (x) * (4 << (stride)))
 #define COMPLETION_Q_HEAD_DOORBELL(x, stride) (0x1000 + (2 * (x) + 1) * (4 << (stride)))
@@ -74,44 +76,44 @@
 /// Controller Ready Independent of Media Enable
 #define CC_CRIME(r) (r >> 24 & 1)
 #define CC_CRIME_MASK 0b1
-#define CC_CRIME_V(v) (v << 24)
+#define CC_CRIME_V(v) ((v) << 24)
 /// IO Completion Queue Entry Size (power of two)
 #define CC_IOCQES(r) (r >> 20 & 0b1111)
 #define CC_IOCQES_MASK 0b1111
-#define CC_IOCQES_V(v) (v << 20)
+#define CC_IOCQES_V(v) ((v) << 20)
 /// IO Submission Queue Entry Size (power of two)
 #define CC_IOSQES(r) (r >> 16 & 0b1111)
 #define CC_IOSQES_MASK 0b1111
-#define CC_IOSQEC_V(v) (v << 16)
+#define CC_IOSQEC_V(v) ((v) << 16)
 /// Shutdown Notification
 #define CC_SHN(r) (r >> 14 & 0b11)
 #define SHN_NO_NOTIF 0
 #define SHM_NORMAL_SHUTDOWN_NOTIF 1
 #define SHM_ABRUPT_SHUTDOWN_NOTIF 0b11
 #define CC_SHN_MASK 0b11
-#define CC_SHN_V(v) (v << 14)
+#define CC_SHN_V(v) ((v) << 14)
 /// Arbitration Mechanism Selected
 #define CC_AMS(r) (r >> 11 & 0b111)
 /// Round Robin
 #define AMS_RR 0
 #define CC_AMS_MASK 0b111
-#define CC_AMS_V(v) (v << 11)
+#define CC_AMS_V(v) ((v) << 11)
 /// Memory Page Size (2 ^ (12 + size))
 #define CC_MPS(r) (r >> 7 & 0b1111)
 #define CC_MPS_MASK 0b1111
-#define CC_MPS_V(v) (v << 7)
+#define CC_MPS_V(v) ((v) << 7)
 /// IO Command Set Selected
 #define CC_CSS(r) (r >> 4 & 0b111)
 /// All Supported IO Command Sets
-#define CSS_ALL_IO (1 << 1)
+#define CSS_ALL_IO (0b110)
 /// Admin Command Set Only
-#define CSS_ADMIN_ONLY 1
+#define CSS_ADMIN_ONLY 0b111
 #define CC_CSS_MASK 0b111
-#define CC_CSS_V(v) (v << 4)
+#define CC_CSS_V(v) ((v) << 4)
 /// Enable
 #define CC_EN(r) (r & 1)
 #define CC_EN_MASK 1
-#define CC_EN_V(v) (v)
+#define CC_EN_V(v) ((v))
 
 /// Controller Status
 #define REG32_CSTS 0x1C
@@ -144,13 +146,13 @@
 /// Admin Queue Attributes
 #define REG32_AQA 0x24
 /// Admin Completion Queue Size
-#define AQA_ACQS(r) (r >> 16 0xFFF)
+#define AQA_ACQS(r) (r >> 16 & 0xFFF)
 #define AQA_ACQS_MASK 0xFFF
-#define AQA_ACQS_V(v) (v << 16)
+#define AQA_ACQS_V(v) ((v) << 16)
 /// Admin Submission Queue Size
 #define AQA_ASQS(r) (r & 0xFFF)
 #define AQA_ASQS_MASK 0xFFF
-#define AQA_ASQS_V(v) (v)
+#define AQA_ASQS_V(v) ((v))
 
 /// Admin Submission Queue Base
 #define REG64_ASQ 0x28
@@ -161,21 +163,73 @@
 #define ACQ_MASK ~(0xFFFULL)
 
 struct NvmeController {
-	void init(usize base_addr) {
+	bool init(Pci::Header0* hdr, usize base_addr) {
+		// todo
+		return false;
+
 		base = base_addr;
 
+		// todo check version
+
 		auto cc = reg32(REG32_CC);
-		println("rdy: ", CSTS_RDY(*reg32(REG32_CSTS)));
-		println("resetting controller");
+		auto cap = reg64(REG64_CAP);
+		auto csts = reg32(REG32_CSTS);
+
+		if (!(CAP_CSS(*cap) & CSS_NVM)) {
+			println("[nvme] controller doesn't support the nvm command set");
+			return false;
+		}
+
+		auto min_pg_size = pow2(12 + CAP_MPSMIN(*cap));
+		auto max_pg_size = pow2(12 + CAP_MPSMAX(*cap));
+
+		if (PAGE_SIZE < min_pg_size || PAGE_SIZE > max_pg_size) {
+			println("[nvme] controller doesn't support host page size");
+			return false;
+		}
+
 		*cc &= ~CC_EN_MASK;
 
-		auto csts = reg32(REG32_CSTS);
+		while (CSTS_RDY(*csts)) {
+			__builtin_ia32_pause();
+		}
+
+		auto admin_sub_queue = new u8[0x1000];
+		auto admin_comp_queue = new u8[0x1000];
+
+		auto aqa = reg32(REG32_AQA);
+		*aqa = AQA_ASQS_V(0x1000 / 64) | AQA_ACQS_V(0x1000 / 16);
+
+		auto asq = reg64(REG64_ASQ);
+		auto acq = reg64(REG64_ACQ);
+
+		*asq = VirtAddr {admin_sub_queue}.to_phys().as_usize();
+		*acq = VirtAddr {admin_comp_queue}.to_phys().as_usize();
+
+		auto supported_css = CAP_CSS(*cap);
+		u32 css = 0;
+		if (supported_css & CSS_NO_IO) {
+			css = CSS_ADMIN_ONLY;
+		}
+		else if (supported_css & CSS_IO) {
+			css = CSS_ALL_IO;
+		}
+
+		*cc = CC_MPS_V(log2(PAGE_SIZE) - 12) | CC_AMS_V(AMS_RR) | CC_CSS_V(css);
+
+		println("csts: ", *csts);
+
+		*cc |= CC_EN_V(1);
+
+		println("csts: ", *csts);
 
 		while (!CSTS_RDY(*csts)) {
 			__builtin_ia32_pause();
 		}
 
-		println("controller reset");
+		println("controller ready");
+
+		return true;
 	}
 
 	[[nodiscard]] volatile u32* reg32(u32 reg) const {
@@ -209,5 +263,8 @@ void init_nvme(Pci::Header0* hdr) {
 	}
 
 	auto controller = new NvmeController();
-	controller->init(PhysAddr {addr}.to_virt().as_usize());
+	auto result = controller->init(hdr, PhysAddr {addr}.to_virt().as_usize());
+	if (!result) {
+		delete controller;
+	}
 }

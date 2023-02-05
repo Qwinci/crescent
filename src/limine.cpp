@@ -200,20 +200,32 @@ void arch_init_mem() {
 		}
 	}
 
-	extern char KERNEL_START[];
-	extern char KERNEL_END[];
+	extern char RODATA_START[];
+	extern char RODATA_END[];
+	extern char TEXT_START[];
+	extern char TEXT_END[];
+	extern char DATA_START[];
+	extern char DATA_END[];
 
-	auto size = KERNEL_END - KERNEL_START;
+	const usize RODATA_SIZE = RODATA_END - RODATA_START;
+	const usize RODATA_START_OFF = RODATA_START - cast<char*>(kernel_virt);
 
-	usize i = 0;
-	while (((kernel_phys + i) & (SIZE_2MB - 1) || (kernel_virt + i) & (SIZE_2MB - 1)) && i < size) {
-		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Rw);
-		i += 0x1000;
+	const usize TEXT_SIZE = TEXT_END - TEXT_START;
+	const usize TEXT_START_OFF = TEXT_START - cast<char*>(kernel_virt);
+
+	const usize DATA_SIZE = DATA_END - DATA_START;
+	const usize DATA_START_OFF = DATA_START - cast<char*>(kernel_virt);
+
+	for (usize i = RODATA_START_OFF; i < RODATA_START_OFF + RODATA_SIZE; i += 0x1000) {
+		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Nx);
 	}
 
-	while (i < size) {
-		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Rw | PageFlags::Huge);
-		i += SIZE_2MB;
+	for (usize i = TEXT_START_OFF; i < TEXT_START_OFF + TEXT_SIZE; i += 0x1000) {
+		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Present);
+	}
+
+	for (usize i = DATA_START_OFF; i < DATA_START_OFF + DATA_SIZE; i += 0x1000) {
+		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Rw | PageFlags::Nx);
 	}
 
 	page_map->load();

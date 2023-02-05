@@ -49,13 +49,13 @@ struct UserInitStackFrame {
 	u64 r15, r14, r13, r12, rbp, rbx;
 	decltype(after_init_switch)* after_init_switch;
 	decltype(usermode_ret)* usermode_ret;
-	void (*fn)(void*);
+	void (*fn)();
 	void* arg;
 	u64 null_rbp;
 	u64 null_rip;
 };
 
-Task* create_user_task(const char* name, PageMap* map, void (*fn)(void* arg), void* arg) {
+Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg) {
 	auto task = new Task;
 
 	u8* kernel_stack = new u8[0x2000];

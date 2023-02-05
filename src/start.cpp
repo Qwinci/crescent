@@ -162,7 +162,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	start_timer();
 
-	auto task = create_user_task("user task", map, cast<void (*)(void*)>(user_entry), nullptr);
+	auto task = create_user_task("user task", map, cast<void (*)()>(user_entry), nullptr);
 	auto flags = enter_critical();
 	sched_queue_task(task);
 

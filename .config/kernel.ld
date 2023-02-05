@@ -2,8 +2,7 @@ ENTRY(start)
 
 SECTIONS {
 	. = 0xFFFFFFFF80000000 + SIZEOF_HEADERS;
-	PROVIDE(KERNEL_START = .);
-
+	PROVIDE(RODATA_START = .);
 	.hash : { *(.hash) }
 	.gnu.hash : { *(.gnu.hash) }
 	.dynsym : { *(.dynsym) }
@@ -12,14 +11,16 @@ SECTIONS {
 	.rodata : { *(.rodata .rodata.*) }
 	.eh_frame_hdr : { *(.eh_frame_hdr) }
 	.eh_frame : { KEEP(*(.eh_frame)) }
+	PROVIDE(RODATA_END = .);
 
-	. += CONSTANT(MAXPAGESIZE);
-
+	. = ALIGN(CONSTANT(MAXPAGESIZE));
+	PROVIDE(TEXT_START = .);
 	.plt : { *(.plt) *(.iplt) }
 	.text : { *(.text .text.*) }
+	PROVIDE(TEXT_END = .);
 
-	. += CONSTANT(MAXPAGESIZE);
-
+	. = ALIGN(CONSTANT(MAXPAGESIZE));
+	PROVIDE(DATA_START = .);
 	.tdata : { *(.tdata .tdata.*) }
 	.tbss : { *(.tbss .tbss.*) }
 
@@ -30,22 +31,22 @@ SECTIONS {
 	.dynamic : { *(.dynamic) }
 
 	.init_array : {
-        __init_array_start = .;
-        crti.o(.init_array)
-        KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
-        KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
-        crtn.o(.init_array)
-        __init_array_end = .;
-    }
+		__init_array_start = .;
+		crti.o(.init_array)
+		KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
+		KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
+		crtn.o(.init_array)
+		__init_array_end = .;
+	}
 
-    .fini_array : {
-        __fini_array_start = .;
-        crti.o(.fini_array)
-        KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .fini_array.*)))
-        KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .fini_array))
-        crtn.o(.fini_array)
-        __fini_array_end = .;
-    }
+	.fini_array : {
+		__fini_array_start = .;
+		crti.o(.fini_array)
+		KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .fini_array.*)))
+		KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .fini_array))
+		crtn.o(.fini_array)
+		__fini_array_end = .;
+	}
 
 	. = DATA_SEGMENT_RELRO_END(0, .);
 
@@ -54,6 +55,7 @@ SECTIONS {
 	.data : { *(.data .data.*) }
 	.bss : { *(COMMON) *(.dynbss) *(.bss .bss.*) }
 
+	PROVIDE(DATA_END = .);
 	. = DATA_SEGMENT_END(.);
 	PROVIDE(KERNEL_END = .);
 

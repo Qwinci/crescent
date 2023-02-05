@@ -13,11 +13,6 @@ constexpr usize pow(usize value, u8 pow) {
 	return value;
 }
 
-constexpr usize log2(usize value) {
-	auto count = __builtin_clzll(value - 1);
-	return 8 * sizeof(usize) - count + 1;
-}
-
 constexpr u8 size_to_index(u16 size) {
 	if (size <= 8) {
 		return 0;

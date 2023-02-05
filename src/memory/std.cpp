@@ -1,5 +1,4 @@
 #include "std.hpp"
-#include "utils.hpp"
 
 extern "C" void* memset(void* dest, int ch, usize size) {
 	asm volatile("rep stosb" : : "al"(ch), "D"(dest), "c"(size));

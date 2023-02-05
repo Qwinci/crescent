@@ -9,6 +9,7 @@
 #endif
 
 enum class Msr : u32 {
+	Ia32ApicBase = 0x1B,
 	Efer = 0xC0000080,
 	Star = 0xC0000081,
 	LStar = 0xC0000082,
