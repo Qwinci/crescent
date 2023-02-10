@@ -105,3 +105,21 @@ void Lapic::send_ipi_all(Msg msg) {
 
 	msg_lock.unlock();
 }
+
+void Lapic::send_ipi(u8 id, Lapic::Msg msg) {
+	msg_lock.lock();
+	if (!ipi_vec) {
+		ipi_vec = alloc_int_handler(ipi_handler);
+	}
+	current_msg = msg;
+
+	write(as<Reg>(as<u32>(Reg::IntCmdBase) + 0x10), as<u32>(id << 24));
+	u32 value = as<u32>(ipi_vec) | 1 << 15;
+	write(Reg::IntCmdBase, value);
+
+	while (read(Reg::IntCmdBase) & 1 << 12) {
+		__builtin_ia32_pause();
+	}
+
+	msg_lock.unlock();
+}

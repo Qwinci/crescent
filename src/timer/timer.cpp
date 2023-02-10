@@ -4,6 +4,7 @@
 #include "cpu/cpu.hpp"
 #include "drivers/hpet.hpp"
 #include "drivers/tsc.hpp"
+#include "memory/memory.hpp"
 #include "utils/cpuid.hpp"
 
 void (*udelay_ptr)(u64 us);
@@ -52,5 +53,46 @@ void init_timers(const void* rsdp) {
 			while (read_timestamp() < end);
 		};
 		println("info: using tsc for udelay");
+	}
+}
+
+void Timer::create_timer(usize timestamp_us, void (*fn)()) {
+	auto node = new Node {timestamp_us, fn, nullptr};
+	if (!timers) {
+		timers = node;
+		timers_end = timers;
+		return;
+	}
+
+	if (timers_end == nullptr) {
+		__builtin_unreachable();
+	}
+
+	if (timestamp_us > timers_end->timestamp) {
+		timers_end->next = node;
+		timers_end = node;
+		return;
+	}
+
+	auto n = timers;
+	while (true) {
+		if (n->next->timestamp > timestamp_us) {
+			node->next = n->next;
+			n->next = node;
+			return;
+		}
+		n = n->next;
+	}
+}
+
+void Timer::trigger_timers(usize current_time) {
+	while (timers) {
+		if (timers->timestamp > current_time) {
+			break;
+		}
+		timers->fn();
+		auto next = timers->next;
+		ALLOCATOR.dealloc(timers, sizeof(*timers));
+		timers = next;
 	}
 }

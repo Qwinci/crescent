@@ -40,6 +40,7 @@ private:
 
 		inline void insert(Node* node) {
 			if (!root) {
+				node->next = nullptr;
 				root = node;
 				return;
 			}

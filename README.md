@@ -12,14 +12,14 @@
 	- [x] Exceptions
 	- [x] IO-APIC
 - [ ] Elf loading from modules
-- [ ] Basic Round-Robin scheduler
+- [x] Per-cpu multilevel feedback queue scheduler
 - [ ] ACPI
 	- [ ] FADT
 	- [x] MADT
 - [ ] Filesystems
 	- [ ] FAT32
 - [ ] Drivers
-	- [ ] SMP
+	- [x] SMP
 	- [ ] AHCI SATA
 	- [ ] NVMe
 	- [ ] PS2
@@ -36,4 +36,3 @@
 		- [ ] Keyboard
 		- [ ] Mouse
 		- [ ] Mass storage
-	- [ ] SMP

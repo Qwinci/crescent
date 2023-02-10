@@ -6,6 +6,7 @@
 
 #ifdef WITH_SCHED_MULTI
 #include "sched/sched.hpp"
+#include "timer/timer.hpp"
 #endif
 
 enum class Msr : u32 {
@@ -66,9 +67,12 @@ struct CpuLocal {
 	u8 id {};
 	u8 reserved[3] {};
 	_Atomic(u32) thread_count = 0;
+	Timer timer {};
 };
 
 void set_cpu_local(CpuLocal* local);
 CpuLocal* get_cpu_local();
 void set_msr(Msr msr, u64 value);
 u64 get_msr(Msr msr);
+extern CpuLocal* cpu_locals;
+extern usize cpu_count;

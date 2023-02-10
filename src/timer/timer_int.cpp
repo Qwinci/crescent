@@ -31,6 +31,9 @@ void timer_int(InterruptCtx* ctx) {
 	auto flags = enter_critical();
 
 	auto local = get_cpu_local();
+
+	local->timer.trigger_timers(timer_us);
+
 	const auto& levels = local->levels;
 
 	bool all_empty = true;

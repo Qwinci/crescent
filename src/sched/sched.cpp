@@ -20,7 +20,7 @@ static void after_switch_from(Task* old_task, Task* this_task) {
 	if (old_task->status == TaskStatus::Running) {
 		sched_queue_task(old_task);
 	}
-	else if (old_task->status == TaskStatus::Exited) {
+	else if (old_task->status == TaskStatus::Exited || old_task->status == TaskStatus::Killed) {
 		if (old_task->user) {
 			ALLOCATOR.dealloc(cast<void*>(old_task->kernel_rsp - 0x2000), 0x2000);
 
@@ -42,6 +42,15 @@ static void after_init_switch(Task* old_task) {
 	get_cpu_local()->thread_count += 1;
 	after_switch_from(old_task, get_cpu_local()->current_task);
 }
+
+struct InitStackFrame {
+	u64 r15, r14, r13, r12, rbp, rbx;
+	decltype(after_init_switch)* after_init_switch;
+	void (*fn)();
+	void* arg;
+	u64 null_rbp;
+	u64 null_rip;
+};
 
 struct UserInitStackFrame {
 	u64 r15, r14, r13, r12, rbp, rbx;
@@ -90,19 +99,22 @@ Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg) 
 	return task;
 }
 
-Task* create_kernel_task(const char* name, void (*fn)()) {
+Task* create_kernel_task(const char* name, void (*fn)(), void* arg) {
 	auto task = new Task;
 
 	u8* stack = new u8[0x2000]();
 	task->stack_base = cast<u64>(stack);
 	task->stack_size = 0x2000;
 
-	stack += 0x2000 - sizeof(fn);
-	*cast<decltype(fn)*>(stack) = fn;
-	stack -= sizeof(fn);
-	*cast<decltype(&after_init_switch)*>(stack) = after_init_switch;
-	// space for 6 registers (all zeros)
-	stack -= 6 * 8;
+	auto* init_frame = cast<InitStackFrame*>(stack + 0x2000 - sizeof(InitStackFrame));
+
+	stack += 0x2000 - sizeof(InitStackFrame);
+
+	init_frame->after_init_switch = after_init_switch;
+	init_frame->fn = fn;
+	init_frame->arg = arg;
+	init_frame->null_rbp = 0;
+	init_frame->null_rip = 0;
 
 	strncpy(task->name, name, 128);
 	task->status = TaskStatus::Ready;
@@ -255,11 +267,42 @@ void sched_kill() {
 }
 
 [[noreturn]] void test_task() {
-	for (usize i = 0; i < 2; ++i) {
+	for (usize i = 0; i < 200; ++i) {
 		println("test task");
 		sched_sleep(1000 * 1000);
 	}
 	sched_exit();
+}
+
+static void sched_load_balance() {
+	auto local = get_cpu_local();
+
+	usize min_thread_count = 0xFF;
+	u8 min_cpu = 0;
+	usize max_thread_count = 0;
+	u8 max_cpu = 0;
+
+	for (usize i = 0; i < cpu_count; ++i) {
+		auto& cpu = cpu_locals[i];
+		u32 thread_count = cpu.thread_count;
+		if (thread_count < min_thread_count) {
+			min_thread_count = thread_count;
+			min_cpu = i;
+		}
+		if (thread_count > max_thread_count) {
+			max_thread_count = thread_count;
+			max_cpu = i;
+		}
+	}
+
+	if (min_cpu != max_cpu && min_thread_count != max_thread_count) {
+		auto diff = max_thread_count - min_thread_count;
+		println("moving ", diff / 2, " threads from cpu ", max_cpu, " to cpu ", min_cpu);
+	}
+
+	println("sched load balance");
+
+	local->timer.create_timer(get_timer_us() + US_IN_SEC, sched_load_balance);
 }
 
 void sched_init() {
@@ -278,4 +321,6 @@ void sched_init() {
 	for (u8 i = 0; i < SCHED_MAX_LEVEL; ++i) {
 		local->levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;
 	}
+
+	local->timer.create_timer(get_timer_us() + US_IN_SEC, sched_load_balance);
 }

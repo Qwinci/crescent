@@ -50,6 +50,7 @@ struct Lapic {
 	};
 
 	static void send_ipi_all(Msg msg);
+	static void send_ipi(u8 id, Msg msg);
 private:
 	static Msg current_msg;
 	static usize base;

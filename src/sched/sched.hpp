@@ -64,5 +64,5 @@ void sched_kill();
 
 void sched_queue_task(Task* task);
 void sched();
-Task* create_kernel_task(const char* name, void (*fn)());
+Task* create_kernel_task(const char* name, void (*fn)(), void* arg);
 Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg);
