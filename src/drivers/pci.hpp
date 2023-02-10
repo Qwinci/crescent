@@ -135,9 +135,9 @@ namespace Pci {
 		}
 
 		inline void set_data(u8 vec, bool edge_trigger = true, bool deassert = true) {
-			msg_data = vec |
-					   (as<u32>(!edge_trigger) << 15) |
-					   (as<u32>(!deassert) << 14);
+			msg_data = as<u16>(vec) |
+					   (as<u16>(!edge_trigger) << 15) |
+					   (as<u16>(!deassert) << 14);
 		}
 
 		inline void set_cpu(u8 cpu) {
@@ -174,10 +174,10 @@ namespace Pci {
 	private:
 		u8 id;
 		u8 next;
-		volatile u16 msg_control;
-		volatile u32 msg_low;
-		volatile u32 msg_high;
-		volatile u16 msg_data;
+		u16 msg_control;
+		u32 msg_low;
+		u32 msg_high;
+		u16 msg_data;
 		u16 reserved;
 	public:
 		volatile u32 mask;
@@ -186,6 +186,31 @@ namespace Pci {
 	static_assert(sizeof(MsiCap) == 1 + 1 + 2 + 8 + 2 + 2 + 4 + 4);
 
 	struct MsiXCap {
+		struct TableEntry {
+			inline void mask(bool mask) {
+				if (mask) {
+					vector_ctrl &= 1;
+				}
+				else {
+					vector_ctrl |= 1;
+				}
+			}
+
+			inline void set_data(u8 vec, bool edge_trigger = true, bool deassert = true) {
+				msg_data = as<u32>(vec) |
+						   (as<u32>(!edge_trigger) << 15) |
+						   (as<u32>(!deassert) << 14);
+			}
+
+			inline void set_cpu(u8 cpu) {
+				msg_addr = 0xFEE00000 | as<u64>(cpu) << 12;
+			}
+
+			u64 msg_addr;
+			u32 msg_data;
+			u32 vector_ctrl;
+		};
+
 		inline void enable(bool enable) {
 			if (enable) {
 				msg_control |= 1 << 15;
@@ -205,7 +230,7 @@ namespace Pci {
 		}
 
 		[[nodiscard]] inline u16 get_table_size() const {
-			return (msg_control & 0b11111111111) + 1;
+			return (msg_control & 0b11111111111);
 		}
 
 		[[nodiscard]] inline u32 get_table_offset() const {
@@ -216,19 +241,11 @@ namespace Pci {
 			return (table_off_bir & 0b111);
 		}
 
-		[[nodiscard]] inline u32 get_pba_offset() const {
-			return (pba_off_bir & ~0b111);
-		}
-
-		[[nodiscard]] inline u8 get_pba_bar() const {
-			return (pba_off_bir & 0b111);
-		}
-
 		u8 id;
 		u8 next;
-		volatile u16 msg_control;
-		volatile u32 table_off_bir;
-		volatile u32 pba_off_bir;
+		u16 msg_control;
+		u32 table_off_bir;
+		u32 pb_off_bir;
 	};
 	static_assert(sizeof(MsiXCap) == 1 + 1 + 2 + 4 + 4);
 }

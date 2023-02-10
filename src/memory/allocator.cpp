@@ -8,28 +8,59 @@
 
 Allocator ALLOCATOR;
 
-constexpr usize pow(usize value, u8 pow) {
-	for (usize orig = value; pow > 1; --pow) value *= orig;
-	return value;
-}
-
 constexpr u8 size_to_index(u16 size) {
-	if (size <= 8) {
+	if (size <= 64) {
 		return 0;
 	}
 	auto log = log2(size);
-	log -= 3;
+	log -= 6;
 	return log;
 }
 
 constexpr u16 index_to_size(u8 index) {
-	return pow2(index + 3);
+	return pow2(index + 6);
 }
 
 extern Spinlock alloc_lock;
 
+void* Allocator::alloc_helper(usize index) { // NOLINT(misc-no-recursion)
+	auto& list = freelists[index];
+
+	if (auto node = list.root) {
+		list.root = list.root->next;
+		return node;
+	}
+
+	if (index == FREELIST_COUNT - 1) {
+		auto mem = PAGE_ALLOCATOR.alloc_new(false);
+		if (!mem) {
+			return nullptr;
+		}
+
+		auto virt = PhysAddr {mem}.to_virt();
+
+		auto n = new (virt) Freelist::Node;
+		list.insert(n);
+
+		auto size = index_to_size(index);
+		return virt.offset(as<usize>(size));
+	}
+
+	auto next_level_node = alloc_helper(index + 1);
+	if (!next_level_node) {
+		return nullptr;
+	}
+
+	auto n = new (next_level_node) Freelist::Node;
+	list.insert(n);
+
+	auto size = index_to_size(index);
+	return VirtAddr {next_level_node}.offset(as<usize>(size));
+}
+
 void* Allocator::alloc(usize size) {
-	if (size == PAGE_SIZE) {
+	auto index = size_to_index(size);
+	if (index_to_size(index) == PAGE_SIZE) {
 		auto mem = PAGE_ALLOCATOR.alloc_new();
 		if (!mem) {
 			return nullptr;
@@ -41,45 +72,54 @@ void* Allocator::alloc(usize size) {
 		return vm_kernel_alloc_backed(count);
 	}
 
-	auto index = size_to_index(size);
-
 	alloc_lock.lock();
+
+	auto node = alloc_helper(index);
+
+	alloc_lock.unlock();
+	return node;
+}
+
+void Allocator::dealloc_helper(void* ptr, usize index) { // NOLINT(misc-no-recursion)
+	auto i_size = index_to_size(index);
 	auto& list = freelists[index];
-	if (!list.root) {
-		auto m = PAGE_ALLOCATOR.alloc_new(false);
-		if (!m) {
-			panic("memory allocation of ", size, " bytes failed");
+
+	auto other = cast<usize>(ptr) ^ i_size;
+
+	Freelist::Node* prev = nullptr;
+	Freelist::Node* node = list.root;
+	while (node) {
+		if (cast<usize>(node) == other) {
+			if (prev) {
+				prev->next = node->next;
+			}
+			else {
+				list.root = node->next;
+			}
+
+			usize lowest_node = other & ~(1ULL << (index + 6));
+
+			if (index == FREELIST_COUNT - 1) {
+				PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {lowest_node}.to_phys().as_usize()), false);
+				return;
+			}
+
+			dealloc_helper(cast<void*>(lowest_node), index + 1);
+			return;
 		}
-		void* mem = PhysAddr {m}.to_virt();
-
-		auto align_size = index_to_size(index);
-
-		auto count = 0x1000 / align_size - 2;
-
-		list.root = new (cast<void*>(cast<usize>(mem) + align_size)) Node;
-		list.len = count + 1;
-		auto node = list.root;
-		for (usize i = 0; i < count; ++i) {
-			auto new_node = new (cast<void*>(cast<usize>(node) + align_size)) Node;
-			node->next = new_node;
-			node = new_node;
-		}
-
-		alloc_lock.unlock();
-		return mem;
+		prev = node;
+		node = node->next;
 	}
-	else {
-		auto node = list.root;
-		list.root = node->next;
-		list.len -= 1;
-		alloc_lock.unlock();
-		return node;
-	}
+
+	auto new_node = new (ptr) Freelist::Node;
+	list.insert(new_node);
 }
 
 void Allocator::dealloc(void* ptr, usize size) {
-	if (size == PAGE_SIZE) {
+	auto index = size_to_index(size);
+	if (index_to_size(index) == PAGE_SIZE) {
 		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {ptr}.to_phys().as_usize()));
+		return;
 	}
 	else if (size > PAGE_SIZE) {
 		auto count = (size + PAGE_SIZE - 1) / PAGE_SIZE;
@@ -89,39 +129,7 @@ void Allocator::dealloc(void* ptr, usize size) {
 
 	alloc_lock.lock();
 
-	auto index = size_to_index(size);
-	auto align_size = index_to_size(index);
-	auto& list = freelists[index];
-	auto node = new (ptr) Node;
-
-	if (list.len + 1 == 0x1000 / align_size) {
-		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {list.root}.to_phys().as_usize()), false);
-		list.root = nullptr;
-		list.len = 0;
-		alloc_lock.unlock();
-		return;
-	}
-
-	list.len += 1;
-
-	if (!list.root) {
-		list.root = node;
-		alloc_lock.unlock();
-		return;
-	}
-
-	auto n = list.root;
-	while (n->next) {
-		if (n->next > node) {
-			node->next = n->next;
-			n->next = node;
-			alloc_lock.unlock();
-			return;
-		}
-		n = n->next;
-	}
-
-	n->next = node;
+	dealloc_helper(ptr, index);
 
 	alloc_lock.unlock();
 }

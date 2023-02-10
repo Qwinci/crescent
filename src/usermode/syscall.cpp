@@ -14,7 +14,9 @@ void* sys_fbmn_create(u32 width, u32 height, u32 depth);
 i32 sys_fbmn_swap(void* fb, u32 width, u32 height, u32 depth);
 
 // 0 sys_exit
-// 1 sys_fbmn
+// 1 sys_fbmn_cur_info
+// 2 sys_fbmn_create
+// 3 sys_fbmn_swap
 
 void* syscall_handlers[syscall_handler_count] {
 		reinterpret_cast<void*>(&sys_exit),
@@ -46,7 +48,7 @@ static inline void* kptr(void* uptr) {
 	return phys_base.offset(ptr_offset).to_virt();
 }
 
-static inline void* kptr(const void* uptr) {
+static inline const void* kptr(const void* uptr) {
 	auto base = ALIGNDOWN(cast<usize>(uptr), PAGE_SIZE);
 	auto ptr_offset = cast<usize>(uptr) - base;
 	auto phys_base = current_task->get_map()->virt_to_phys(VirtAddr {base});
@@ -62,19 +64,6 @@ if (!(name)) return error
 #define ENOEX(type) (type) (-1LL)
 #define EINVAL(type) (type) (-2LL)
 #define ENOSUP(type) (type) (-3LL)
-
-i32 sys_create_thread(const char* name, void (*fn)(), void* arg) {
-	VERIFY_PTR(kname, name, EINVAL(i32));
-	auto kfn = cast<decltype(fn)>(kptr(cast<void*>(fn)));
-	if (!kfn) return EINVAL(i32);
-
-	syscall_start();
-	auto task = create_user_task(kname, current_task->get_map(), fn, arg);
-	auto flags = enter_critical();
-	sched_queue_task(task);
-	leave_critical(flags);
-	syscall_end();
-}
 
 i32 sys_fbmn_cur_info(u32* width, u32* height, u32* depth) {
 	VERIFY_PTR(kwidth, width, EINVAL(i32));

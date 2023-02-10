@@ -99,12 +99,6 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	arch_init_smp(ap_entry);
 
-	auto int_stack = new u8[0x1000];
-	int_stack += 0x1000;
-
-	data->tss.ist1_low = cast<usize>(int_stack);
-	data->tss.ist1_high = cast<usize>(int_stack) >> 32;
-
 	register_int_handler(timer_vec, timer_int);
 
 	init_usermode();
@@ -155,10 +149,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	//println("testing scheduler");
 	//test_sched();
 
-	/*sched_init();
-	auto new_stack = new u8[0x2000];
-	new_stack += 0x2000;
-	data->kernel_stack = new_stack;
+	sched_init();
 
 	start_timer();
 
@@ -166,7 +157,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	auto flags = enter_critical();
 	sched_queue_task(task);
 
-	leave_critical(flags);*/
+	leave_critical(flags);
 
 	/*auto task = create_kernel_task("test task", test_task);
 	auto flags = enter_critical();

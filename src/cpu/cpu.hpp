@@ -58,7 +58,6 @@ struct CpuLocal {
 
 	CpuLocal* self {this};
 	void* user_stack;
-	void* kernel_stack;
 	u64 apic_frequency {};
 	u64 tsc_frequency {};
 	Tss tss {.iopb = sizeof(Tss)};

@@ -14,7 +14,7 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 2
         -d int -no-reboot -no-shutdown -cpu qemu64,+invtsc
         -drive file=nvm.img,if=none,id=nvm,format=raw
         -device nvme,serial=deadbeef,drive=nvm -M smm=off
-        -net nic,model=rtl8139)
+        -net nic,model=rtl8139 -trace pci_nvme_err*)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
 

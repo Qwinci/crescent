@@ -1,5 +1,6 @@
 #pragma once
 #include "types.hpp"
+#include "utils/rb_tree.hpp"
 
 struct Page;
 
@@ -25,17 +26,40 @@ public:
 	void dealloc(void* ptr, usize size);
 	void* realloc(void* ptr, usize old_size, usize size);
 private:
-	struct Node {
-		Node* next;
-	};
+	void* alloc_helper(usize index);
+	void dealloc_helper(void* ptr, usize index);
+
+	static constexpr usize FREELIST_COUNT = 6;
 
 	struct Freelist {
-		Node* root;
-		Node* end;
-		usize len;
+		//RBTree<usize, u8> tree {};
+		struct Node {
+			Node* next;
+		};
+		Node* root {};
+
+		inline void insert(Node* node) {
+			if (!root) {
+				root = node;
+				return;
+			}
+
+			auto n = root;
+			while (n->next) {
+				if (n->next > node) {
+					auto old_next = n->next;
+					node->next = old_next;
+					n->next = node;
+					return;
+				}
+			}
+
+			n->next = node;
+			node->next = nullptr;
+		}
 	};
 
-	Freelist freelists[9];
+	Freelist freelists[FREELIST_COUNT] {};
 };
 
 extern PageAllocator PAGE_ALLOCATOR;

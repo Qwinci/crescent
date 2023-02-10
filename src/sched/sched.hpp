@@ -10,7 +10,8 @@ enum class TaskStatus : u8 {
 	Ready = 1,
 	Running = 0,
 	Sleeping = 2,
-	Exited = 3
+	Exited = 3,
+	Killed = 4
 };
 
 struct Task {
@@ -57,6 +58,7 @@ void sched_init();
 void sched_block(TaskStatus status);
 void sched_unblock(Task* task);
 void sched_sleep(u64 us);
+void sched_kill();
 [[noreturn]] void sched_exit();
 
 void sched_queue_task(Task* task);

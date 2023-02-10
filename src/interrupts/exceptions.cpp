@@ -3,10 +3,8 @@
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "interrupts.hpp"
-#include "utils/misc.hpp"
 
 #define GENERIC_FAULT(Name) { \
-	disable_interrupts(); \
 	print_lock.lock(); \
 	set_fg(0xFF0000); \
 	println_nolock(#Name, " on cpu ", get_cpu_local()->id); \
@@ -15,7 +13,6 @@
 }
 
 [[noreturn]] void double_fault_exception(InterruptCtx* ctx) {
-	disable_interrupts();
 	print_lock.lock();
 	set_fg(0xFF0000);
 
@@ -27,7 +24,6 @@
 }
 
 [[noreturn]] void gp_fault_exception(InterruptCtx* ctx) {
-	disable_interrupts();
 	print_lock.lock();
 	set_fg(0xFF0000);
 
@@ -54,7 +50,6 @@
 
 	disable_interrupts();
 	print_lock.lock();
-	Lapic::send_ipi_all(Lapic::Msg::Halt);
 	set_fg(0xFF0000);
 	println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on cpu ", get_cpu_local()->id);
 	println_nolock(Fmt::Hex, "IP: ", ctx->ip);
@@ -65,7 +60,17 @@
 			", Reserved Write: ", reserved_write,
 			", Instruction Fetch: ", inst_fetch
 			);
-	print_lock.unlock();
+
+	if (user) {
+		println_nolock("USER TASK '", as<const char*>(current_task->name), "' IS GOING TO BE TERMINATED BECAUSE IT DID STUPID STUFF");
+		print_lock.unlock();
+		sched_kill();
+	}
+	else {
+		Lapic::send_ipi_all(Lapic::Msg::Halt);
+		print_lock.unlock();
+	}
+
 	while (true) asm("hlt");
 }
 

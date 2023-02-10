@@ -49,6 +49,8 @@ _start:
 
 	add rsp, 16
 
+	mov qword [0], 1
+
 	mov eax, SYS_EXIT
 	xor edi, edi
 	syscall

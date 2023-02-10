@@ -1,6 +1,5 @@
 global switch_task
 
-extern current_task
 extern ready_tasks
 extern ready_tasks_end
 extern sched_lock
@@ -45,20 +44,7 @@ endstruc
 %define STATUS_READY 1
 %define STATUS_RUNNING 0
 
-struc Task
-	.name: resb 128
-	.rsp: resq 1
-	.kernel_rsp: resq 1
-	.next: resq 1
-	.map: resq 1
-	.sleep_end: resq 1
-	.stack_base: resq 1
-	.stack_size: resq 1
-	.status: resb 1
-	.task_level: resb 1
-	.user: resb 1
-	.reserved: resb 5
-endstruc
+%include "sched/task.inc"
 
 ; Task* switch_task(Task* old_task, Task* new_task)
 switch_task:

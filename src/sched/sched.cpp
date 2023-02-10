@@ -32,12 +32,12 @@ static void after_switch_from(Task* old_task, Task* this_task) {
 			vm_user_dealloc_backed(map, cast<void*>(old_task->stack_base), ALIGNUP(old_task->stack_size, 0x1000) / 0x1000);
 
 			map->destroy_lower_half();
-			delete map;
+			ALLOCATOR.dealloc(map, sizeof(*map));
 		}
 		else {
 			ALLOCATOR.dealloc(cast<void*>(old_task->stack_base), old_task->stack_size);
 		}
-		delete old_task;
+		ALLOCATOR.dealloc(old_task, sizeof(*old_task));
 	}
 }
 
@@ -239,6 +239,12 @@ void sched_sleep(u64 us) {
 
 [[noreturn]] void sched_exit() {
 	current_task->status = TaskStatus::Exited;
+	sched();
+	__builtin_unreachable();
+}
+
+void sched_kill() {
+	current_task->status = TaskStatus::Killed;
 	sched();
 	__builtin_unreachable();
 }

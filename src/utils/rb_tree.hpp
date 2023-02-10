@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "console.hpp"
 
 template<typename K, typename T>
 class RBTree {
@@ -23,6 +24,13 @@ public:
 		friend class RBTree;
 	};
 
+	Node* get_root() {
+		if (root == &null) {
+			return nullptr;
+		}
+		return root;
+	}
+
 	constexpr void insert(K key, T value, Node* node) {
 		node->key = key;
 		node->value = value;
@@ -45,6 +53,10 @@ public:
 	}
 
 	constexpr Node* remove(Node* node) {
+		if (as<u8>(node->color) != 0 && as<u8>(node->color) != 1) {
+			panic("node has invalid color");
+		}
+
 		Color original_color = node->color;
 		Node* replace;
 		if (node->left == &null) {

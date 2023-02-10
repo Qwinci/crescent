@@ -1,6 +1,5 @@
 #include "hpet.hpp"
 #include "acpi/common.hpp"
-#include "console.hpp"
 #include "memory/map.hpp"
 #include "utils.hpp"
 

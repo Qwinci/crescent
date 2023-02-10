@@ -1,3 +1,4 @@
+#include "acpi/lapic.hpp"
 #include "console.hpp"
 #include "pci.hpp"
 #include "timer/timer.hpp"
@@ -82,8 +83,8 @@
 #define CC_IOCQES_MASK 0b1111
 #define CC_IOCQES_V(v) ((v) << 20)
 /// IO Submission Queue Entry Size (power of two)
-#define CC_IOSQES(r) (r >> 16 & 0b1111)
-#define CC_IOSQES_MASK 0b1111
+#define CC_IOSQEC(r) (r >> 16 & 0b1111)
+#define CC_IOSQEC_MASK 0b1111
 #define CC_IOSQEC_V(v) ((v) << 16)
 /// Shutdown Notification
 #define CC_SHN(r) (r >> 14 & 0b11)
@@ -162,51 +163,129 @@
 #define REG64_ACQ 0x30
 #define ACQ_MASK ~(0xFFFULL)
 
+struct Regs {
+	u64 cap;
+	u32 vs;
+	u32 intms;
+	u32 intmc;
+	u32 cc;
+private:
+	u32 reserved;
+public:
+	u32 csts;
+	u32 nssr;
+	u32 aqa;
+	u64 asq;
+	u64 acq;
+};
+
+enum class Op : u8 {
+	DeleteIoSubQueue = 0,
+	CreateIoSubQueue = 1,
+	GetLogPage = 2,
+	DeleteIoCompQueue = 4,
+	CreateIoCompQueue = 5,
+	Identify = 6,
+	Abort = 8,
+	SetFeatures = 9,
+	GetFeatures = 0xA,
+	AsyncEventRequest = 0xC,
+	NamespaceManagement = 0xD,
+	FirmwareCommit = 0x10,
+	FirmwareImageDownload = 0x11,
+	DeviceSelfTest = 0x14,
+	NamespaceAttachment = 0x15,
+	KeepAlive = 0x18,
+	DirectiveSend = 0x19,
+	DirectiveReceive = 0x1A,
+	VirtualizationManagement = 0x1C,
+	NvmeMiSend = 0x1D,
+	NvmeMiReceive = 0x1E,
+	CapabilityManagement = 0x20,
+	Lockdown = 0x24,
+	DoorbellBufferConfig = 0x7C,
+	FabricsCommands = 0x7F,
+	FormatNvm = 0x80,
+	SecuritySend = 0x81,
+	SecurityReceive = 0x82,
+	Sanitize = 0x84,
+	GetLbaStatus = 0x86
+};
+
+#define CNS_CONTROLLER 1
+
+struct Cmd {
+	Op op;
+	u8 flags;
+	u16 cid;
+	union {
+		struct {
+			u32 nsid;
+			u32 reserved1[2];
+			u32 mtpr;
+			u64 dtpr[2];
+			u8 cns;
+			u8 reserved2;
+			u16 cntid;
+			u16 cns_ident;
+			u8 reserved3;
+			u8 csi;
+		} identify;
+	};
+};
+
+struct CompletionEntry {
+	u32 cmd_specific1;
+	u32 cmd_specific2;
+	/// SQ Head Pointer
+	u16 sqhd;
+	/// SQ Identifier
+	u16 sqid;
+	/// Command Identifier
+	u16 cid;
+	/// Phase
+	u16 p : 1;
+	u16 status : 15;
+};
+
 struct NvmeController {
+	static void irq(InterruptCtx* ctx) {
+		println("nvme irq");
+		Lapic::eoi();
+	}
+
 	bool init(Pci::Header0* hdr, usize base_addr) {
-		// todo
-		return false;
-
 		base = base_addr;
+		regs = cast<volatile Regs*>(base);
 
-		// todo check version
-
-		auto cc = reg32(REG32_CC);
-		auto cap = reg64(REG64_CAP);
-		auto csts = reg32(REG32_CSTS);
-
-		if (!(CAP_CSS(*cap) & CSS_NVM)) {
+		if (!(CAP_CSS(regs->cap) & CSS_NVM)) {
 			println("[nvme] controller doesn't support the nvm command set");
 			return false;
 		}
 
-		auto min_pg_size = pow2(12 + CAP_MPSMIN(*cap));
-		auto max_pg_size = pow2(12 + CAP_MPSMAX(*cap));
+		auto min_pg_size = pow2(12 + CAP_MPSMIN(regs->cap));
+		auto max_pg_size = pow2(12 + CAP_MPSMAX(regs->cap));
 
 		if (PAGE_SIZE < min_pg_size || PAGE_SIZE > max_pg_size) {
 			println("[nvme] controller doesn't support host page size");
 			return false;
 		}
 
-		*cc &= ~CC_EN_MASK;
+		regs->cc &= ~CC_EN_MASK;
 
-		while (CSTS_RDY(*csts)) {
+		while (CSTS_RDY(regs->csts)) {
 			__builtin_ia32_pause();
 		}
 
-		auto admin_sub_queue = new u8[0x1000];
-		auto admin_comp_queue = new u8[0x1000];
+		auto admin_sub_queue = cast<Cmd*>(new u8[0x1000]);
+		auto admin_comp_queue = cast<CompletionEntry*>(new u8[0x1000]);
 
-		auto aqa = reg32(REG32_AQA);
-		*aqa = AQA_ASQS_V(0x1000 / 64) | AQA_ACQS_V(0x1000 / 16);
+		regs->aqa = AQA_ASQS_V(0x1000 / 64) | AQA_ACQS_V(0x1000 / 16);
 
-		auto asq = reg64(REG64_ASQ);
-		auto acq = reg64(REG64_ACQ);
+		regs->asq = VirtAddr {admin_sub_queue}.to_phys().as_usize();
+		regs->acq = VirtAddr {admin_comp_queue}.to_phys().as_usize();
 
-		*asq = VirtAddr {admin_sub_queue}.to_phys().as_usize();
-		*acq = VirtAddr {admin_comp_queue}.to_phys().as_usize();
-
-		auto supported_css = CAP_CSS(*cap);
+		auto supported_css = CAP_CSS(regs->cap);
 		u32 css = 0;
 		if (supported_css & CSS_NO_IO) {
 			css = CSS_ADMIN_ONLY;
@@ -215,31 +294,44 @@ struct NvmeController {
 			css = CSS_ALL_IO;
 		}
 
-		*cc = CC_MPS_V(log2(PAGE_SIZE) - 12) | CC_AMS_V(AMS_RR) | CC_CSS_V(css);
+		regs->cc = CC_MPS_V(log2(PAGE_SIZE) - 12) | CC_AMS_V(AMS_RR) | CC_CSS_V(css) |
+			  CC_IOSQEC_V(log2(64)) | CC_IOCQES_V(log2(16)) | CC_EN_V(1);
 
-		println("csts: ", *csts);
-
-		*cc |= CC_EN_V(1);
-
-		println("csts: ", *csts);
-
-		while (!CSTS_RDY(*csts)) {
+		while (!CSTS_RDY(regs->csts)) {
 			__builtin_ia32_pause();
 		}
 
 		println("controller ready");
 
+		auto stride = pow2(CAP_DSTRD(regs->cap) + 2);
+		println("doorbell stride: ", stride);
+
+		auto data = new u8[0x1000]();
+
+		Cmd identify_cmd {
+			.op = Op::Identify,
+		};
+		identify_cmd.identify.cns = CNS_CONTROLLER;
+		identify_cmd.identify.dtpr[0] = VirtAddr {data}.to_phys().as_usize();
+		identify_cmd.identify.mtpr = 0;
+
+		*admin_sub_queue = identify_cmd;
+
+		auto msix = cast<Pci::MsiXCap*>(hdr->get_cap(Pci::Cap::MsiX));
+		auto table_phys = hdr->map_bar(msix->get_table_bar()) + msix->get_table_offset();
+		auto table = cast<Pci::MsiXCap::TableEntry*>(PhysAddr {table_phys}.to_virt().as_usize());
+
+		auto irq_num = alloc_int_handler(NvmeController::irq);
+		table->set_cpu(0);
+		table->set_data(irq_num);
+
+		auto doorbell = cast<volatile u32*>(base + SUBMISSION_Q_TAIL_DOORBELL(0, stride));
+		*doorbell = 1;
+
 		return true;
 	}
-
-	[[nodiscard]] volatile u32* reg32(u32 reg) const {
-		return cast<volatile u32*>(base + reg);
-	}
-
-	[[nodiscard]] volatile u64* reg64(u32 reg) const {
-		return cast<volatile u64*>(base + reg);
-	}
 private:
+	volatile Regs* regs;
 	usize base;
 };
 
@@ -265,6 +357,6 @@ void init_nvme(Pci::Header0* hdr) {
 	auto controller = new NvmeController();
 	auto result = controller->init(hdr, PhysAddr {addr}.to_virt().as_usize());
 	if (!result) {
-		delete controller;
+		ALLOCATOR.dealloc(controller, sizeof(*controller));
 	}
 }

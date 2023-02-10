@@ -73,7 +73,7 @@ struct StartInfo {
 	auto lapic_id = info->lapic_id;
 	auto acpi_id = info->acpi_id;
 
-	delete info;
+	ALLOCATOR.dealloc(info, sizeof(*info));
 
 	atomic_fetch_add_explicit(&cpus_init, 1, memory_order_relaxed);
 
@@ -174,6 +174,22 @@ void arch_init_mem() {
 
 	for (usize i = 0; i < MEMMAP_REQUEST.response->entry_count; ++i) {
 		auto entry = MEMMAP_REQUEST.response->entries[i];
+
+		if (entry->type == LIMINE_MEMMAP_FRAMEBUFFER) {
+			usize align = 0;
+			if (entry->base & (0x1000 - 1)) {
+				align = entry->base & (0x1000 - 1);
+				entry->base &= 0x1000 - 1;
+			}
+
+			usize j = 0;
+			usize size = entry->length + align;
+			while (j < size) {
+				auto phys = PhysAddr {entry->base + j};
+				page_map->map(phys.to_virt(), phys, PageFlags::Rw | PageFlags::CacheDisable, true);
+				j += 0x1000;
+			}
+		}
 
 		if (entry->base + entry->length < SIZE_4GB) {
 			continue;
