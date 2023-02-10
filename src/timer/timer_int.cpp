@@ -1,16 +1,13 @@
 #include "timer_int.hpp"
 #include "acpi/lapic.hpp"
 #include "console.hpp"
+#include "cpu/cpu.hpp"
 #include "sched/sched.hpp"
 #include "utils/misc.hpp"
 
 u16 timer_vec {};
 static u64 timer_us = 0;
 static usize current_us = 0;
-
-extern SchedLevel levels[32];
-extern Task* sleeping_tasks;
-extern Task* current_task;
 
 void start_timer() {
 	current_us = US_IN_SEC;
@@ -33,6 +30,9 @@ void timer_int(InterruptCtx* ctx) {
 
 	auto flags = enter_critical();
 
+	auto local = get_cpu_local();
+	const auto& levels = local->levels;
+
 	bool all_empty = true;
 	for (const auto& level : levels) {
 		if (!level.is_empty()) {
@@ -41,25 +41,25 @@ void timer_int(InterruptCtx* ctx) {
 		}
 	}
 
-	auto& level = levels[current_task->task_level];
+	auto& level = levels[local->current_task->task_level];
 	u64 next_timestamp = level.slice_us;
 
 	bool sleep = false;
-	while (sleeping_tasks) {
-		if (sleeping_tasks->sleep_end > timer_us) {
-			next_timestamp = min(next_timestamp, sleeping_tasks->sleep_end - timer_us);
+	while (local->sleeping_tasks) {
+		if (local->sleeping_tasks->sleep_end > timer_us) {
+			next_timestamp = min(next_timestamp, local->sleeping_tasks->sleep_end - timer_us);
 			break;
 		}
 		else {
-			auto task = sleeping_tasks;
-			sleeping_tasks = task->next;
+			auto task = local->sleeping_tasks;
+			local->sleeping_tasks = task->next;
 			sched_unblock(task);
 			sleep = true;
 		}
 	}
 
-	if (current_task->status == TaskStatus::Running) {
-		current_task->decrease_level();
+	if (local->current_task->status == TaskStatus::Running) {
+		local->current_task->decrease_level();
 	}
 
 	if (all_empty && !sleep) {

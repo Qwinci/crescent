@@ -1,18 +1,19 @@
 global syscall_entry_asm
 extern syscall_handler_count
 extern syscall_handlers
-extern current_task
 
 %include "sched/task.inc"
+%include "sched/cpu.inc"
 
 ; rax = num, rdi = arg0, rsi = arg1, rdx = arg2, r8 = arg3, r9 = arg4
 
 syscall_entry_asm:
 	swapgs
 	push rbp
-	mov rbp, [current_task]
-	mov qword [rbp + Task.rsp], rsp
+	mov rbp, [gs:CpuLocal.current_task]
+	mov qword [rbp + Task.syscall_rsp], rsp
 	mov rsp, [rbp + Task.kernel_rsp]
+	sti
 
 	push r11
 	push rcx
@@ -30,6 +31,7 @@ syscall_entry_asm:
 
 	call rax
 
+	cli
 	xor rdi, rdi
 	xor rsi, rsi
 	xor rdx, rdx
@@ -41,7 +43,7 @@ syscall_entry_asm:
 	pop rcx
 	pop r11
 
-	mov rsp, [rbp + Task.rsp]
+	mov rsp, [rbp + Task.syscall_rsp]
 	pop rbp
 	swapgs
 	o64 sysret

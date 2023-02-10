@@ -37,6 +37,7 @@ struct Task {
 	u8 task_level;
 	bool user;
 	u8 reserved[5];
+	u64 syscall_rsp;
 };
 
 #define SCHED_MAX_LEVEL 32
@@ -65,4 +66,3 @@ void sched_queue_task(Task* task);
 void sched();
 Task* create_kernel_task(const char* name, void (*fn)());
 Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg);
-extern Task* current_task;

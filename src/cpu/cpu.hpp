@@ -57,12 +57,15 @@ struct CpuLocal {
 	inline explicit CpuLocal(u8 id) : id {id} {}
 
 	CpuLocal* self {this};
-	void* user_stack;
 	u64 apic_frequency {};
 	u64 tsc_frequency {};
 	Tss tss {.iopb = sizeof(Tss)};
+	Task* current_task {};
+	Task* sleeping_tasks {};
+	SchedLevel levels[SCHED_MAX_LEVEL] {};
 	u8 id {};
-	u8 reserved[7] {};
+	u8 reserved[3] {};
+	_Atomic(u32) thread_count = 0;
 };
 
 void set_cpu_local(CpuLocal* local);

@@ -11,4 +11,5 @@ struc Task
 	.task_level: resb 1
 	.user: resb 1
 	.reserved: resb 5
+	.syscall_rsp: resq 1
 endstruc

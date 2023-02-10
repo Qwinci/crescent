@@ -9,9 +9,6 @@
 #include "usermode/usermode.hpp"
 #include "utils.hpp"
 
-Task* current_task {};
-SchedLevel levels[SCHED_MAX_LEVEL] {};
-
 static void after_switch_from(Task* old_task, Task* this_task) {
 	auto local = get_cpu_local();
 
@@ -42,7 +39,8 @@ static void after_switch_from(Task* old_task, Task* this_task) {
 }
 
 static void after_init_switch(Task* old_task) {
-	after_switch_from(old_task, current_task);
+	get_cpu_local()->thread_count += 1;
+	after_switch_from(old_task, get_cpu_local()->current_task);
 }
 
 struct UserInitStackFrame {
@@ -121,7 +119,9 @@ Task* create_kernel_task(const char* name, void (*fn)()) {
 extern "C" Task* switch_task(Task* old_task, Task* new_task);
 
 static Task* get_next_task_from_level(u8 level_num) {
-	auto& level = levels[level_num];
+	auto local = get_cpu_local();
+
+	auto& level = local->levels[level_num];
 
 	if (level.ready_tasks) {
 		auto task = level.ready_tasks;
@@ -138,28 +138,32 @@ static void switch_wrapper(Task* this_task, Task* new_task) {
 		cast<PageMap*>(PhysAddr {new_task->map}.to_virt().as_usize())->load();
 	}
 
+	auto local = get_cpu_local();
+
 	auto prev = switch_task(this_task, new_task);
 
-	if (prev->map != current_task->map) {
-		cast<PageMap*>(PhysAddr {current_task->map}.to_virt().as_usize())->load();
+	if (prev->map != local->current_task->map) {
+		cast<PageMap*>(PhysAddr {local->current_task->map}.to_virt().as_usize())->load();
 	}
 
-	after_switch_from(prev, current_task);
+	after_switch_from(prev, local->current_task);
 }
 
 void sched() {
 	auto flags = enter_critical();
 
+	auto local = get_cpu_local();
+
 	Task* task = nullptr;
 	for (u8 i = SCHED_MAX_LEVEL; i > 0; --i) {
-		if (!levels[i - 1].is_empty()) {
+		if (!local->levels[i - 1].is_empty()) {
 			task = get_next_task_from_level(i - 1);
 			break;
 		}
 	}
 
 	if (!task) {
-		if (current_task->status != TaskStatus::Running) {
+		if (local->current_task->status != TaskStatus::Running) {
 			panic("todo idle");
 		}
 		else {
@@ -167,16 +171,17 @@ void sched() {
 		}
 	}
 
-	//println("switching to task '", as<const char*>(task->name), "' (level ", task->task_level, ", map ", (void*) task->map, ")");
-	auto this_task = current_task;
-	current_task = task;
-	switch_wrapper(this_task, current_task);
+	auto this_task = local->current_task;
+	local->current_task = task;
+	switch_wrapper(this_task, local->current_task);
 
 	leave_critical(flags);
 }
 
 void sched_queue_task(Task* task) {
-	auto& level = levels[task->task_level];
+	auto local = get_cpu_local();
+
+	auto& level = local->levels[task->task_level];
 
 	if (!level.ready_tasks) {
 		level.ready_tasks = task;
@@ -189,11 +194,10 @@ void sched_queue_task(Task* task) {
 }
 
 Task* sleeping_tasks {};
-Task* sleeping_tasks_end {};
 
 void sched_block(TaskStatus status) {
 	auto flags = enter_critical();
-	current_task->status = status;
+	get_cpu_local()->current_task->status = status;
 	leave_critical(flags);
 	sched();
 }
@@ -210,13 +214,14 @@ void sched_sleep(u64 us) {
 
 	auto end = get_timer_us() + us;
 
-	current_task->status = TaskStatus::Sleeping;
-	current_task->sleep_end = end;
+	auto local = get_cpu_local();
+
+	local->current_task->status = TaskStatus::Sleeping;
+	local->current_task->sleep_end = end;
 
 	if (!sleeping_tasks) {
-		sleeping_tasks = current_task;
-		sleeping_tasks_end = current_task;
-		current_task->next = nullptr;
+		sleeping_tasks = local->current_task;
+		local->current_task->next = nullptr;
 	}
 	else {
 		Task* task;
@@ -225,12 +230,8 @@ void sched_sleep(u64 us) {
 				break;
 			}
 		}
-		current_task->next = task->next;
-		task->next = current_task;
-
-		if (!task->next) {
-			sleeping_tasks_end = current_task;
-		}
+		local->current_task->next = task->next;
+		task->next = local->current_task;
 	}
 
 	leave_critical(flags);
@@ -238,13 +239,17 @@ void sched_sleep(u64 us) {
 }
 
 [[noreturn]] void sched_exit() {
-	current_task->status = TaskStatus::Exited;
+	auto local = get_cpu_local();
+	local->current_task->status = TaskStatus::Exited;
+	local->thread_count -= 1;
 	sched();
 	__builtin_unreachable();
 }
 
 void sched_kill() {
-	current_task->status = TaskStatus::Killed;
+	auto local = get_cpu_local();
+	local->current_task->status = TaskStatus::Killed;
+	local->thread_count -= 1;
 	sched();
 	__builtin_unreachable();
 }
@@ -264,11 +269,13 @@ void sched_init() {
 	memcpy(this_task->name, "kernel main", sizeof("kernel main"));
 	this_task->next = nullptr;
 	this_task->task_level = SCHED_MAX_LEVEL - 1;
-	current_task = this_task;
+	get_cpu_local()->current_task = this_task;
 
 	constexpr usize inc = (SCHED_SLICE_MAX_US - SCHED_SLICE_MIN_US) / SCHED_MAX_LEVEL;
 
+	auto local = get_cpu_local();
+
 	for (u8 i = 0; i < SCHED_MAX_LEVEL; ++i) {
-		levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;
+		local->levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;
 	}
 }

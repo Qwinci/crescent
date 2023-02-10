@@ -1,4 +1,5 @@
 #include "console.hpp"
+#include "cpu/cpu.hpp"
 #include "memory/memory.hpp"
 #include "memory/pmm.hpp"
 #include "memory/std.hpp"
@@ -25,14 +26,6 @@ void* syscall_handlers[syscall_handler_count] {
 		reinterpret_cast<void*>(&sys_fbmn_swap)
 };
 
-void syscall_start() {
-	get_map()->load();
-}
-
-void syscall_end() {
-	current_task->get_map()->load();
-}
-
 [[noreturn]] void sys_exit(int code) {
 	println("sys_exit called with code ", code);
 	sched_exit();
@@ -41,7 +34,7 @@ void syscall_end() {
 static inline void* kptr(void* uptr) {
 	auto base = ALIGNDOWN(cast<usize>(uptr), PAGE_SIZE);
 	auto ptr_offset = cast<usize>(uptr) - base;
-	auto phys_base = current_task->get_map()->virt_to_phys(VirtAddr {base});
+	auto phys_base = get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
 	if (phys_base.as_usize() == 0) {
 		return nullptr;
 	}
@@ -51,7 +44,7 @@ static inline void* kptr(void* uptr) {
 static inline const void* kptr(const void* uptr) {
 	auto base = ALIGNDOWN(cast<usize>(uptr), PAGE_SIZE);
 	auto ptr_offset = cast<usize>(uptr) - base;
-	auto phys_base = current_task->get_map()->virt_to_phys(VirtAddr {base});
+	auto phys_base = get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
 	if (phys_base.as_usize() == 0) {
 		return nullptr;
 	}
@@ -70,15 +63,12 @@ i32 sys_fbmn_cur_info(u32* width, u32* height, u32* depth) {
 	VERIFY_PTR(kheight, height, EINVAL(i32));
 	VERIFY_PTR(kdepth, depth, EINVAL(i32));
 
-	syscall_start();
-
 	*kwidth = current_fb.width;
 	*kheight = current_fb.height;
 	*kdepth = 32;
 
 	println("sys_fbmn_cur_info");
 
-	syscall_end();
 	return 0;
 }
 
@@ -86,18 +76,17 @@ void* sys_fbmn_create(u32 width, u32 height, u32 depth) {
 	if (width == 0 || height == 0 || depth == 0) {
 		return EINVAL(void*);
 	}
-	syscall_start();
 
 	auto size = ALIGNUP(width * height * (depth / 8), PAGE_SIZE);
-	auto fb = vm_user_alloc_backed(current_task->get_map(), size / PAGE_SIZE, AllocFlags::Rw);
+	auto fb = vm_user_alloc_backed(get_cpu_local()->current_task->get_map(), size / PAGE_SIZE, AllocFlags::Rw);
+	if (!fb) {
+		return nullptr;
+	}
 
-	auto kmapping = vm_user_alloc_kernel_mapping(current_task->get_map(), fb, size / PAGE_SIZE);
-	memset(kmapping, 0, size);
-	vm_user_dealloc_kernel_mapping(current_task->get_map(), kmapping, size / PAGE_SIZE);
+	memset(fb, 0, size);
 
 	println("sys_fbmn_create");
 
-	syscall_end();
 	return fb;
 }
 
@@ -109,35 +98,28 @@ i32 sys_fbmn_swap(void* fb, u32 width, u32 height, u32 depth) {
 		return EINVAL(i32);
 	}
 
-	syscall_start();
-
 	auto size = ALIGNUP(width * height * (depth / 8), PAGE_SIZE);
 	println("sys_fbmn_swap (start)");
-	auto kmapping = vm_user_alloc_kernel_mapping(current_task->get_map(), fb, size / PAGE_SIZE);
-	if (!kmapping) {
-		println("sys_fbmn_swap (end, failed)");
-		syscall_end();
-		return EINVAL(i32);
+	auto map = get_cpu_local()->current_task->get_map();
+	for (usize i = 0; i < size; i += PAGE_SIZE) {
+		if (!map->virt_to_phys(VirtAddr {fb}.offset(i)).as_usize()) {
+			println("sys_fbmn_swap (end, failed)");
+			return EINVAL(i32);
+		}
 	}
 
 	if (width == current_fb.width && height == current_fb.height && depth == 32) {
 		for (usize y = 0; y < height; ++y) {
-			auto src = cast<void*>(cast<usize>(kmapping) + y * width * 4);
+			auto src = cast<void*>(cast<usize>(fb) + y * width * 4);
 			auto dest = cast<void*>(current_fb.address + current_fb.pitch * y);
 			memcpy(dest, src, width * 4);
 		}
 	}
 	else {
-		vm_user_dealloc_kernel_mapping(current_task->get_map(), kmapping, size / PAGE_SIZE);
-		syscall_end();
 		return ENOSUP(i32);
 	}
 
-	vm_user_dealloc_kernel_mapping(current_task->get_map(), kmapping, size / PAGE_SIZE);
-
 	println("sys_fbmn_swap (end)");
-
-	syscall_end();
 
 	return 0;
 }

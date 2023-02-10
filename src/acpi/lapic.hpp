@@ -45,7 +45,8 @@ struct Lapic {
 
 	enum class Msg {
 		None,
-		Halt
+		Halt,
+		LoadBalance
 	};
 
 	static void send_ipi_all(Msg msg);

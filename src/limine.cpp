@@ -52,12 +52,18 @@ struct StartInfo {
 	__builtin_unreachable();
 }
 
+usize cpu_count = 1;
+CpuLocal* cpu_locals;
+
 [[noreturn]] void arch_ap_entry(StartInfo* info) {
-	auto data = new CpuLocal(info->lapic_id);
 	smp_lock.lock();
-	load_gdt(&data->tss);
+
+	cpu_locals[cpu_count++].id = info->lapic_id;
+	load_gdt(&cpu_locals[cpu_count - 1].tss);
+	set_cpu_local(&cpu_locals[cpu_count - 1]);
+
 	smp_lock.unlock();
-	set_cpu_local(data);
+
 	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	set_exceptions();
 	load_idt();
@@ -66,6 +72,9 @@ struct StartInfo {
 	Lapic::init();
 
 	smp_lock.lock();
+
+	// cpu_locals[cpu_count++].id = cpuid(1).ebx >> 24;
+
 	Lapic::calibrate_timer();
 	smp_lock.unlock();
 
@@ -78,6 +87,18 @@ struct StartInfo {
 	atomic_fetch_add_explicit(&cpus_init, 1, memory_order_relaxed);
 
 	fn(lapic_id, acpi_id);
+}
+
+void arch_init_cpu_locals() {
+	cpu_locals = new CpuLocal[SMP_REQUEST.response->cpu_count]();
+
+	auto data = &cpu_locals[0];
+	load_gdt(&data->tss);
+	set_cpu_local(data);
+	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
+	set_exceptions();
+	load_idt();
+	enable_interrupts();
 }
 
 void arch_init_smp(void (*fn)(u8 id, u32 acpi_id)) {

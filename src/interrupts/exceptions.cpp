@@ -62,7 +62,8 @@
 			);
 
 	if (user) {
-		println_nolock("USER TASK '", as<const char*>(current_task->name), "' IS GOING TO BE TERMINATED BECAUSE IT DID STUPID STUFF");
+		println_nolock("USER TASK '", as<const char*>(get_cpu_local()->current_task->name),
+		        "' IS GOING TO BE TERMINATED BECAUSE IT DID STUPID STUFF");
 		print_lock.unlock();
 		sched_kill();
 	}

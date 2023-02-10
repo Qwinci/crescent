@@ -84,14 +84,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	set_fg(0x00FF00);
 
 	arch_init_mem();
-
-	auto data = new CpuLocal();
-	load_gdt(&data->tss);
-	set_cpu_local(data);
-	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
-	set_exceptions();
-	load_idt();
-	enable_interrupts();
+	arch_init_cpu_locals();
 
 	init_timers(rsdp);
 	parse_madt(locate_acpi_table(rsdp, "APIC"));
