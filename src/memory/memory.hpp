@@ -53,6 +53,7 @@ private:
 					n->next = node;
 					return;
 				}
+				n = n->next;
 			}
 
 			n->next = node;

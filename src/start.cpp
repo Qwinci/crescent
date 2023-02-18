@@ -26,11 +26,11 @@ extern "C" fn __init_array_start[]; // NOLINT(bugprone-reserved-identifier)
 extern "C" fn __init_array_end[]; // NOLINT(bugprone-reserved-identifier)
 
 [[noreturn]] void ap_entry(u8 id, u32 acpi_id) {
-	//println("hello from cpu ", id);
+	init_usermode();
+	sched_init(false);
+	start_timer();
 	while (true) asm("hlt");
 }
-
-[[noreturn]] void test_task();
 
 #define EI_MAG0 0
 #define EI_MAG1 1
@@ -72,14 +72,6 @@ struct ElfPHdr {
 	u64 p_align;
 };
 
-void test_task_2() {
-	for (usize i = 0; i < 200; ++i) {
-		println("test task 2");
-		sched_sleep(1000 * 1000);
-	}
-	sched_exit();
-}
-
 extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (fn* f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)();
@@ -98,9 +90,9 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	parse_madt(locate_acpi_table(rsdp, "APIC"));
 	Lapic::calibrate_timer();
 
-	arch_init_smp(ap_entry);
-
 	register_int_handler(timer_vec, timer_int);
+
+	arch_init_smp(ap_entry);
 
 	init_usermode();
 
@@ -144,31 +136,13 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 		}
 	}
 
-	vm_user_dealloc_kernel_mapping(map, k_user_mem, (in_mem_size + 0x1000 - 1) / 0x1000);
+	vm_user_dealloc_kernel_mapping(k_user_mem, (in_mem_size + 0x1000 - 1) / 0x1000);
 
 	auto user_entry = (void (*)()) ((usize) user_mem + (hdr->e_entry - base));
 
-	//println("testing scheduler");
-	//test_sched();
+	//sched_init(true);
 
-	sched_init();
-
-	start_timer();
-
-	auto task = create_user_task("user task", map, cast<void (*)()>(user_entry), nullptr);
-	auto flags = enter_critical();
-	sched_queue_task(task);
-	leave_critical(flags);
-
-	auto t = create_kernel_task("test task", test_task, nullptr);
-	auto f = enter_critical();
-	sched_queue_task(t);
-	leave_critical(f);
-
-	auto t2 = create_kernel_task("test task 2", test_task_2, nullptr);
-	f = enter_critical();
-	sched_queue_task(t2);
-	leave_critical(f);
+	//start_timer();
 
 	init_pci(rsdp);
 

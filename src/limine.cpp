@@ -61,10 +61,9 @@ CpuLocal* cpu_locals;
 	cpu_locals[cpu_count++].id = info->lapic_id;
 	load_gdt(&cpu_locals[cpu_count - 1].tss);
 	set_cpu_local(&cpu_locals[cpu_count - 1]);
-
+	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	smp_lock.unlock();
 
-	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	set_exceptions();
 	load_idt();
 	enable_interrupts();
@@ -72,8 +71,6 @@ CpuLocal* cpu_locals;
 	Lapic::init();
 
 	smp_lock.lock();
-
-	// cpu_locals[cpu_count++].id = cpuid(1).ebx >> 24;
 
 	Lapic::calibrate_timer();
 	smp_lock.unlock();

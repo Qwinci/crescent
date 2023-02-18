@@ -38,6 +38,7 @@ struct Task {
 	bool user;
 	u8 reserved[5];
 	u64 syscall_rsp;
+
 };
 
 #define SCHED_MAX_LEVEL 32
@@ -54,7 +55,7 @@ struct SchedLevel {
 	usize slice_us;
 };
 
-void sched_init();
+void sched_init(bool bsp);
 
 void sched_block(TaskStatus status);
 void sched_unblock(Task* task);

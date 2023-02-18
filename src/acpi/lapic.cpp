@@ -81,6 +81,15 @@ void ipi_handler(InterruptCtx*) {
 			Lapic::eoi();
 			panic("received halt msg on cpu ", Fmt::Dec, get_cpu_local()->id);
 		}
+		case Lapic::Msg::LoadBalance:
+		{
+			Lapic::eoi();
+			auto local = get_cpu_local();
+			println("cpu ", local->id, " halted for load balancing");
+			local->lock.lock();
+			local->lock.unlock();
+			enable_interrupts();
+		}
 	}
 	Lapic::eoi();
 }

@@ -30,4 +30,4 @@ void vm_user_dealloc(void* ptr, usize count);
 void* vm_user_alloc_backed(PageMap* map, usize count, AllocFlags flags = AllocFlags::None);
 void vm_user_dealloc_backed(PageMap* map, void* ptr, usize count);
 void* vm_user_alloc_kernel_mapping(PageMap* map, void* ptr, usize count);
-void vm_user_dealloc_kernel_mapping(PageMap* map, void* ptr, usize count);
+void vm_user_dealloc_kernel_mapping(void* ptr, usize count);

@@ -65,8 +65,9 @@ struct CpuLocal {
 	Task* sleeping_tasks {};
 	SchedLevel levels[SCHED_MAX_LEVEL] {};
 	u8 id {};
+	Spinlock lock {};
 	u8 reserved[3] {};
-	_Atomic(u32) thread_count = 0;
+	atomic_uint_fast32_t thread_count = 0;
 	Timer timer {};
 };
 

@@ -1,4 +1,5 @@
 #include "sched.hpp"
+#include "acpi/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "memory/memory.hpp"
@@ -86,7 +87,7 @@ Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg) 
 	init_frame->null_rbp = 0;
 	init_frame->null_rip = 0;
 
-	vm_user_dealloc_kernel_mapping(map, stack_kview, 2);
+	vm_user_dealloc_kernel_mapping(stack_kview, 2);
 
 	strncpy(task->name, name, 128);
 	task->status = TaskStatus::Ready;
@@ -193,7 +194,24 @@ void sched() {
 void sched_queue_task(Task* task) {
 	task->status = TaskStatus::Ready;
 	task->next = nullptr;
+
 	auto local = get_cpu_local();
+
+	auto& level = local->levels[task->task_level];
+
+	if (!level.ready_tasks) {
+		level.ready_tasks = task;
+		level.ready_tasks_end = task;
+	}
+	else {
+		level.ready_tasks_end->next = task;
+		level.ready_tasks_end = task;
+	}
+}
+
+static void sched_queue_task(Task* task, CpuLocal* local) {
+	task->status = TaskStatus::Ready;
+	task->next = nullptr;
 
 	auto& level = local->levels[task->task_level];
 
@@ -278,34 +296,59 @@ static void sched_load_balance() {
 	auto local = get_cpu_local();
 
 	usize min_thread_count = 0xFF;
-	u8 min_cpu = 0;
+	u8 min_cpu_i = 0;
 	usize max_thread_count = 0;
-	u8 max_cpu = 0;
+	u8 max_cpu_i = 0;
 
 	for (usize i = 0; i < cpu_count; ++i) {
 		auto& cpu = cpu_locals[i];
 		u32 thread_count = cpu.thread_count;
 		if (thread_count < min_thread_count) {
 			min_thread_count = thread_count;
-			min_cpu = i;
+			min_cpu_i = i;
 		}
 		if (thread_count > max_thread_count) {
 			max_thread_count = thread_count;
-			max_cpu = i;
+			max_cpu_i = i;
 		}
 	}
 
-	if (min_cpu != max_cpu && min_thread_count != max_thread_count) {
-		auto diff = max_thread_count - min_thread_count;
-		println("moving ", diff / 2, " threads from cpu ", max_cpu, " to cpu ", min_cpu);
+	auto flags = enter_critical();
+	auto diff = max_thread_count - min_thread_count;
+	if (min_cpu_i != max_cpu_i && diff > 1) {
+
+		auto* min_cpu = &cpu_locals[min_cpu_i];
+		auto* max_cpu = &cpu_locals[max_cpu_i];
+
+		min_cpu->lock.lock();
+		max_cpu->lock.lock();
+
+		Lapic::send_ipi(min_cpu->id, Lapic::Msg::LoadBalance);
+		Lapic::send_ipi(max_cpu->id, Lapic::Msg::LoadBalance);
+
+		for (usize i = SCHED_MAX_LEVEL; i > 0 && diff; --i) {
+			auto& level = max_cpu->levels[i - 1];
+			if (!level.is_empty()) {
+				diff -= 1;
+				auto task = level.ready_tasks;
+				level.ready_tasks = task->next;
+				sched_queue_task(task, min_cpu);
+			}
+		}
+
+		max_cpu->thread_count -= diff;
+		min_cpu->thread_count += diff;
+
+		min_cpu->lock.unlock();
+		max_cpu->lock.unlock();
 	}
 
-	println("sched load balance");
-
 	local->timer.create_timer(get_timer_us() + US_IN_SEC, sched_load_balance);
+
+	leave_critical(flags);
 }
 
-void sched_init() {
+void sched_init(bool bsp) {
 	auto this_task = new Task;
 	this_task->status = TaskStatus::Running;
 	this_task->map = VirtAddr {get_map()}.to_phys().as_usize();
@@ -322,5 +365,7 @@ void sched_init() {
 		local->levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;
 	}
 
-	local->timer.create_timer(get_timer_us() + US_IN_SEC, sched_load_balance);
+	if (bsp) {
+		local->timer.create_timer(get_timer_us() + US_IN_SEC, sched_load_balance);
+	}
 }

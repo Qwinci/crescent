@@ -11,7 +11,7 @@ static Vmem user_vmem;
 void vm_user_init(usize size) {
 	vmem_init(
 			&user_vmem, "User vmem", cast<void*>(0xFA000),
-			size, PAGE_SIZE, nullptr, nullptr, nullptr,
+			size - 0xFA000, PAGE_SIZE, nullptr, nullptr, nullptr,
 			0, VM_INSTANTFIT);
 }
 
@@ -44,7 +44,7 @@ void* vm_user_alloc_kernel_mapping(PageMap* map, void* ptr, usize count) {
 	return mapping;
 }
 
-void vm_user_dealloc_kernel_mapping(PageMap* map, void* ptr, usize count) {
+void vm_user_dealloc_kernel_mapping(void* ptr, usize count) {
 	for (usize i = 0; i < count; ++i) {
 		get_map()->unmap(VirtAddr {ptr}.offset(i * 0x1000), false, true);
 	}
