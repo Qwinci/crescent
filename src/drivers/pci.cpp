@@ -22,7 +22,6 @@ using namespace Pci;
 
 static void enum_func(VirtAddr base, u8 function) {
 	base = VirtAddr {base.as_usize() + (as<usize>(function) << 12)};
-
 	get_map()->map(base, base.to_phys(), PageFlags::Rw | PageFlags::CacheDisable, true);
 	get_map()->refresh_page(base.as_usize());
 
@@ -51,7 +50,7 @@ static void enum_func(VirtAddr base, u8 function) {
 		// NVM Express
 		hdr->common.prog_if == 0x2
 		) {
-		init_nvme(hdr);
+		//init_nvme(hdr);
 	}
 #endif
 }
@@ -94,7 +93,6 @@ void init_pci(void* rsdp) {
 	if (!mcfg_ptr) {
 		panic("no mcfg table found");
 	}
-
 
 	const Mcfg* mcfg = cast<const Mcfg*>(mcfg_ptr);
 	u32 entries = (mcfg->header.length - sizeof(Mcfg)) / sizeof(ConfEntry);

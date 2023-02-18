@@ -11,13 +11,13 @@
 #include "noalloc/string.hpp"
 #include "types.hpp"
 
-static limine_framebuffer_request FB_REQUEST {.id = LIMINE_FRAMEBUFFER_REQUEST};
-static limine_hhdm_request HHDM_REQUEST {.id = LIMINE_HHDM_REQUEST};
-static limine_memmap_request MEMMAP_REQUEST {.id = LIMINE_MEMMAP_REQUEST};
-static limine_module_request MODULE_REQUEST {.id = LIMINE_MODULE_REQUEST};
-static limine_rsdp_request RSDP_REQUEST {.id = LIMINE_RSDP_REQUEST};
-static limine_kernel_address_request KERNEL_ADDRESS_REQUEST {.id = LIMINE_KERNEL_ADDRESS_REQUEST};
-static limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
+static volatile limine_framebuffer_request FB_REQUEST {.id = LIMINE_FRAMEBUFFER_REQUEST};
+static volatile limine_hhdm_request HHDM_REQUEST {.id = LIMINE_HHDM_REQUEST};
+static volatile limine_memmap_request MEMMAP_REQUEST {.id = LIMINE_MEMMAP_REQUEST};
+static volatile limine_module_request MODULE_REQUEST {.id = LIMINE_MODULE_REQUEST};
+static volatile limine_rsdp_request RSDP_REQUEST {.id = LIMINE_RSDP_REQUEST};
+static volatile limine_kernel_address_request KERNEL_ADDRESS_REQUEST {.id = LIMINE_KERNEL_ADDRESS_REQUEST};
+static volatile limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
 
 static atomic_uint_fast8_t cpus_init = 0;
 static Spinlock smp_lock {};

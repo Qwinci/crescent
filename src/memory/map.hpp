@@ -98,6 +98,7 @@ constexpr usize SIZE_4GB = 0x100000000;
 
 class PageMap {
 public:
+	void ensure_toplevel_entries();
 	void map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split = false);
 	void map_multiple(VirtAddr virt, PhysAddr phys, PageFlags flags, usize count, bool split = false);
 	void unmap(VirtAddr virt, bool huge, bool dealloc);

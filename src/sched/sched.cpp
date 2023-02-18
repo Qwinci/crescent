@@ -191,6 +191,8 @@ void sched() {
 }
 
 void sched_queue_task(Task* task) {
+	task->status = TaskStatus::Ready;
+	task->next = nullptr;
 	auto local = get_cpu_local();
 
 	auto& level = local->levels[task->task_level];
@@ -204,8 +206,6 @@ void sched_queue_task(Task* task) {
 		level.ready_tasks_end = task;
 	}
 }
-
-Task* sleeping_tasks {};
 
 void sched_block(TaskStatus status) {
 	auto flags = enter_critical();
@@ -231,13 +231,13 @@ void sched_sleep(u64 us) {
 	local->current_task->status = TaskStatus::Sleeping;
 	local->current_task->sleep_end = end;
 
-	if (!sleeping_tasks) {
-		sleeping_tasks = local->current_task;
+	if (!local->sleeping_tasks) {
+		local->sleeping_tasks = local->current_task;
 		local->current_task->next = nullptr;
 	}
 	else {
 		Task* task;
-		for (task = sleeping_tasks; task->next; task = task->next) {
+		for (task = local->sleeping_tasks; task->next; task = task->next) {
 			if (task->next->sleep_end > end) {
 				break;
 			}

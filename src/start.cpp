@@ -72,6 +72,14 @@ struct ElfPHdr {
 	u64 p_align;
 };
 
+void test_task_2() {
+	for (usize i = 0; i < 200; ++i) {
+		println("test task 2");
+		sched_sleep(1000 * 1000);
+	}
+	sched_exit();
+}
+
 extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (fn* f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)();
@@ -122,6 +130,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	vm_user_init(HHDM_OFFSET);
 
+	get_map()->ensure_toplevel_entries();
 	auto map = get_map()->create_high_half_shared();
 
 	auto user_mem = vm_user_alloc_backed(map, (in_mem_size + 0x1000 - 1) / 0x1000, AllocFlags::Rw | AllocFlags::Exec);
@@ -146,19 +155,20 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	start_timer();
 
-	/*auto task = create_user_task("user task", map, cast<void (*)()>(user_entry), nullptr);
+	auto task = create_user_task("user task", map, cast<void (*)()>(user_entry), nullptr);
 	auto flags = enter_critical();
 	sched_queue_task(task);
-	leave_critical(flags);*/
+	leave_critical(flags);
 
 	auto t = create_kernel_task("test task", test_task, nullptr);
 	auto f = enter_critical();
 	sched_queue_task(t);
 	leave_critical(f);
-	/*auto t = create_user_task("user task 2", map, cast<void (*)()>(user_entry), nullptr);
-	flags = enter_critical();
-	sched_queue_task(t);
-	leave_critical(flags);*/
+
+	auto t2 = create_kernel_task("test task 2", test_task_2, nullptr);
+	f = enter_critical();
+	sched_queue_task(t2);
+	leave_critical(f);
 
 	init_pci(rsdp);
 

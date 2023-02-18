@@ -32,8 +32,6 @@ void timer_int(InterruptCtx* ctx) {
 
 	auto local = get_cpu_local();
 
-	local->timer.trigger_timers(timer_us);
-
 	const auto& levels = local->levels;
 
 	bool all_empty = true;
@@ -47,7 +45,6 @@ void timer_int(InterruptCtx* ctx) {
 	auto& level = levels[local->current_task->task_level];
 	u64 next_timestamp = level.slice_us;
 
-	bool sleep = false;
 	while (local->sleeping_tasks) {
 		if (local->sleeping_tasks->sleep_end > timer_us) {
 			next_timestamp = min(next_timestamp, local->sleeping_tasks->sleep_end - timer_us);
@@ -57,7 +54,6 @@ void timer_int(InterruptCtx* ctx) {
 			auto task = local->sleeping_tasks;
 			local->sleeping_tasks = task->next;
 			sched_unblock(task);
-			sleep = true;
 		}
 	}
 
@@ -65,7 +61,7 @@ void timer_int(InterruptCtx* ctx) {
 		local->current_task->decrease_level();
 	}
 
-	if (all_empty && !sleep) {
+	if (all_empty) {
 		next_timestamp = US_IN_SEC;
 	}
 
@@ -74,6 +70,7 @@ void timer_int(InterruptCtx* ctx) {
 	leave_critical(flags);
 
 	Lapic::start_oneshot(US_IN_SEC / next_timestamp, timer_vec);
+	local->timer.trigger_timers(timer_us);
 	sched();
 }
 

@@ -6,6 +6,8 @@ include(CMakeOptions.cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 20)
+#set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
+#set(CMAKE_INTERPROCEDURAL_OPTIMIZATION True)
 set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg

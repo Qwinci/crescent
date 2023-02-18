@@ -6,6 +6,16 @@ usize HHDM_OFFSET;
 
 PageMap* kernel_map;
 
+void PageMap::ensure_toplevel_entries() {
+	for (usize i = 0; i < 512; ++i) {
+		if (!(entries[i].get_flags() & PageFlags::Present)) {
+			auto frame = new Entry[512]();
+			entries[i].set_flags(PageFlags::Rw | (i < 256 ? PageFlags::Present | PageFlags::User : PageFlags::Present));
+			entries[i].set_addr(VirtAddr {cast<usize>(frame)}.to_phys());
+		}
+	}
+}
+
 void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	auto virt_addr = virt.as_usize();
 
@@ -34,8 +44,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	bool user = flags & PageFlags::User;
 
 	Entry* pdp_entry;
-	if (entries[pml4_offset].get_addr().as_usize()) {
-		entries[pml4_offset].set_flags(PageFlags::Rw | (user ? PageFlags::Present | PageFlags::User : PageFlags::Present));
+	if (entries[pml4_offset].get_flags() & PageFlags::Present) {
 		pdp_entry = cast<Entry*>(entries[pml4_offset].get_addr().to_virt().as_usize());
 	}
 	else {
@@ -46,8 +55,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	}
 
 	Entry* pd_entry;
-	if (pdp_entry[pdp_offset].get_addr().as_usize()) {
-		pdp_entry[pdp_offset].set_flags(PageFlags::Rw | (user ? PageFlags::Present | PageFlags::User : PageFlags::Present));
+	if (pdp_entry[pdp_offset].get_flags() & PageFlags::Present) {
 		pd_entry = cast<Entry*>(pdp_entry[pdp_offset].get_addr().to_virt().as_usize());
 	}
 	else {
@@ -89,8 +97,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 		return;
 	}
 
-	if (pd_entry[pd_offset].get_addr().as_usize()) {
-		pd_entry[pd_offset].set_flags(PageFlags::Rw | (user ? PageFlags::Present | PageFlags::User : PageFlags::Present));
+	if (pd_entry[pd_offset].get_flags() & PageFlags::Present) {
 		pt_entry = cast<Entry*>(pd_entry[pd_offset].get_addr().to_virt().as_usize());
 	}
 	else {
@@ -226,7 +233,7 @@ void PageMap::load() {
 }
 
 void PageMap::refresh_page(usize addr) { // NOLINT(readability-convert-member-functions-to-static)
-	asm volatile("invlpg %0" : : "m"(addr));
+	asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
 }
 
 void PageMap::ensure_kernel_mapping(PhysAddr phys, usize size) {
