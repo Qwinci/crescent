@@ -1,5 +1,6 @@
 #include "sched.hpp"
 #include "acpi/lapic.hpp"
+#include "arch.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "memory/memory.hpp"
@@ -11,7 +12,7 @@
 #include "utils.hpp"
 
 static void after_switch_from(Task* old_task, Task* this_task) {
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	local->tss.rsp0_low = as<u32>(this_task->kernel_rsp);
 	local->tss.rsp0_high = as<u32>(this_task->kernel_rsp >> 32);
@@ -40,8 +41,8 @@ static void after_switch_from(Task* old_task, Task* this_task) {
 }
 
 static void after_init_switch(Task* old_task) {
-	get_cpu_local()->thread_count += 1;
-	after_switch_from(old_task, get_cpu_local()->current_task);
+	arch_get_cpu_local()->thread_count += 1;
+	after_switch_from(old_task, arch_get_cpu_local()->current_task);
 }
 
 struct InitStackFrame {
@@ -132,7 +133,7 @@ Task* create_kernel_task(const char* name, void (*fn)(), void* arg) {
 extern "C" Task* switch_task(Task* old_task, Task* new_task);
 
 static Task* get_next_task_from_level(u8 level_num) {
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	auto& level = local->levels[level_num];
 
@@ -151,7 +152,7 @@ static void switch_wrapper(Task* this_task, Task* new_task) {
 		cast<PageMap*>(PhysAddr {new_task->map}.to_virt().as_usize())->load();
 	}
 
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	auto prev = switch_task(this_task, new_task);
 
@@ -165,7 +166,7 @@ static void switch_wrapper(Task* this_task, Task* new_task) {
 void sched() {
 	auto flags = enter_critical();
 
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	Task* task = nullptr;
 	for (u8 i = SCHED_MAX_LEVEL; i > 0; --i) {
@@ -195,7 +196,7 @@ void sched_queue_task(Task* task) {
 	task->status = TaskStatus::Ready;
 	task->next = nullptr;
 
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	auto& level = local->levels[task->task_level];
 
@@ -227,7 +228,7 @@ static void sched_queue_task(Task* task, CpuLocal* local) {
 
 void sched_block(TaskStatus status) {
 	auto flags = enter_critical();
-	get_cpu_local()->current_task->status = status;
+	arch_get_cpu_local()->current_task->status = status;
 	leave_critical(flags);
 	sched();
 }
@@ -244,7 +245,7 @@ void sched_sleep(u64 us) {
 
 	auto end = get_timer_us() + us;
 
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	local->current_task->status = TaskStatus::Sleeping;
 	local->current_task->sleep_end = end;
@@ -269,7 +270,7 @@ void sched_sleep(u64 us) {
 }
 
 [[noreturn]] void sched_exit() {
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 	local->current_task->status = TaskStatus::Exited;
 	local->thread_count -= 1;
 	sched();
@@ -277,7 +278,7 @@ void sched_sleep(u64 us) {
 }
 
 void sched_kill() {
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 	local->current_task->status = TaskStatus::Killed;
 	local->thread_count -= 1;
 	sched();
@@ -293,7 +294,7 @@ void sched_kill() {
 }
 
 static void sched_load_balance() {
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	usize min_thread_count = 0xFF;
 	u8 min_cpu_i = 0;
@@ -355,11 +356,11 @@ void sched_init(bool bsp) {
 	memcpy(this_task->name, "kernel main", sizeof("kernel main"));
 	this_task->next = nullptr;
 	this_task->task_level = SCHED_MAX_LEVEL - 1;
-	get_cpu_local()->current_task = this_task;
+	arch_get_cpu_local()->current_task = this_task;
 
 	constexpr usize inc = (SCHED_SLICE_MAX_US - SCHED_SLICE_MIN_US) / SCHED_MAX_LEVEL;
 
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	for (u8 i = 0; i < SCHED_MAX_LEVEL; ++i) {
 		local->levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;

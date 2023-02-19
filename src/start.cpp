@@ -4,6 +4,7 @@
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "drivers/pci.hpp"
+#include "drivers/ps2.hpp"
 #include "memory/pmm.hpp"
 #include "memory/std.hpp"
 #include "memory/vmem.hpp"
@@ -83,8 +84,13 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	init_console(&current_fb, font);
 	set_fg(0x00FF00);
 
+	println("console init");
+
 	arch_init_mem();
+	println("mem init");
 	arch_init_cpu_locals();
+	println("cpu locals init");
+	full_int_init = true;
 
 	init_timers(rsdp);
 	parse_madt(locate_acpi_table(rsdp, "APIC"));
@@ -96,10 +102,12 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	init_usermode();
 
-	auto usertest_file = arch_get_module("usertest");
+	init_ps2();
+
+	/*auto usertest_file = arch_get_module("usertest");
 
 	auto* hdr = (ElfEHdr*) usertest_file;
-	if (hdr->e_ident[EI_MAG0] != ELFMAG0 ||
+	if (!hdr || hdr->e_ident[EI_MAG0] != ELFMAG0 ||
 		hdr->e_ident[EI_MAG1] != ELFMAG1 ||
 		hdr->e_ident[EI_MAG2] != ELFMAG2 ||
 		hdr->e_ident[EI_MAG3] != ELFMAG3 ) {
@@ -138,7 +146,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	vm_user_dealloc_kernel_mapping(k_user_mem, (in_mem_size + 0x1000 - 1) / 0x1000);
 
-	auto user_entry = (void (*)()) ((usize) user_mem + (hdr->e_entry - base));
+	auto user_entry = (void (*)()) ((usize) user_mem + (hdr->e_entry - base));*/
 
 	//sched_init(true);
 

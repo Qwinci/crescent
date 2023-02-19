@@ -1,3 +1,4 @@
+#include "arch.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "memory/memory.hpp"
@@ -34,7 +35,7 @@ void* syscall_handlers[syscall_handler_count] {
 static inline void* kptr(void* uptr) {
 	auto base = ALIGNDOWN(cast<usize>(uptr), PAGE_SIZE);
 	auto ptr_offset = cast<usize>(uptr) - base;
-	auto phys_base = get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
+	auto phys_base = arch_get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
 	if (phys_base.as_usize() == 0) {
 		return nullptr;
 	}
@@ -44,7 +45,7 @@ static inline void* kptr(void* uptr) {
 static inline const void* kptr(const void* uptr) {
 	auto base = ALIGNDOWN(cast<usize>(uptr), PAGE_SIZE);
 	auto ptr_offset = cast<usize>(uptr) - base;
-	auto phys_base = get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
+	auto phys_base = arch_get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
 	if (phys_base.as_usize() == 0) {
 		return nullptr;
 	}
@@ -78,7 +79,7 @@ void* sys_fbmn_create(u32 width, u32 height, u32 depth) {
 	}
 
 	auto size = ALIGNUP(width * height * (depth / 8), PAGE_SIZE);
-	auto fb = vm_user_alloc_backed(get_cpu_local()->current_task->get_map(), size / PAGE_SIZE, AllocFlags::Rw);
+	auto fb = vm_user_alloc_backed(arch_get_cpu_local()->current_task->get_map(), size / PAGE_SIZE, AllocFlags::Rw);
 	if (!fb) {
 		return nullptr;
 	}
@@ -100,7 +101,7 @@ i32 sys_fbmn_swap(void* fb, u32 width, u32 height, u32 depth) {
 
 	auto size = ALIGNUP(width * height * (depth / 8), PAGE_SIZE);
 	println("sys_fbmn_swap (start)");
-	auto map = get_cpu_local()->current_task->get_map();
+	auto map = arch_get_cpu_local()->current_task->get_map();
 	for (usize i = 0; i < size; i += PAGE_SIZE) {
 		if (!map->virt_to_phys(VirtAddr {fb}.offset(i)).as_usize()) {
 			println("sys_fbmn_swap (end, failed)");

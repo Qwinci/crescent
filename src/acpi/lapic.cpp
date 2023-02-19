@@ -1,8 +1,8 @@
 #include "lapic.hpp"
 #include "console.hpp"
-#include "cpu/cpu.hpp"
 #include "timer/timer.hpp"
 #include "utils.hpp"
+#include "arch.hpp"
 
 usize Lapic::base = 0;
 
@@ -42,7 +42,7 @@ void Lapic::calibrate_timer() {
 
 	write(Reg::LvtTimer, INT_MASKED);
 	auto ticks_in_1s = as<u64>(0xFFFFFFFF - read(Reg::CurrCount)) * 16 * 100;
-	get_cpu_local()->apic_frequency = ticks_in_1s;
+	arch_get_cpu_local()->apic_frequency = ticks_in_1s;
 
 	register_int_handler(timer_vec, old_handler);
 }
@@ -50,7 +50,7 @@ void Lapic::calibrate_timer() {
 void Lapic::start_oneshot(u64 frequency, u8 vec) {
 	write(Reg::DivConf, 3);
 	write(Reg::LvtTimer, vec | ONESHOT);
-	u64 value = get_cpu_local()->apic_frequency / 16 / frequency;
+	u64 value = arch_get_cpu_local()->apic_frequency / 16 / frequency;
 	if (value == 0) {
 		panic("lapic oneshot frequency is too high");
 	}
@@ -60,7 +60,7 @@ void Lapic::start_oneshot(u64 frequency, u8 vec) {
 void Lapic::start_periodic(u64 frequency) {
 	write(Reg::DivConf, 3);
 	write(Reg::LvtTimer, 32 | PERIODIC);
-	write(Lapic::Reg::InitCount, get_cpu_local()->apic_frequency / 16 / frequency);
+	write(Lapic::Reg::InitCount, arch_get_cpu_local()->apic_frequency / 16 / frequency);
 }
 
 void Lapic::eoi() {
@@ -79,12 +79,12 @@ void ipi_handler(InterruptCtx*) {
 		case Lapic::Msg::Halt:
 		{
 			Lapic::eoi();
-			panic("received halt msg on cpu ", Fmt::Dec, get_cpu_local()->id);
+			panic("received halt msg on cpu ", Fmt::Dec, arch_get_cpu_local()->id);
 		}
 		case Lapic::Msg::LoadBalance:
 		{
 			Lapic::eoi();
-			auto local = get_cpu_local();
+			auto local = arch_get_cpu_local();
 			println("cpu ", local->id, " halted for load balancing");
 			local->lock.lock();
 			local->lock.unlock();

@@ -1,5 +1,6 @@
 #include "timer_int.hpp"
 #include "acpi/lapic.hpp"
+#include "arch.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "sched/sched.hpp"
@@ -30,7 +31,7 @@ void timer_int(InterruptCtx* ctx) {
 
 	auto flags = enter_critical();
 
-	auto local = get_cpu_local();
+	auto local = arch_get_cpu_local();
 
 	const auto& levels = local->levels;
 

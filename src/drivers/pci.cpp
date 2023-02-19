@@ -53,6 +53,13 @@ static void enum_func(VirtAddr base, u8 function) {
 		//init_nvme(hdr);
 	}
 #endif
+#ifdef WITH_INTEL_GRAPHICS
+	if (hdr->common.vendor_id == 0x8086
+		&& (hdr->common.device_id == 0x9A40
+		|| hdr->common.device_id == 0x9A49)) {
+		init_intel_graphics(hdr);
+	}
+#endif
 }
 
 static void enum_dev(VirtAddr base, u8 device) {

@@ -60,7 +60,7 @@ CpuLocal* cpu_locals;
 
 	cpu_locals[cpu_count++].id = info->lapic_id;
 	load_gdt(&cpu_locals[cpu_count - 1].tss);
-	set_cpu_local(&cpu_locals[cpu_count - 1]);
+	arch_set_cpu_local(&cpu_locals[cpu_count - 1]);
 	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	smp_lock.unlock();
 
@@ -91,7 +91,7 @@ void arch_init_cpu_locals() {
 
 	auto data = &cpu_locals[0];
 	load_gdt(&data->tss);
-	set_cpu_local(data);
+	arch_set_cpu_local(data);
 	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	set_exceptions();
 	load_idt();
@@ -170,6 +170,10 @@ void arch_init_mem() {
 		}
 	}
 
+	load_gdt(nullptr);
+	set_exceptions();
+	load_idt();
+
 	if (max_phys < SIZE_4GB) {
 		max_phys = SIZE_4GB;
 	}
@@ -181,7 +185,7 @@ void arch_init_mem() {
 	if (!page_map_mem) {
 		panic("failed to allocate memory for page map");
 	}
-	auto page_map = new (PhysAddr {page_map_mem}.to_virt()) PageMap;
+	auto page_map = new (PhysAddr {page_map_mem}.to_virt()) PageMap();
 
 	kernel_map = page_map;
 
@@ -262,5 +266,6 @@ void arch_init_mem() {
 		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Rw | PageFlags::Nx);
 	}
 
+	println("page map load");
 	page_map->load();
 }

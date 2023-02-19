@@ -9,18 +9,6 @@
 #include "timer/timer.hpp"
 #endif
 
-enum class Msr : u32 {
-	Ia32ApicBase = 0x1B,
-	Efer = 0xC0000080,
-	Star = 0xC0000081,
-	LStar = 0xC0000082,
-	CStar = 0xC0000083,
-	SFMask = 0xC0000084,
-	FsBase = 0xC0000100,
-	GsBase = 0xC0000101,
-	KernelGsBase = 0xC0000102
-};
-
 struct Tss {
 	u32 reserved1;
 	u32 rsp0_low;
@@ -71,9 +59,5 @@ struct CpuLocal {
 	Timer timer {};
 };
 
-void set_cpu_local(CpuLocal* local);
-CpuLocal* get_cpu_local();
-void set_msr(Msr msr, u64 value);
-u64 get_msr(Msr msr);
 extern CpuLocal* cpu_locals;
 extern usize cpu_count;

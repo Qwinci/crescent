@@ -1,6 +1,7 @@
 #include "map.hpp"
 #include "console.hpp"
 #include "memory.hpp"
+#include "std.hpp"
 
 usize HHDM_OFFSET;
 
@@ -66,7 +67,8 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	}
 
 	if (huge) {
-		if (pd_entry[pd_offset].get_flags() & PageFlags::Present) {
+		auto pd_flags = pd_entry[pd_offset].get_flags();
+		if (!(pd_flags & PageFlags::Huge) && pd_flags & PageFlags::Present) {
 			auto* pt_entry = cast<Entry*>(pd_entry[pd_offset].get_addr().to_virt().as_usize());
 			ALLOCATOR.dealloc(pt_entry, 0x1000);
 		}

@@ -1,0 +1,26 @@
+#include "ps2.hpp"
+#include "acpi/io_apic.hpp"
+#include "acpi/lapic.hpp"
+#include "arch.hpp"
+
+static u8 ps2_kb_int = 0;
+extern bool reboot;
+
+static void ps2_int_handler(InterruptCtx* ctx) {
+	Lapic::eoi();
+	reboot = true;
+	*(volatile u8*) nullptr = 0;
+}
+
+void init_ps2() {
+	if (ps2_kb_int == 0) {
+		ps2_kb_int = alloc_int_handler(ps2_int_handler);
+	}
+
+	IoApic::RedirEntry ps2_kb_entry {
+			.vector = ps2_kb_int,
+			.dest = arch_get_cpu_local()->id
+	};
+
+	IoApic::register_isa_irq(1, ps2_kb_entry);
+}

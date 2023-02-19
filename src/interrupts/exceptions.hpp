@@ -3,6 +3,8 @@
 
 struct InterruptCtx;
 
+extern bool full_int_init;
+
 [[noreturn]] void division_exception(InterruptCtx* ctx);
 [[noreturn]] void debug_exception(InterruptCtx* ctx);
 [[noreturn]] void nmi_exception(InterruptCtx* ctx);

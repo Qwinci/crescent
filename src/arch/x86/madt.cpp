@@ -1,9 +1,10 @@
-#include "common.hpp"
+#include "acpi/common.hpp"
+#include "acpi/io_apic.hpp"
+#include "acpi/lapic.hpp"
 #include "console.hpp"
+#include "cpu.hpp"
 #include "cpu/cpu.hpp"
 #include "io.hpp"
-#include "io_apic.hpp"
-#include "lapic.hpp"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
 #include "memory/std.hpp"
@@ -112,13 +113,6 @@ void parse_madt(const void* madt_ptr) {
 	Lapic::base = lapic_phys_addr.to_virt().as_usize();
 
 	println("assigning kb entaerp");
-
-	/*IoApic::RedirEntry ps2_kb_entry {
-			.vector = 0x21,
-			.dest = bsp_id
-	};
-
-	IoApic::register_isa_irq(1, ps2_kb_entry);*/
 
 	Lapic::init();
 }

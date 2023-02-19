@@ -1,11 +1,6 @@
 global enter_usermode
 global usermode_ret
 
-enter_usermode:
-	mov rcx, rdi
-	mov r11, 0x202
-	o64 sysret
-
 usermode_ret:
 	swapgs
 	pop rcx
