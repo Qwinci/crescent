@@ -13,9 +13,11 @@ public:
 	void add_mem(usize base, usize size);
 private:
 	struct Node {
-		Page* page;
 		Node* next;
 	};
+
+	Page* dma_freelist {};
+	Page* dma_move_list {};
 
 	Node* root {};
 };

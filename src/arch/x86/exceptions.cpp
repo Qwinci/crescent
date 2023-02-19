@@ -1,9 +1,9 @@
 #include "exceptions.hpp"
-#include "acpi/lapic.hpp"
 #include "arch.hpp"
 #include "console.hpp"
-#include "cpu/cpu.hpp"
-#include "interrupts.hpp"
+#include "cpu.hpp"
+#include "interrupts/interrupts.hpp"
+#include "lapic.hpp"
 
 bool full_int_init = false;
 bool reboot = false;
@@ -11,7 +11,7 @@ bool reboot = false;
 #define GENERIC_FAULT(Name) { \
 	print_lock.lock(); \
 	set_fg(0xFF0000); \
-	if (full_int_init) println_nolock(#Name, " on cpu ", arch_get_cpu_local()->id); \
+	if (full_int_init) println_nolock(#Name, " on cpu ", get_cpu_local()->id); \
     else println_nolock(#Name, " on unknown cpu (not init yet)");\
 	println_nolock("IP: ", Fmt::Hex, ctx->ip); \
 	while (true) asm("hlt"); \
@@ -25,7 +25,7 @@ bool reboot = false;
 	print_lock.lock();
 	set_fg(0xFF0000);
 
-	if (full_int_init) println_nolock("double fault on cpu ", arch_get_cpu_local()->id);
+	if (full_int_init) println_nolock("double fault on cpu ", get_cpu_local()->id);
 	else println_nolock("double fault on unknown cpu (not init yet)");
 	println_nolock("IP: ", Fmt::Hex, ctx->ip);
 	print_lock.unlock();
@@ -37,7 +37,7 @@ bool reboot = false;
 	print_lock.lock();
 	set_fg(0xFF0000);
 
-	if (full_int_init) println_nolock("general protection fault on cpu ", arch_get_cpu_local()->id);
+	if (full_int_init) println_nolock("general protection fault on cpu ", get_cpu_local()->id);
 	else println_nolock("general protection fault on unknown cpu (not init yet)");
 	println_nolock("IP: ", Fmt::Hex, ctx->ip);
 	print_lock.unlock();
@@ -66,7 +66,7 @@ bool reboot = false;
 	disable_interrupts();
 	print_lock.lock();
 	set_fg(0xFF0000);
-	if (full_int_init) println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on cpu ", arch_get_cpu_local()->id);
+	if (full_int_init) println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on cpu ", get_cpu_local()->id);
 	else println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on unknown cpu (not init yet)");
 	println_nolock(Fmt::Hex, "IP: ", ctx->ip);
 	println_nolock(

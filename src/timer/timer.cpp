@@ -1,6 +1,7 @@
 #include "timer.hpp"
 #include "acpi/common.hpp"
 #include "arch.hpp"
+#include "arch/x86/cpu.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "drivers/hpet.hpp"
@@ -46,7 +47,7 @@ void init_timers(const void* rsdp) {
 		auto diff = end - start;
 		tsc_ticks_in_sec = diff * 100;
 		println("info: tsc frequency: ", tsc_ticks_in_sec, "hz");
-		arch_get_cpu_local()->tsc_frequency = tsc_ticks_in_sec;
+		get_cpu_local()->tsc_frequency = tsc_ticks_in_sec;
 
 		udelay_ptr = [](u64 us) {
 			auto start = read_timestamp();

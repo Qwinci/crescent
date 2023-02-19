@@ -1,4 +1,4 @@
-#include "acpi/lapic.hpp"
+#include "arch/x86/lapic.hpp"
 #include "console.hpp"
 #include "pci.hpp"
 #include "timer/timer.hpp"

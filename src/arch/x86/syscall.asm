@@ -2,8 +2,8 @@ global syscall_entry_asm
 extern syscall_handler_count
 extern syscall_handlers
 
-%include "sched/task.inc"
-%include "sched/cpu.inc"
+%include "arch/x86/sched/task.inc"
+%include "arch/x86/sched/cpu.inc"
 
 ; rax = num, rdi = arg0, rsi = arg1, rdx = arg2, r8 = arg3, r9 = arg4
 

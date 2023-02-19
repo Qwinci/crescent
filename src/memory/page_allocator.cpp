@@ -34,14 +34,15 @@ void PageAllocator::add_mem(usize base, usize size) {
 	}
 
 	auto used = ALIGNUP(sizeof(PRegion) + p_count * sizeof(Page), PAGE_SIZE);
+	auto used_pages = used / PAGE_SIZE;
 
-	for (usize i = 0; i < used / PAGE_SIZE; ++i) {
+	for (usize i = 0; i < used_pages; ++i) {
 		auto& page = region->pages[i];
 		page.phys = base + i * PAGE_SIZE;
 		page.queue = Page::Queue::None;
 	}
 
-	for (usize i = used / PAGE_SIZE; i < p_count; ++i) {
+	for (usize i = used_pages; i < p_count; ++i) {
 		auto& page = region->pages[i];
 		page.phys = base + i * PAGE_SIZE;
 		page.queue = Page::Queue::Free;

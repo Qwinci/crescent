@@ -11,12 +11,22 @@ u64 get_msr(Msr msr) {
 	return as<u64>(low) | as<u64>(high) << 32;
 }
 
-void arch_set_cpu_local(CpuLocal* local) {
+void set_cpu_local(X86CpuLocal* local) {
 	set_msr(Msr::GsBase, cast<u64>(local));
 }
 
-CpuLocal* arch_get_cpu_local() {
-	CpuLocal* local;
+X86CpuLocal* get_cpu_local() {
+	X86CpuLocal* local;
 	asm volatile("mov %0, gs:0" : "=r"(local));
 	return local;
+}
+
+CpuLocal* arch_get_cpu_local() {
+	return &get_cpu_local()->common;
+}
+
+extern X86CpuLocal* cpu_locals;
+
+CpuLocal* arch_get_cpu_local(usize cpu) {
+	return &cpu_locals[cpu].common;
 }

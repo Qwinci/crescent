@@ -1,5 +1,5 @@
 #include "gdt.hpp"
-#include "cpu/cpu.hpp"
+#include "cpu.hpp"
 
 struct GdtEntry {
 	inline GdtEntry(u32 base, u8 access_byte, u8 flags) {

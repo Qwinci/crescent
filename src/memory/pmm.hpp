@@ -3,11 +3,13 @@
 
 struct Page {
 	usize phys;
+	Page* next;
 	enum class Queue : u8 {
 		None,
-		Free
+		Free,
+		Dma
 	} queue;
-	u8 reserved[55];
+	u8 reserved[47];
 };
 
 static_assert(sizeof(Page) == 64);

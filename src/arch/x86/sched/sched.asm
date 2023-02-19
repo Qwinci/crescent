@@ -7,7 +7,7 @@ extern sched_lock
 %define STATUS_READY 1
 %define STATUS_RUNNING 0
 
-%include "sched/task.inc"
+%include "arch/x86/sched/task.inc"
 
 ; Task* switch_task(Task* old_task, Task* new_task)
 switch_task:

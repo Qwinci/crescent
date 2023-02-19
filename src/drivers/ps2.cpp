@@ -1,7 +1,8 @@
 #include "ps2.hpp"
 #include "acpi/io_apic.hpp"
-#include "acpi/lapic.hpp"
 #include "arch.hpp"
+#include "arch/x86/cpu.hpp"
+#include "arch/x86/lapic.hpp"
 
 static u8 ps2_kb_int = 0;
 extern bool reboot;
@@ -19,7 +20,7 @@ void init_ps2() {
 
 	IoApic::RedirEntry ps2_kb_entry {
 			.vector = ps2_kb_int,
-			.dest = arch_get_cpu_local()->id
+			.dest = get_cpu_local()->id
 	};
 
 	IoApic::register_isa_irq(1, ps2_kb_entry);

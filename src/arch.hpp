@@ -12,5 +12,7 @@ const PsfFont* arch_get_font();
 Framebuffer arch_get_framebuffer();
 void* arch_get_module(const char* name);
 CpuLocal* arch_get_cpu_local();
-void arch_set_cpu_local(CpuLocal* local);
+CpuLocal* arch_get_cpu_local(usize cpu);
 void arch_init_usermode();
+void arch_sched_after_switch_from(Task* old_task, Task* this_task);
+void arch_sched_load_balance_hlt(u8 cpu);

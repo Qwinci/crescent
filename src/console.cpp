@@ -69,7 +69,7 @@ static const char hex_chars[] = "0123456789ABCDEF";
 		}
 		print_string(ptr + 1);
 	}
-	else if (fmt == Fmt::Hex) {
+	else if (fmt == Fmt::Hex || fmt == Fmt::HexNoPrefix) {
 		char str[19] {};
 		char* ptr = str + 17;
 		if (value == 0) {
@@ -80,8 +80,13 @@ static const char hex_chars[] = "0123456789ABCDEF";
 			*ptr-- = c;
 			value /= 16;
 		}
-		*ptr-- = 'x';
-		*ptr = '0';
+		if (fmt == Fmt::Hex) {
+			*ptr-- = 'x';
+			*ptr = '0';
+		}
+		else {
+			ptr++;
+		}
 		print_string(ptr);
 	}
 	else if (fmt == Fmt::Bin) {

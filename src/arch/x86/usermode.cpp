@@ -1,14 +1,11 @@
-#pragma once
-#include "../cpu/cpu.hpp"
-#include "arch/x86/cpu.hpp"
+#include "arch.hpp"
+#include "cpu.hpp"
 
 extern "C" void syscall_entry_asm();
 
 constexpr usize USER_SEG_BASE = 0x18;
 
-extern "C" void usermode_ret();
-
-static inline void init_usermode() {
+void arch_init_usermode() {
 	auto efer = get_msr(Msr::Efer);
 	efer |= 1;
 	set_msr(Msr::Efer, efer);

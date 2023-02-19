@@ -53,11 +53,24 @@ static void enum_func(VirtAddr base, u8 function) {
 		//init_nvme(hdr);
 	}
 #endif
+
 #ifdef WITH_INTEL_GRAPHICS
 	if (hdr->common.vendor_id == 0x8086
 		&& (hdr->common.device_id == 0x9A40
 		|| hdr->common.device_id == 0x9A49)) {
 		init_intel_graphics(hdr);
+	}
+#endif
+
+#ifdef WITH_RTL8169
+	if ((hdr->common.vendor_id == 0x10EC
+		 && (hdr->common.device_id == 0x8161 ||
+			 hdr->common.device_id == 0x8168 ||
+			 hdr->common.device_id == 0x8169)) ||
+		(hdr->common.vendor_id == 0x1259 && hdr->common.device_id == 0xC107) ||
+		(hdr->common.vendor_id == 0x1737 && hdr->common.device_id == 0x1032) ||
+		(hdr->common.vendor_id == 0x16EC && hdr->common.device_id == 0x0116)) {
+		init_rtl8169(hdr);
 	}
 #endif
 }

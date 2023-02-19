@@ -1,6 +1,6 @@
 #include "acpi/common.hpp"
-#include "acpi/lapic.hpp"
 #include "arch.hpp"
+#include "arch/x86/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "drivers/pci.hpp"
@@ -13,7 +13,7 @@
 #include "timer/timer.hpp"
 #include "timer/timer_int.hpp"
 #include "types.hpp"
-#include "usermode/usermode.hpp"
+#include "arch.hpp"
 
 [[gnu::used]] u8 stack[0x2000];
 
@@ -27,7 +27,7 @@ extern "C" fn __init_array_start[]; // NOLINT(bugprone-reserved-identifier)
 extern "C" fn __init_array_end[]; // NOLINT(bugprone-reserved-identifier)
 
 [[noreturn]] void ap_entry(u8 id, u32 acpi_id) {
-	init_usermode();
+	arch_init_usermode();
 	sched_init(false);
 	start_timer();
 	while (true) asm("hlt");
@@ -84,12 +84,8 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	init_console(&current_fb, font);
 	set_fg(0x00FF00);
 
-	println("console init");
-
 	arch_init_mem();
-	println("mem init");
 	arch_init_cpu_locals();
-	println("cpu locals init");
 	full_int_init = true;
 
 	init_timers(rsdp);
@@ -100,7 +96,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	arch_init_smp(ap_entry);
 
-	init_usermode();
+	arch_init_usermode();
 
 	init_ps2();
 

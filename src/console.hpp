@@ -19,6 +19,7 @@ struct PsfFont {
 enum class Fmt {
 	Dec,
 	Hex,
+	HexNoPrefix,
 	Bin
 };
 

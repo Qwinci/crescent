@@ -1,8 +1,8 @@
 #include "limine/limine.h"
-#include "acpi/lapic.hpp"
 #include "arch.hpp"
+#include "arch/x86/cpu.hpp"
+#include "arch/x86/lapic.hpp"
 #include "console.hpp"
-#include "cpu/cpu.hpp"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
 #include "memory/pmm.hpp"
@@ -53,14 +53,14 @@ struct StartInfo {
 }
 
 usize cpu_count = 1;
-CpuLocal* cpu_locals;
+X86CpuLocal* cpu_locals;
 
 [[noreturn]] void arch_ap_entry(StartInfo* info) {
 	smp_lock.lock();
 
 	cpu_locals[cpu_count++].id = info->lapic_id;
 	load_gdt(&cpu_locals[cpu_count - 1].tss);
-	arch_set_cpu_local(&cpu_locals[cpu_count - 1]);
+	set_cpu_local(&cpu_locals[cpu_count - 1]);
 	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	smp_lock.unlock();
 
@@ -87,11 +87,11 @@ CpuLocal* cpu_locals;
 }
 
 void arch_init_cpu_locals() {
-	cpu_locals = new CpuLocal[SMP_REQUEST.response->cpu_count]();
+	cpu_locals = new X86CpuLocal[SMP_REQUEST.response->cpu_count]();
 
 	auto data = &cpu_locals[0];
 	load_gdt(&data->tss);
-	arch_set_cpu_local(data);
+	set_cpu_local(data);
 	asm volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
 	set_exceptions();
 	load_idt();
@@ -266,6 +266,5 @@ void arch_init_mem() {
 		page_map->map(VirtAddr {kernel_virt + i}, PhysAddr {kernel_phys + i}, PageFlags::Rw | PageFlags::Nx);
 	}
 
-	println("page map load");
 	page_map->load();
 }

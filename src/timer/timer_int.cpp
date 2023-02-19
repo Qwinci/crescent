@@ -1,6 +1,6 @@
 #include "timer_int.hpp"
-#include "acpi/lapic.hpp"
 #include "arch.hpp"
+#include "arch/x86/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "sched/sched.hpp"

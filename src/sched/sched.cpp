@@ -1,6 +1,6 @@
 #include "sched.hpp"
-#include "acpi/lapic.hpp"
 #include "arch.hpp"
+#include "arch/x86/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "memory/memory.hpp"
@@ -8,14 +8,11 @@
 #include "memory/vmem.hpp"
 #include "std/string.h"
 #include "timer/timer_int.hpp"
-#include "usermode/usermode.hpp"
 #include "utils.hpp"
+#include "arch/x86/usermode.hpp"
 
 static void after_switch_from(Task* old_task, Task* this_task) {
-	auto local = arch_get_cpu_local();
-
-	local->tss.rsp0_low = as<u32>(this_task->kernel_rsp);
-	local->tss.rsp0_high = as<u32>(this_task->kernel_rsp >> 32);
+	arch_sched_after_switch_from(old_task, this_task);
 
 	this_task->status = TaskStatus::Running;
 
@@ -302,8 +299,8 @@ static void sched_load_balance() {
 	u8 max_cpu_i = 0;
 
 	for (usize i = 0; i < cpu_count; ++i) {
-		auto& cpu = cpu_locals[i];
-		u32 thread_count = cpu.thread_count;
+		auto cpu = arch_get_cpu_local(i);
+		u32 thread_count = cpu->thread_count;
 		if (thread_count < min_thread_count) {
 			min_thread_count = thread_count;
 			min_cpu_i = i;
@@ -317,15 +314,14 @@ static void sched_load_balance() {
 	auto flags = enter_critical();
 	auto diff = max_thread_count - min_thread_count;
 	if (min_cpu_i != max_cpu_i && diff > 1) {
-
-		auto* min_cpu = &cpu_locals[min_cpu_i];
-		auto* max_cpu = &cpu_locals[max_cpu_i];
+		auto* min_cpu = arch_get_cpu_local(min_cpu_i);
+		auto* max_cpu = arch_get_cpu_local(max_cpu_i);
 
 		min_cpu->lock.lock();
 		max_cpu->lock.lock();
 
-		Lapic::send_ipi(min_cpu->id, Lapic::Msg::LoadBalance);
-		Lapic::send_ipi(max_cpu->id, Lapic::Msg::LoadBalance);
+		arch_sched_load_balance_hlt(min_cpu_i);
+		arch_sched_load_balance_hlt(max_cpu_i);
 
 		for (usize i = SCHED_MAX_LEVEL; i > 0 && diff; --i) {
 			auto& level = max_cpu->levels[i - 1];

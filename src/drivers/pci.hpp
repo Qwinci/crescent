@@ -87,6 +87,10 @@ namespace Pci {
 
 		[[nodiscard]] usize map_bar(u8 bar);
 
+		[[nodiscard]] inline u32 get_io_bar(u8 bar) const {
+			return bars[bar] & ~0b11;
+		}
+
 		CommonHeader common;
 		volatile u32 bars[6];
 		u32 cardbus_cis_ptr;
@@ -129,22 +133,22 @@ namespace Pci {
 	};
 
 	struct MsiCap {
-		inline void set_addr(u64 addr) {
+		inline void set_addr(u64 addr) volatile {
 			msg_low = as<u32>(addr);
 			msg_high = as<u32>(addr >> 32);
 		}
 
-		inline void set_data(u8 vec, bool edge_trigger = true, bool deassert = true) {
+		inline void set_data(u8 vec, bool edge_trigger = true, bool deassert = true) volatile {
 			msg_data = as<u16>(vec) |
 					   (as<u16>(!edge_trigger) << 15) |
 					   (as<u16>(!deassert) << 14);
 		}
 
-		inline void set_cpu(u8 cpu) {
+		inline void set_cpu(u8 cpu) volatile {
 			set_addr(0xFEE00000 | as<u64>(cpu) << 12);
 		}
 
-		inline void enable(bool enable) {
+		inline void enable(bool enable) volatile {
 			if (enable) {
 				msg_control |= 1;
 			}
@@ -157,7 +161,7 @@ namespace Pci {
 			return 1 << (msg_control >> 1 & 0b111);
 		}
 
-		inline void set_max_int(u8 max) {
+		inline void set_max_int(u8 max) volatile {
 			auto count = as<u8>(__builtin_clzll(max));
 			msg_control &= 0b111 << 4;
 			msg_control |= count << 4;
