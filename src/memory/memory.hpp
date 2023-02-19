@@ -1,6 +1,5 @@
 #pragma once
 #include "types.hpp"
-#include "utils/rb_tree.hpp"
 
 struct Page;
 
@@ -8,16 +7,20 @@ constexpr usize PAGE_SIZE = 0x1000;
 
 class PageAllocator {
 public:
-	void* alloc_new(bool lock = true);
-	void dealloc_new(void* ptr, bool lock = true);
 	void add_mem(usize base, usize size);
+	void* alloc_new(bool lock = true, bool persistent = true);
+	void dealloc_new(void* ptr, bool lock = true);
+	void* alloc_dma(usize count);
+	void dealloc_dma(void* ptr, usize count);
 private:
+	void* alloc_dma_helper(Page*& page_list, usize count);
 	struct Node {
 		Node* next;
 	};
 
 	Page* dma_freelist {};
-	Page* dma_move_list {};
+	static constexpr usize DMA_HASHTABLE_SIZE = 16;
+	Page* dma_move_hashtable[DMA_HASHTABLE_SIZE] {};
 
 	Node* root {};
 };

@@ -1,3 +1,4 @@
+#include "console.hpp"
 #include "drivers/pci_drivers.hpp"
 
 void init_intel_graphics(Pci::Header0* hdr) {

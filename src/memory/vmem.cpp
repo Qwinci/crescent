@@ -2,6 +2,7 @@
 #include "console.hpp"
 #include "map.hpp"
 #include "memory.hpp"
+#include "pmm.hpp"
 #include "tinyvmem/vmem.h"
 #include "utils.hpp"
 
@@ -118,10 +119,12 @@ void vm_kernel_dealloc(void* ptr, usize count) {
 void* vm_kernel_alloc_backed(usize count) {
 	void* mem = vm_kernel_alloc(count);
 	for (usize i = 0; i < count * PAGE_SIZE; i += PAGE_SIZE) {
-		auto page = PAGE_ALLOCATOR.alloc_new();
+		auto page = PAGE_ALLOCATOR.alloc_new(true, false);
 		if (!page) {
 			panic("failed to allocate physical memory in vm_kernel_alloc_backed");
 		}
+		auto page_entry = phys_to_page(cast<usize>(page));
+		page_entry->add_mapping(get_map(), VirtAddr {mem}.offset(i).as_usize());
 		get_map()->map(VirtAddr {mem}.offset(i), PhysAddr {page}, PageFlags::Rw);
 		get_map()->refresh_page(cast<usize>(mem) + i);
 	}
@@ -131,7 +134,10 @@ void* vm_kernel_alloc_backed(usize count) {
 void vm_kernel_dealloc_backed(void* ptr, usize count) {
 	for (usize i = 0; i < count * PAGE_SIZE; i += PAGE_SIZE) {
 		auto phys = get_map()->virt_to_phys(VirtAddr {ptr}.offset(i));
+		auto page = phys_to_page(phys.as_usize());
+		page->remove_mapping(get_map());
 		PAGE_ALLOCATOR.dealloc_new(cast<void*>(phys.as_usize()));
+		get_map()->unmap(VirtAddr {ptr}.offset(i), false, true);
 	}
 	vm_kernel_dealloc(ptr, count);
 }

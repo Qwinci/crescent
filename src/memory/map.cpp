@@ -50,7 +50,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	}
 	else {
 		auto frame = new Entry[512]();
-		entries[pml4_offset].set_flags(PageFlags::Rw | (user ? PageFlags::Present | PageFlags::User : PageFlags::Present));
+		entries[pml4_offset].set_flags(PageFlags::Rw | (user ? (PageFlags::Present | PageFlags::User) : PageFlags::Present));
 		entries[pml4_offset].set_addr(VirtAddr {cast<usize>(frame)}.to_phys());
 		pdp_entry = frame;
 	}
@@ -61,7 +61,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	}
 	else {
 		auto frame = new Entry[512]();
-		pdp_entry[pdp_offset].set_flags(PageFlags::Rw | (user ? PageFlags::Present | PageFlags::User : PageFlags::Present));
+		pdp_entry[pdp_offset].set_flags(PageFlags::Rw | (user ? (PageFlags::Present | PageFlags::User) : PageFlags::Present));
 		pdp_entry[pdp_offset].set_addr(VirtAddr {cast<usize>(frame)}.to_phys());
 		pd_entry = frame;
 	}
@@ -73,7 +73,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 			ALLOCATOR.dealloc(pt_entry, 0x1000);
 		}
 
-		pd_entry[pd_offset].set_flags(flags | PageFlags::Huge);
+		pd_entry[pd_offset].set_flags(flags == PageFlags::Existing ? pd_entry[pd_offset].get_flags() : (flags | PageFlags::Huge));
 		pd_entry[pd_offset].set_addr(phys);
 		refresh_page(virt.as_usize());
 		return;
@@ -95,7 +95,7 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 		}
 	}
 	else if (pd_entry[pd_offset].get_flags() & PageFlags::Huge) {
-		pd_entry[pd_offset].set_flags(flags | PageFlags::Huge);
+		pd_entry[pd_offset].set_flags(flags == PageFlags::Existing ? pd_entry[pd_offset].get_flags() : (flags | PageFlags::Huge));
 		return;
 	}
 
@@ -104,12 +104,12 @@ void PageMap::map(VirtAddr virt, PhysAddr phys, PageFlags flags, bool split) {
 	}
 	else {
 		auto frame = new Entry[512]();
-		pd_entry[pd_offset].set_flags(PageFlags::Rw | (user ? PageFlags::Present | PageFlags::User : PageFlags::Present));;
+		pd_entry[pd_offset].set_flags(PageFlags::Rw | (user ? (PageFlags::Present | PageFlags::User) : PageFlags::Present));;
 		pd_entry[pd_offset].set_addr(VirtAddr {frame}.to_phys());
 		pt_entry = frame;
 	}
 
-	pt_entry[pt_offset].set_flags(flags);
+	pt_entry[pt_offset].set_flags(flags == PageFlags::Existing ? pt_entry[pt_offset].get_flags() : flags);
 	pt_entry[pt_offset].set_addr(phys);
 }
 

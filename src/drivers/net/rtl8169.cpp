@@ -1,4 +1,5 @@
 #include "arch/x86/lapic.hpp"
+#include "console.hpp"
 #include "drivers/pci_drivers.hpp"
 #include "io.hpp"
 #include "memory/std.hpp"

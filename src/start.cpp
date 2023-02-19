@@ -144,9 +144,14 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 
 	auto user_entry = (void (*)()) ((usize) user_mem + (hdr->e_entry - base));*/
 
-	//sched_init(true);
+	sched_init(true);
 
-	//start_timer();
+	start_timer();
+
+	auto backed = vm_kernel_alloc_backed(1);
+
+	auto mem = PAGE_ALLOCATOR.alloc_dma(4);
+	PAGE_ALLOCATOR.dealloc_dma(mem, 4);
 
 	init_pci(rsdp);
 

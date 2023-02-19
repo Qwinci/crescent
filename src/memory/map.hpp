@@ -74,7 +74,8 @@ enum class PageFlags : u64 {
 	Dirty = 1 << 6,
 	Huge = 1 << 7,
 	Global = 1ULL << 8,
-	Nx = 1ULL << 63
+	Existing = 1ULL << 9,
+	Nx = 1ULL << 63,
 };
 
 constexpr PageFlags operator|(PageFlags lhs, PageFlags rhs) {
