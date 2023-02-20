@@ -23,78 +23,89 @@ enum class Fmt {
 	Bin
 };
 
+struct ZeroPad {
+	explicit ZeroPad(usize count = 1) : count {count} {}
+	usize count;
+};
+
 template<typename T>
-inline void print(T value);
+inline void print_nolock(T value);
 
 template<>
-inline void print(Fmt value) {
+inline void print_nolock(Fmt value) {
 	extern void set_fmt(Fmt fmt);
 	set_fmt(value);
 }
 
+template<>
+inline void print_nolock(ZeroPad value) {
+	extern void set_zero_pad(ZeroPad pad);
+	set_zero_pad(value);
+}
+
 template<typename T>
-inline void print(T* value) {
+inline void print_nolock(T* value) {
 	extern void print_number(usize value, bool sign);
 	extern Fmt get_fmt();
 	auto fmt = get_fmt();
-	print(Fmt::Hex);
+	print_nolock(Fmt::Hex);
 	print_number(cast<usize>(value), false);
-	print(fmt);
+	print_nolock(fmt);
 }
 
 template<>
-inline void print(const char* value) {
+inline void print_nolock(const char* value) {
 	extern void print_string(const char* str);
 	print_string(value);
 }
 
 template<>
-inline void print(u8 value) {
+inline void print_nolock(u8 value) {
 	extern void print_number(usize value, bool sign);
 	print_number(value, false);
 }
 template<>
-inline void print(u16 value) {
+inline void print_nolock(u16 value) {
 	extern void print_number(usize value, bool sign);
 	print_number(value, false);
 }
 template<>
-inline void print(u32 value) {
+inline void print_nolock(u32 value) {
 	extern void print_number(usize value, bool sign);
 	print_number(value, false);
 }
 template<>
-inline void print(u64 value) {
+inline void print_nolock(u64 value) {
 	extern void print_number(usize value, bool sign);
 	print_number(value, false);
 }
 
 template<>
-inline void print(bool value) {
+inline void print_nolock(bool value) {
 	extern void print_string(const char* str);
 	print_string(value ? "true" : "false");
 }
 
 template<>
-inline void print(i8 value) {
+inline void print_nolock(i8 value) {
 	extern void print_number(usize value, bool sign);
 	bool sign = value < 0;
 	print_number(as<usize>(value), sign);
 }
 template<>
-inline void print(i16 value) {
+inline void print_nolock(i16 value) {
 	extern void print_number(usize value, bool sign);
 	bool sign = value < 0;
 	print_number(as<usize>(value), sign);
 }
 template<>
-inline void print(i32 value) {
+inline void print_nolock(i32 value) {
 	extern void print_number(usize value, bool sign);
 	bool sign = value < 0;
 	print_number(as<usize>(value), sign);
 }
 template<>
-inline void print(i64 value) {
+inline void print_nolock(i64 value) {
 	extern void print_number(usize value, bool sign);
 	bool sign = value < 0;
 	print_number(as<usize>(value), sign);
@@ -103,24 +114,33 @@ inline void print(i64 value) {
 extern Spinlock print_lock;
 
 template<typename... Args>
+inline void print_nolock(Args... args) {
+	(print_nolock(args), ...);
+}
+
+template<typename... Args>
 inline void print(Args... args) {
-	(print(args), ...);
+	auto flags = enter_critical();
+	print_lock.lock();
+	(print_nolock(args), ...);
+	print_lock.unlock();
+	leave_critical(flags);
 }
 
 template<typename... Args>
 inline void println(Args... args) {
 	auto flags = enter_critical();
 	print_lock.lock();
-	(print(args), ...);
-	print("\n");
+	(print_nolock(args), ...);
+	print_nolock("\n");
 	print_lock.unlock();
 	leave_critical(flags);
 }
 
 template<typename... Args>
 inline void println_nolock(Args... args) {
-	(print(args), ...);
-	print("\n");
+	(print_nolock(args), ...);
+	print_nolock("\n");
 }
 
 void init_console(const Framebuffer* framebuffer, const PsfFont* font);
@@ -133,8 +153,8 @@ template<typename... Args>
 	disable_interrupts();
 	print_lock.lock();
 	print("KERNEL PANIC: ");
-	print(args...);
-	print("\n");
+	print_nolock(args...);
+	print_nolock("\n");
 	print_lock.unlock();
 	while (true) {
 		asm("hlt");

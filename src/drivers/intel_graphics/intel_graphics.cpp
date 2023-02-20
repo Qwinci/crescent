@@ -1,13 +1,18 @@
+#include "drivers/dev.hpp"
 #include "console.hpp"
-#include "drivers/pci_drivers.hpp"
 
 void init_intel_graphics(Pci::Header0* hdr) {
 	println("initializing intel graphics");
-	auto* power_cap = as<Pci::PowerCap*>(hdr->get_cap(Pci::Cap::PowerManagement));
-	if (power_cap) {
-		println("power cap found");
-		power_cap->set_power(Pci::PowerCap::State::D3);
-		power_cap->set_power(Pci::PowerCap::State::D0);
-		println("power restored");
-	}
 }
+
+static PciDriver pci_driver {
+	.match = PciDriver::MATCH_DEV,
+	.load = init_intel_graphics,
+	.dev_count = 2,
+	.devices {
+		{.vendor = 0x8086, .device = 0x9A40},
+		{.vendor = 0x8086, .device = 0x9A49}
+	}
+};
+
+PCI_DRIVER(intel_tigerlake_igpu, pci_driver);

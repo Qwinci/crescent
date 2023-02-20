@@ -54,6 +54,8 @@ static inline void print_char(char c) {
 
 static const char hex_chars[] = "0123456789ABCDEF";
 
+static ZeroPad z_pad;
+
 [[gnu::used]] void print_number(usize value, bool sign) {
 	if (sign) print_char('-');
 	if (fmt == Fmt::Dec) {
@@ -67,6 +69,12 @@ static const char hex_chars[] = "0123456789ABCDEF";
 			*ptr-- = c;
 			value /= 10;
 		}
+		if (auto pad = (20 - (ptr + 1 - str)); pad < z_pad.count) {
+			while (pad < z_pad.count && ptr >= str) {
+				*ptr-- = '0';
+				++pad;
+			}
+		}
 		print_string(ptr + 1);
 	}
 	else if (fmt == Fmt::Hex || fmt == Fmt::HexNoPrefix) {
@@ -79,6 +87,12 @@ static const char hex_chars[] = "0123456789ABCDEF";
 			char c = hex_chars[value % 16];
 			*ptr-- = c;
 			value /= 16;
+		}
+		if (auto pad = (18 - (ptr + 1 - str)); pad < z_pad.count) {
+			while (pad < z_pad.count && ptr - 2 >= str) {
+				*ptr-- = '0';
+				++pad;
+			}
 		}
 		if (fmt == Fmt::Hex) {
 			*ptr-- = 'x';
@@ -99,6 +113,12 @@ static const char hex_chars[] = "0123456789ABCDEF";
 			char c = as<char>('0' + value % 2);
 			*ptr-- = c;
 			value /= 2;
+		}
+		if (auto pad = (66 - (ptr + 1 - str)); pad < z_pad.count) {
+			while (pad < z_pad.count && ptr - 2 >= str) {
+				*ptr-- = '0';
+				++pad;
+			}
 		}
 		*ptr-- = 'b';
 		*ptr = '0';
@@ -121,6 +141,10 @@ void set_bg(u32 color) {
 
 void set_fmt(Fmt new_fmt) {
 	fmt = new_fmt;
+}
+
+void set_zero_pad(ZeroPad pad) {
+	z_pad = pad;
 }
 
 Fmt get_fmt() {

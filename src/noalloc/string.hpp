@@ -1,7 +1,7 @@
 #include "types.hpp"
 
 namespace noalloc {
-	constexpr usize strlen(const char* str) {
+	constexpr inline usize strlen(const char* str) {
 		usize len = 0;
 		for (; *str; ++str) ++len;
 		return len;

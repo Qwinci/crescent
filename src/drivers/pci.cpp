@@ -1,8 +1,8 @@
 #include "pci.hpp"
 #include "acpi/common.hpp"
 #include "console.hpp"
+#include "dev.hpp"
 #include "memory/map.hpp"
-#include "pci_drivers.hpp"
 
 struct ConfEntry {
 	u64 base;
@@ -42,6 +42,39 @@ static void enum_func(VirtAddr base, u8 function) {
 
 	println("pci device: ", Fmt::Hex, hdr->common.vendor_id, ":", hdr->common.device_id, Fmt::Dec);
 
+	for (auto driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
+		if (driver->type == Driver::PCI) {
+			auto pci_dev = driver->pci_dev;
+			if (pci_dev->match & PciDriver::MATCH_CLASS) {
+				if (common_hdr->class_code != pci_dev->dev_class) {
+					continue;
+				}
+			}
+			if (pci_dev->match & PciDriver::MATCH_SUBCLASS) {
+				if (common_hdr->subclass != pci_dev->dev_subclass) {
+					continue;
+				}
+			}
+			if (pci_dev->match & PciDriver::MATCH_PROG) {
+				if (common_hdr->prog_if != pci_dev->dev_prog) {
+					continue;
+				}
+			}
+			if (pci_dev->match & PciDriver::MATCH_DEV) {
+				for (usize i = 0; i < pci_dev->dev_count; ++i) {
+					auto dev = pci_dev->devices[i];
+					if (common_hdr->vendor_id == dev.vendor && common_hdr->device_id == dev.device) {
+						pci_dev->load(hdr);
+						break;
+					}
+				}
+			}
+			else {
+				pci_dev->load(hdr);
+			}
+		}
+	}
+
 #ifdef WITH_NVME
 	// Mass Storage Controller
 	if (hdr->common.class_code == 0x1
@@ -51,26 +84,6 @@ static void enum_func(VirtAddr base, u8 function) {
 		hdr->common.prog_if == 0x2
 		) {
 		//init_nvme(hdr);
-	}
-#endif
-
-#ifdef WITH_INTEL_GRAPHICS
-	if (hdr->common.vendor_id == 0x8086
-		&& (hdr->common.device_id == 0x9A40
-		|| hdr->common.device_id == 0x9A49)) {
-		init_intel_graphics(hdr);
-	}
-#endif
-
-#ifdef WITH_RTL8169
-	if ((hdr->common.vendor_id == 0x10EC
-		 && (hdr->common.device_id == 0x8161 ||
-			 hdr->common.device_id == 0x8168 ||
-			 hdr->common.device_id == 0x8169)) ||
-		(hdr->common.vendor_id == 0x1259 && hdr->common.device_id == 0xC107) ||
-		(hdr->common.vendor_id == 0x1737 && hdr->common.device_id == 0x1032) ||
-		(hdr->common.vendor_id == 0x16EC && hdr->common.device_id == 0x0116)) {
-		init_rtl8169(hdr);
 	}
 #endif
 }

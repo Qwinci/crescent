@@ -1,6 +1,7 @@
 #include "arch/x86/lapic.hpp"
 #include "console.hpp"
-#include "pci.hpp"
+#include "drivers/dev.hpp"
+#include "drivers/pci.hpp"
 #include "timer/timer.hpp"
 #include "utils/math.hpp"
 
@@ -360,3 +361,13 @@ void init_nvme(Pci::Header0* hdr) {
 		ALLOCATOR.dealloc(controller, sizeof(*controller));
 	}
 }
+
+static PciDriver pci_driver {
+	.match = PciDriver::MATCH_CLASS | PciDriver::MATCH_SUBCLASS | PciDriver::MATCH_PROG,
+	.dev_class = 0x1,
+	.dev_subclass = 0x8,
+	.dev_prog = 0x2,
+	.load = init_nvme
+};
+
+PCI_DRIVER(nvme, pci_driver);

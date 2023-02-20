@@ -1,6 +1,6 @@
 #include "arch/x86/lapic.hpp"
 #include "console.hpp"
-#include "drivers/pci_drivers.hpp"
+#include "drivers/dev.hpp"
 #include "io.hpp"
 #include "memory/std.hpp"
 
@@ -85,6 +85,8 @@ struct Descriptor {
 
 static Descriptor* rx_descriptors;
 static Descriptor* tx_descriptors;
+static Descriptor* current_rx_desc;
+static Descriptor* current_tx_desc;
 
 static bool init_descriptors() {
 	auto rx_addr = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
@@ -100,6 +102,9 @@ static bool init_descriptors() {
 	memset(rx_descriptors, 0, PAGE_SIZE);
 	tx_descriptors = as<Descriptor*>(as<void*>(tx_addr.to_virt()));
 	memset(tx_descriptors, 0, PAGE_SIZE);
+
+	current_rx_desc = rx_descriptors;
+	current_tx_desc = tx_descriptors;
 
 	for (usize i = 0; i < PAGE_SIZE / sizeof(Descriptor); ++i) {
 		auto& desc = rx_descriptors[i];
@@ -122,8 +127,102 @@ static bool init_descriptors() {
 
 static u8 rtl_int = 0;
 
-static void rtl_int_handler(InterruptCtx* ctx) {
-	println("rtl int");
+/// System Error
+#define INT_SERR (1 << 15)
+#define INT_TIMEOUT (1 << 14)
+/// Software Interrupt
+#define INT_SWINT (1 << 8)
+/// Tx Descriptor Unavailable
+#define INT_TDU (1 << 7)
+/// Rx FIFO Overflow
+#define INT_FOVW (1 << 6)
+/// Link Change
+#define INT_LINKCHG (1 << 5)
+/// Rx Descriptor Unavailable
+#define INT_RDU (1 << 4)
+/// Transmit Error
+#define INT_TER (1 << 3)
+/// Transmit OK
+#define INT_TOK (1 << 2)
+/// Receive Error
+#define INT_RER (1 << 1)
+// Receive OK
+#define INT_ROK (1 << 0)
+
+/// Phy Reset
+#define BMCR_RESET (1 << 15)
+/// Auto-Negotiation Enable
+#define BMCR_ANE (1 << 12)
+/// Restart Auto-Negotiation
+#define BMCR_RESTART_AN (1 << 9)
+
+static u16 base = 0;
+
+static void rtl_int_handler(InterruptCtx*) {
+	auto status = in2(base + REG_ISR);
+
+	if (status & INT_ROK) {
+		println("receive ok!");
+		out2(base + REG_ISR, 0xFFFF);
+
+		while (!current_rx_desc->own) {
+			auto addr = PhysAddr {current_rx_desc->buf_addr}.to_virt();
+			auto size = current_rx_desc->buf_size;
+			auto data = as<const u8*>(as<void*>(addr));
+
+			println("received buffer of size ", size, ", data: ", Fmt::HexNoPrefix);
+			if (size <= 64) {
+				u8 mac_dest[6];
+				u8 mac_src[6];
+				u8 tag_8021Q[4];
+				u16 length;
+
+				memcpy(mac_dest, data, 6);
+				memcpy(mac_src, data + 6, 6);
+				memcpy(tag_8021Q, data + 12, 4);
+				length = as<u16>(data[16]) << 8 | data[17];
+
+				print("dest: ");
+				for (u8 i : mac_dest) {
+					print(i);
+				}
+				print(" src: ");
+				for (u8 i : mac_src) {
+					print(i);
+				}
+
+				if (length <= 1500) {
+					print(" length: ", Fmt::Dec, length, Fmt::HexNoPrefix, " payload: ");
+					for (usize i = 0; i < length; ++i) {
+						print(data[18 + i]);
+					}
+				}
+				else {
+					print(" type: ", ZeroPad(4), length, ZeroPad(0));
+				}
+
+				println(Fmt::Dec);
+			}
+			else {
+				println("> too large to display");
+			}
+
+			if (!current_rx_desc->own) {
+				current_rx_desc->own = 1;
+			}
+
+			if (current_rx_desc == rx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
+				current_rx_desc = rx_descriptors;
+			}
+			else {
+				current_rx_desc += 1;
+			}
+		}
+	}
+	else {
+		println("rtl status: ", Fmt::Bin, status);
+	}
+
 	Lapic::eoi();
 }
 
@@ -154,9 +253,10 @@ void init_rtl8169(Pci::Header0* hdr) {
 		return;
 	}
 
-	hdr->common.command |= Pci::Cmd::IoSpace | Pci::Cmd::MemSpace | Pci::Cmd::BusMaster;
+	hdr->common.command |= Pci::Cmd::IoSpace | Pci::Cmd::MemSpace | Pci::Cmd::BusMaster
+		| Pci::Cmd::MemWriteInvalidateEnable;
 
-	auto base = hdr->get_io_bar(0);
+	base = hdr->get_io_bar(0);
 
 	u8 mac[6];
 	for (u8 i = 0; i < 6; ++i) {
@@ -182,7 +282,7 @@ void init_rtl8169(Pci::Header0* hdr) {
 		return;
 	}
 
-	out1(base + REG_9346CR, CMD_93C56_EEM_CONF_WRITE);
+	//out1(base + REG_9346CR, CMD_93C56_EEM_CONF_WRITE);
 
 	out1(base + REG_CR, CMD_TE);
 	out4(base + REG_TCR, TCR_IFG_NORMAL | TCR_MXDMA_UNLIMITED);
@@ -203,13 +303,29 @@ void init_rtl8169(Pci::Header0* hdr) {
 	out4(base + REG_RDSAR, rx_phys);
 	out4(base + REG_RDSAR + 4, rx_phys >> 32);
 
-	out2(base + REG_ISR, 0xFFFF);
+	out2(base + REG_IMR, 0b1100000111111111);
 
 	out1(base + REG_CR, CMD_RE | CMD_TE);
 
-	out1(base + REG_9346CR, 0);
+	//out1(base + REG_9346CR, 0);
 
-	//hdr->common.command &= Pci::Cmd::InterruptDisable;
+	hdr->common.command &= ~Pci::Cmd::InterruptDisable;
 
 	println("rtl8169 initialized!");
 }
+
+static PciDriver pci_driver {
+	.match = PciDriver::MATCH_DEV,
+	.load = init_rtl8169,
+	.dev_count = 6,
+	.devices {
+		{.vendor = 0x10EC, .device = 0x8161},
+		{.vendor = 0x10EC, .device = 0x8168},
+		{.vendor = 0x10EC, .device = 0x8169},
+		{.vendor = 0x1259, .device = 0xC107},
+		{.vendor = 0x1737, .device = 0x1032},
+		{.vendor = 0x16EC, .device = 0x0116}
+	}
+};
+
+PCI_DRIVER(rtl8169, pci_driver);

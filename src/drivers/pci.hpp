@@ -210,6 +210,7 @@ namespace Pci {
 				msg_addr = 0xFEE00000 | as<u64>(cpu) << 12;
 			}
 
+		private:
 			u64 msg_addr;
 			u32 msg_data;
 			u32 vector_ctrl;
@@ -245,6 +246,7 @@ namespace Pci {
 			return (table_off_bir & 0b111);
 		}
 
+	private:
 		u8 id;
 		u8 next;
 		u16 msg_control;

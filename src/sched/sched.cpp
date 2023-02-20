@@ -234,7 +234,17 @@ void sched_unblock(Task* task) {
 	if (task->task_level < SCHED_MAX_LEVEL - 1) {
 		task->task_level += 1;
 	}
-	sched_queue_task(task);
+	auto flags = enter_critical();
+	auto local = arch_get_cpu_local();
+	if (local->current_task->task_level < task->task_level) {
+		auto& level = local->levels[task->task_level];
+		task->next = level.ready_tasks;
+		level.ready_tasks = task;
+	}
+	else {
+		sched_queue_task(task);
+	}
+	leave_critical(flags);
 }
 
 void sched_sleep(u64 us) {
@@ -262,8 +272,8 @@ void sched_sleep(u64 us) {
 		task->next = local->current_task;
 	}
 
-	leave_critical(flags);
 	sched_block(TaskStatus::Sleeping);
+	leave_critical(flags);
 }
 
 [[noreturn]] void sched_exit() {

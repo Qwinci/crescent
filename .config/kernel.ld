@@ -11,9 +11,11 @@ SECTIONS {
 	.rodata : { *(.rodata .rodata.*) }
 	.eh_frame_hdr : { *(.eh_frame_hdr) }
 	.eh_frame : { KEEP(*(.eh_frame)) }
-	PROVIDE(DRIVERS_START = .);
-	.drivers : { KEEP(*(.drivers)) }
-	PROVIDE(DRIVERS_END = .);
+	.drivers : {
+	    DRIVERS_START = .;
+	    KEEP(*(.drivers))
+	    DRIVERS_END = .;
+	}
 	PROVIDE(RODATA_END = .);
 
 	. = ALIGN(CONSTANT(MAXPAGESIZE));

@@ -11,7 +11,8 @@ enum class TaskStatus : u8 {
 	Running = 0,
 	Sleeping = 2,
 	Exited = 3,
-	Killed = 4
+	Killed = 4,
+	Waiting = 5
 };
 
 struct Task {
@@ -38,7 +39,6 @@ struct Task {
 	bool user;
 	u8 reserved[5];
 	u64 syscall_rsp;
-
 };
 
 #define SCHED_MAX_LEVEL 32
