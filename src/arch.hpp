@@ -16,3 +16,4 @@ CpuLocal* arch_get_cpu_local(usize cpu);
 void arch_init_usermode();
 void arch_sched_after_switch_from(Task* old_task, Task* this_task);
 void arch_sched_load_balance_hlt(u8 cpu);
+void arch_eoi();

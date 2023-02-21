@@ -7,7 +7,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 20)
 #set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
-#set(CMAKE_INTERPROCEDURAL_OPTIMIZATION True)
 set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg
@@ -19,16 +18,17 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 2
         -nic user,hostfwd=tcp::8888-:22,model=rtl8139 -trace pci_nvme_err*)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
+file(GLOB_RECURSE LAI_SRC thirdparty/lai/*.c)
 
 add_executable(usertest tests/main.cpp tests/main.asm)
 target_link_options(usertest PRIVATE -nostdlib -static -static-pie)
 
-add_executable(crescent ${SRC} thirdparty/tinyvmem/vmem.cpp)
+add_executable(crescent ${SRC} ${LAI_SRC} thirdparty/tinyvmem/vmem.cpp)
 add_dependencies(crescent usertest)
-target_include_directories(crescent PRIVATE src thirdparty)
+target_include_directories(crescent PRIVATE src thirdparty thirdparty/lai/include)
 
 target_compile_options(crescent PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>: -Wall
+        $<$<COMPILE_LANGUAGE:C,CXX>: -Wall
         -mno-80387 -mno-mmx -mno-3dnow -mno-sse -mno-sse2
         -mgeneral-regs-only -mno-red-zone -mcmodel=kernel
         -masm=intel -fno-stack-protector -fno-exceptions -fno-rtti

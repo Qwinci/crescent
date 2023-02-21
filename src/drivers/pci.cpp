@@ -4,20 +4,6 @@
 #include "dev.hpp"
 #include "memory/map.hpp"
 
-struct ConfEntry {
-	u64 base;
-	u16 seg;
-	u8 start;
-	u8 end;
-	u8 reserved[4];
-};
-
-struct [[gnu::packed]] Mcfg {
-	SdtHeader header;
-	u8 reserved[8];
-	ConfEntry entries[];
-};
-
 using namespace Pci;
 
 static void enum_func(VirtAddr base, u8 function) {
@@ -32,15 +18,17 @@ static void enum_func(VirtAddr base, u8 function) {
 	}
 
 	if ((common_hdr->hdr_type & ~(1 << 7)) != 0) {
-		println("unsupported pci device: ",
+		// todo
+		/*println("unsupported pci device: ",
 				Fmt::Hex, common_hdr->vendor_id, ":", common_hdr->device_id,
-				", class ", common_hdr->hdr_type & ~(1 << 7), Fmt::Dec);
+				", class ", common_hdr->hdr_type & ~(1 << 7), Fmt::Dec);*/
 		return;
 	}
 
 	auto* hdr = cast<Header0*>(common_hdr);
 
-	println("pci device: ", Fmt::Hex, hdr->common.vendor_id, ":", hdr->common.device_id, Fmt::Dec);
+	// todo
+	//println("pci device: ", Fmt::Hex, hdr->common.vendor_id, ":", hdr->common.device_id, Fmt::Dec);
 
 	for (auto driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
 		if (driver->type == Driver::PCI) {

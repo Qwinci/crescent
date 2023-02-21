@@ -19,7 +19,7 @@ static inline u64 murmur64(u64 key) {
 	return key;
 }
 
-static inline u16 bwap16(u16 value) {
+static inline u16 bswap16(u16 value) {
 	return __builtin_bswap16(value);
 }
 

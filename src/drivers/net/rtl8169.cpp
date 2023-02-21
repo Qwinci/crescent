@@ -1,6 +1,8 @@
-#include "arch/x86/lapic.hpp"
+#include "arch.hpp"
 #include "console.hpp"
 #include "drivers/dev.hpp"
+#include "ethernet.hpp"
+#include "ip.hpp"
 #include "io.hpp"
 #include "memory/std.hpp"
 
@@ -75,13 +77,60 @@
 #define CMD_93C56_EEM_CONF_WRITE (0b11 << 6)
 
 struct Descriptor {
-	u32 buf_size : 14;
-	u32 reserved : 16;
-	u32 eor : 1;
-	u32 own : 1;
+	union {
+		struct {
+			u32 buf_size : 14;
+			u32 reserved : 16;
+			u32 eor : 1;
+			u32 own : 1;
+		} init;
+		struct {
+			u32 buf_size : 14;
+			// TCP Checksum Failure
+			u32 tcpf : 1;
+			// UDP Checksum Failure
+			u32 udpf : 1;
+			// IP Checksum Failure
+			u32 ipf : 1;
+			// Protocol ID
+			enum : u32 {
+				PID_NON_IP = 0b00,
+				PID_TCP = 0b01,
+				PID_UDP = 0b10,
+				PID_IP = 0b11
+			} pid : 2;
+			// CRC Error
+			u32 crc : 1;
+			// Runt Packet
+			u32 runt : 1;
+			// Receive Error Summary
+			u32 res : 1;
+			// Receive Watchdog Timer Expired
+			u32 rwt : 1;
+		private:
+			u32 reserved : 2;
+		public:
+			// Broadcast Address Received
+			u32 bar : 1;
+			// Physical Address Matched
+			u32 pam : 1;
+			// Multicast Address Packet Received
+			u32 mar : 1;
+			// Last Segment Descriptor
+			u32 ls : 1;
+			// First Segment Descriptor
+			u32 fs : 1;
+			// End of Rx Descriptor Ring
+			u32 eor : 1;
+			// Ownership
+			u32 own : 1;
+		} filled;
+	};
+
 	u32 vlan;
 	u64 buf_addr;
 };
+static_assert(sizeof(Descriptor) == 16);
 
 static Descriptor* rx_descriptors;
 static Descriptor* tx_descriptors;
@@ -109,9 +158,9 @@ static bool init_descriptors() {
 	for (usize i = 0; i < PAGE_SIZE / sizeof(Descriptor); ++i) {
 		auto& desc = rx_descriptors[i];
 		if (i == PAGE_SIZE / sizeof(Descriptor) - 1) {
-			desc.eor = 1;
+			desc.init.eor = 1;
 		}
-		desc.own = 1;
+		desc.init.own = 1;
 
 		auto buf = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
 		if (!buf.as_usize()) {
@@ -119,7 +168,7 @@ static bool init_descriptors() {
 			return false;
 		}
 		desc.buf_addr = buf.as_usize();
-		desc.buf_size = PAGE_SIZE;
+		desc.init.buf_size = PAGE_SIZE;
 	}
 
 	return true;
@@ -146,8 +195,21 @@ static u8 rtl_int = 0;
 #define INT_TOK (1 << 2)
 /// Receive Error
 #define INT_RER (1 << 1)
-// Receive OK
+/// Receive OK
 #define INT_ROK (1 << 0)
+
+/// Basic mode control register
+#define PHY_BMCR 0
+/// Basic mode status register
+#define PHY_BMSR 1
+
+#define BMSR_EXTENDED_CAP (1 << 0)
+#define BMSR_JABBER_DETECH (1 << 1)
+#define BMSR_LINK_STATUS (1 << 2)
+#define BMSR_AUTO_NEG_ABILITY (1 << 3)
+#define BMSR_REMOTE_FAULT (1 << 4)
+#define BMSR_AUTO_NEG_COMPLETE (1 << 5)
+#define BMSR_PREAMBLE_SUPPRESS (1 << 6)
 
 /// Phy Reset
 #define BMCR_RESET (1 << 15)
@@ -163,53 +225,63 @@ static void rtl_int_handler(InterruptCtx*) {
 
 	if (status & INT_ROK) {
 		println("receive ok!");
-		out2(base + REG_ISR, 0xFFFF);
-
-		while (!current_rx_desc->own) {
+		println("received ", current_rx_desc->filled.buf_size, " bytes");
+		while (!current_rx_desc->filled.own) {
 			auto addr = PhysAddr {current_rx_desc->buf_addr}.to_virt();
-			auto size = current_rx_desc->buf_size;
-			auto data = as<const u8*>(as<void*>(addr));
+			auto size = current_rx_desc->filled.buf_size;
+			auto data = as<u8*>(as<void*>(addr));
 
-			println("received buffer of size ", size, ", data: ", Fmt::HexNoPrefix);
-			if (size <= 64) {
-				u8 mac_dest[6];
-				u8 mac_src[6];
-				u8 tag_8021Q[4];
-				u16 length;
+			auto ethernet_hdr = EthernetHeader::parse(data);
 
-				memcpy(mac_dest, data, 6);
-				memcpy(mac_src, data + 6, 6);
-				memcpy(tag_8021Q, data + 12, 4);
-				length = as<u16>(data[16]) << 8 | data[17];
-
-				print("dest: ");
-				for (u8 i : mac_dest) {
-					print(i);
+			if (ethernet_hdr->length <= 1500) {
+				println("packet with length ", ethernet_hdr->length);
+			}
+			else if (ethernet_hdr->length == 0x800) {
+				println("received IPv4 packet");
+				auto ipv4_hdr = Ipv4Header::parse(ethernet_hdr->payload);
+				print(ZeroPad(2), Fmt::HexNoPrefix);
+				for (usize i = 0; i < sizeof(Ipv4Header); ++i) {
+					print(ethernet_hdr->payload[i], " ");
 				}
-				print(" src: ");
-				for (u8 i : mac_src) {
-					print(i);
-				}
+				println(ZeroPad(0), Fmt::Dec);
 
-				if (length <= 1500) {
-					print(" length: ", Fmt::Dec, length, Fmt::HexNoPrefix, " payload: ");
-					for (usize i = 0; i < length; ++i) {
-						print(data[18 + i]);
+				println("version: ", ipv4_hdr->get_version());
+				println("total length: ", ipv4_hdr->total_length);
+				println("protocol: ", ipv4_hdr->protocol);
+				println("hdr length: ", ipv4_hdr->get_hdr_size());
+			}
+			else if (ethernet_hdr->length == 0x86DD) {
+				auto ipv6_hdr = Ipv6Header::parse(ethernet_hdr->payload);
+				u8 type = ipv6_hdr->next_header;
+				u8* ptr = ipv6_hdr->payload;
+
+				println("received IPv6 packet");
+
+				while (true) {
+					// Hop-by-Hop Options
+					if (type == 0) {
+						type = *ptr;
+						u8 hdr_length = ptr[1] * 8 + 8;
+						ptr += hdr_length;
+					}
+					else if (type == 58) {
+						println("ICMPv6 protocol");
+						break;
+					}
+					else {
+						println("unknown hdr type: ", Fmt::HexNoPrefix, type, Fmt::Dec);
+						break;
 					}
 				}
-				else {
-					print(" type: ", ZeroPad(4), length, ZeroPad(0));
-				}
-
-				println(Fmt::Dec);
+			}
+			else if (ethernet_hdr->length == 0x806) {
+				println("received ARP packet");
 			}
 			else {
-				println("> too large to display");
+				println("received unknown packet (type ", ethernet_hdr->length, ")");
 			}
 
-			if (!current_rx_desc->own) {
-				current_rx_desc->own = 1;
-			}
+			current_rx_desc->filled.own = 1;
 
 			if (current_rx_desc == rx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
 				current_rx_desc = rx_descriptors;
@@ -218,12 +290,78 @@ static void rtl_int_handler(InterruptCtx*) {
 				current_rx_desc += 1;
 			}
 		}
+
+		out2(base + REG_ISR, INT_ROK);
 	}
 	else {
-		println("rtl status: ", Fmt::Bin, status);
+		print("rtl status: ");
+		if (status & INT_SERR) {
+			println("System Error");
+		}
+		else if (status & INT_TIMEOUT) {
+			println("Timeout");
+		}
+		else if (status & INT_SWINT) {
+			println("Software Int");
+		}
+		else if (status & INT_TDU) {
+			println("Tx Descriptor Unavailable");
+		}
+		else if (status & INT_FOVW) {
+			println("Rx FIFO Overflow");
+		}
+		else if (status & INT_LINKCHG) {
+			println("Link Change");
+		}
+		else if (status & INT_RDU) {
+			println("Rx Descriptor Unavailable");
+		}
+		else if (status & INT_TER) {
+			println("Transmit Error");
+		}
+		else if (status & INT_TOK) {
+			println("Transmit OK");
+		}
+		else if (status & INT_RER) {
+			println("Receive Error");
+		}
+
+		out2(base + REG_ISR, 0b1100000111111111);
 	}
 
-	Lapic::eoi();
+	arch_eoi();
+}
+
+#define PHYAR_FLAG (1 << 31)
+#define PHYAR_REG_SHIFT 16
+#define PHYAR_DATA_SHIFT 0
+#define PHYAR_DATA_MASK 0xFFFF
+
+static u16 phy_read16(u8 reg) {
+	u32 tmp = as<u32>(reg) << PHYAR_REG_SHIFT;
+	out4(base + REG_PHYAR, tmp);
+
+	for (u8 i = 0; i < 5; ++i) {
+		udelay(1000);
+		tmp = in4(base + REG_PHYAR);
+		if (tmp & PHYAR_FLAG) {
+			break;
+		}
+	}
+
+	return tmp & PHYAR_DATA_MASK;
+}
+
+static void phy_write16(u8 reg, u16 value) {
+	u32 tmp = as<u32>(reg) << PHYAR_REG_SHIFT | as<u32>(value) << PHYAR_DATA_SHIFT;
+	out4(base + REG_PHYAR, tmp);
+
+	for (u8 i = 0; i < 5; ++i) {
+		udelay(1000);
+		if (!(in4(base + REG_PHYAR) & PHYAR_FLAG)) {
+			break;
+		}
+	}
 }
 
 void init_rtl8169(Pci::Header0* hdr) {
@@ -255,7 +393,7 @@ void init_rtl8169(Pci::Header0* hdr) {
 
 	hdr->common.command |= Pci::Cmd::IoSpace | Pci::Cmd::MemSpace | Pci::Cmd::BusMaster
 		| Pci::Cmd::MemWriteInvalidateEnable;
-
+	
 	base = hdr->get_io_bar(0);
 
 	u8 mac[6];
@@ -273,6 +411,27 @@ void init_rtl8169(Pci::Header0* hdr) {
 
 	println("chip reset done");
 
+	auto bmsr = phy_read16(PHY_BMSR);
+	if (bmsr & BMSR_AUTO_NEG_ABILITY) {
+		if (bmsr & BMSR_LINK_STATUS) {
+			println("performing card auto-negotiation");
+			phy_write16(PHY_BMCR, BMCR_ANE | BMCR_RESTART_AN);
+			while ((phy_read16(PHY_BMCR) & BMCR_RESTART_AN)) {
+				udelay(1000);
+			}
+			println("auto-negotiation done");
+		}
+		else {
+			println("link is not up, not performing auto-negotiation");
+		}
+	}
+	else {
+		println("card does not support auto-negotiation, leaving it as is");
+	}
+
+	hdr->common.command |= Pci::Cmd::IoSpace | Pci::Cmd::MemSpace | Pci::Cmd::BusMaster
+						   | Pci::Cmd::MemWriteInvalidateEnable;
+
 	println("initializing descs");
 
 	auto status = init_descriptors();
@@ -287,12 +446,13 @@ void init_rtl8169(Pci::Header0* hdr) {
 	out1(base + REG_CR, CMD_TE);
 	out4(base + REG_TCR, TCR_IFG_NORMAL | TCR_MXDMA_UNLIMITED);
 
-	out4(base + REG_RCR, RCR_RXFTH_NO_THRESHOLD | RCR_MXDMA_UNLIMITED | RCR_AER | RCR_AAP);
+	//out4(base + REG_RCR, RCR_RXFTH_NO_THRESHOLD | RCR_MXDMA_UNLIMITED /*| RCR_AER*/ | RCR_AAP);
+	out4(base + REG_RCR, RCR_RXFTH_NO_THRESHOLD | RCR_MXDMA_UNLIMITED | 0b1 | 1 << 2);
 
 	// 3968 max tx size
-	out1(REG_MTPS, 0x1F);
+	out1(base + REG_MTPS, 0x1F);
 	// 0x1000 max rx size
-	out2(REG_RMS, PAGE_SIZE);
+	out2(base + REG_RMS, PAGE_SIZE);
 
 	auto tx_phys = VirtAddr {tx_descriptors}.to_phys().as_usize();
 	auto rx_phys = VirtAddr {rx_descriptors}.to_phys().as_usize();
@@ -304,6 +464,8 @@ void init_rtl8169(Pci::Header0* hdr) {
 	out4(base + REG_RDSAR + 4, rx_phys >> 32);
 
 	out2(base + REG_IMR, 0b1100000111111111);
+
+	out4(base + REG_TIMERINT, 0);
 
 	out1(base + REG_CR, CMD_RE | CMD_TE);
 

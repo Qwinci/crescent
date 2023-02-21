@@ -2,7 +2,7 @@ ENTRY(start)
 
 SECTIONS {
 	. = 0xFFFFFFFF80000000 + SIZEOF_HEADERS;
-	PROVIDE(RODATA_START = .);
+	PROVIDE(RODATA_START = 0xFFFFFFFF80000000);
 	.hash : { *(.hash) }
 	.gnu.hash : { *(.gnu.hash) }
 	.dynsym : { *(.dynsym) }
@@ -16,15 +16,15 @@ SECTIONS {
 	    KEEP(*(.drivers))
 	    DRIVERS_END = .;
 	}
+	. = ALIGN(CONSTANT(MAXPAGESIZE));
 	PROVIDE(RODATA_END = .);
 
-	. = ALIGN(CONSTANT(MAXPAGESIZE));
 	PROVIDE(TEXT_START = .);
 	.plt : { *(.plt) *(.iplt) }
 	.text : { *(.text .text.*) }
+	. = ALIGN(CONSTANT(MAXPAGESIZE));
 	PROVIDE(TEXT_END = .);
 
-	. = ALIGN(CONSTANT(MAXPAGESIZE));
 	PROVIDE(DATA_START = .);
 	.tdata : { *(.tdata .tdata.*) }
 	.tbss : { *(.tbss .tbss.*) }
@@ -60,8 +60,8 @@ SECTIONS {
 	.data : { *(.data .data.*) }
 	.bss : { *(COMMON) *(.dynbss) *(.bss .bss.*) }
 
-	PROVIDE(DATA_END = .);
 	. = DATA_SEGMENT_END(.);
+	PROVIDE(DATA_END = .);
 	PROVIDE(KERNEL_END = .);
 
 	.comment 0 : { *(.comment) }

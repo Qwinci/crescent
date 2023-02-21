@@ -1,9 +1,24 @@
 #pragma once
+#include "acpi/common.hpp"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
 #include "memory/pmm.hpp"
 #include "types.hpp"
 #include "utils.hpp"
+
+struct ConfEntry {
+	u64 base;
+	u16 seg;
+	u8 start;
+	u8 end;
+	u8 reserved[4];
+};
+
+struct [[gnu::packed]] Mcfg {
+	SdtHeader header;
+	u8 reserved[8];
+	ConfEntry entries[];
+};
 
 namespace Pci {
 	enum class Cmd : u16 {

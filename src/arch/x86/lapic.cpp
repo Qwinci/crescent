@@ -133,3 +133,7 @@ void Lapic::send_ipi(u8 id, Lapic::Msg msg) {
 
 	msg_lock.unlock();
 }
+
+void arch_eoi() {
+	Lapic::eoi();
+}
