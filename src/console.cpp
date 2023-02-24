@@ -1,4 +1,6 @@
 #include "console.hpp"
+#include "memory/memory.hpp"
+#include "memory/vmem.hpp"
 
 Spinlock print_lock {};
 
@@ -18,7 +20,8 @@ static inline void print_char(char c) {
 		line += 1;
 	}
 	if (line * f->height >= fb->height) {
-		return;
+		fb->clear(bg);
+		line = 0;
 	}
 
 	u32 bytes_per_line = (f->width + 7) / 8;
@@ -34,6 +37,7 @@ static inline void print_char(char c) {
 		}
 		font_c += bytes_per_line;
 	}
+
 	column += 1;
 }
 
