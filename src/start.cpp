@@ -1,4 +1,5 @@
 #include "acpi/common.hpp"
+#include "acpi/fadt.hpp"
 #include "arch.hpp"
 #include "arch/x86/lapic.hpp"
 #include "console.hpp"
@@ -13,7 +14,6 @@
 #include "timer/timer.hpp"
 #include "timer/timer_int.hpp"
 #include "types.hpp"
-#include "arch.hpp"
 
 [[gnu::used]] u8 stack[0x2000];
 
@@ -99,6 +99,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	arch_init_usermode();
 
 	init_ps2();
+	init_fadt(rsdp);
 
 	/*auto usertest_file = arch_get_module("usertest");
 

@@ -30,7 +30,7 @@ static void enum_func(VirtAddr base, u8 function) {
 	// todo
 	//println("pci device: ", Fmt::Hex, hdr->common.vendor_id, ":", hdr->common.device_id, Fmt::Dec);
 
-	for (auto driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
+	for (auto driver = DRIVERS_START; driver < DRIVERS_END; ++driver) {
 		if (driver->type == Driver::PCI) {
 			auto pci_dev = driver->pci_dev;
 			if (pci_dev->match & PciDriver::MATCH_CLASS) {

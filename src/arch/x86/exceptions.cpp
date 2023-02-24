@@ -19,6 +19,7 @@ bool reboot = false;
 
 [[noreturn]] void double_fault_exception(InterruptCtx* ctx) {
 	if (reboot) {
+		println("double fault (reboot)");
 		*(volatile u8*) nullptr = 0;
 	}
 
@@ -47,6 +48,7 @@ bool reboot = false;
 
 [[noreturn]] void page_fault_exception(InterruptCtx* ctx) {
 	if (reboot) {
+		println("page fault (reboot)");
 		*(volatile u8*) nullptr = 0;
 	}
 

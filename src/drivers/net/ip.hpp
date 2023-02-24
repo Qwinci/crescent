@@ -1,5 +1,8 @@
 #pragma once
+#include "nic.hpp"
 #include "types.hpp"
+#include "utils.hpp"
+#include "utils/math.hpp"
 
 struct Ipv6Header {
 private:
@@ -73,3 +76,5 @@ struct Ipv4Header {
 	}
 };
 static_assert(sizeof(Ipv4Header) == 20);
+
+void ipv4_process_packet(Nic* nic, u8* data, u8 (&src)[6]);

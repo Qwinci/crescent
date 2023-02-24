@@ -124,7 +124,29 @@ struct Descriptor {
 			u32 eor : 1;
 			// Ownership
 			u32 own : 1;
-		} filled;
+		} filled_rx;
+		struct {
+			u32 buf_size : 16;
+			// TCP checksum offload
+			u32 tcpcs : 1;
+			// UDP checksum offload
+			u32 udpcs : 1;
+			// IP checksum offload
+			u32 ipcs : 1;
+		private:
+			u32 reserved : 8;
+		public:
+			// large send
+			u32 lgsen : 1;
+			// Last Segment Descriptor
+			u32 ls : 1;
+			// First Segment Descriptor
+			u32 fs : 1;
+			// End of Rx Descriptor Ring
+			u32 eor : 1;
+			// Ownership
+			u32 own : 1;
+		} filled_tx;
 	};
 
 	u32 vlan;
@@ -134,8 +156,8 @@ static_assert(sizeof(Descriptor) == 16);
 
 static Descriptor* rx_descriptors;
 static Descriptor* tx_descriptors;
-static Descriptor* current_rx_desc;
-static Descriptor* current_tx_desc;
+static volatile Descriptor* current_rx_desc;
+static volatile Descriptor* current_tx_desc;
 
 static bool init_descriptors() {
 	auto rx_addr = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
@@ -156,6 +178,25 @@ static bool init_descriptors() {
 	current_tx_desc = tx_descriptors;
 
 	for (usize i = 0; i < PAGE_SIZE / sizeof(Descriptor); ++i) {
+		auto& desc = tx_descriptors[i];
+		if (i == PAGE_SIZE / sizeof(Descriptor) - 1) {
+			desc.init.eor = 1;
+		}
+		desc.filled_tx.fs = 1;
+		desc.filled_tx.ls = 1;
+
+		auto buf = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
+		if (!buf.as_usize()) {
+			for (usize j = 0; j < i; ++j) {
+				PAGE_ALLOCATOR.dealloc_new(cast<void*>(tx_descriptors[j].buf_addr));
+			}
+			return false;
+		}
+
+		desc.buf_addr = buf.as_usize();
+	}
+
+	for (usize i = 0; i < PAGE_SIZE / sizeof(Descriptor); ++i) {
 		auto& desc = rx_descriptors[i];
 		if (i == PAGE_SIZE / sizeof(Descriptor) - 1) {
 			desc.init.eor = 1;
@@ -164,7 +205,9 @@ static bool init_descriptors() {
 
 		auto buf = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
 		if (!buf.as_usize()) {
-			// todo free allocated memory
+			for (usize j = 0; j < i; ++j) {
+				PAGE_ALLOCATOR.dealloc_new(cast<void*>(rx_descriptors[j].buf_addr));
+			}
 			return false;
 		}
 		desc.buf_addr = buf.as_usize();
@@ -218,80 +261,67 @@ static u8 rtl_int = 0;
 /// Restart Auto-Negotiation
 #define BMCR_RESTART_AN (1 << 9)
 
+constexpr usize MAX_SEND_SIZE = 3968;
 static u16 base = 0;
 
+#define TTPOLL_HIGH_PRIORITY (1 << 7)
+#define TPPOLL_NORMAL_PRIORITY (1 << 6)
+
+static void rtl_send_packet(void* buffer, usize size) {
+	if (size > MAX_SEND_SIZE) {
+		println("rtl_send_packet: packet too large!");
+		return;
+	}
+
+	while (current_tx_desc->init.own) {
+		// todo sched sleep
+		udelay(1000);
+	}
+	current_tx_desc->filled_tx.buf_size = size;
+	memcpy(PhysAddr {current_tx_desc->buf_addr}.to_virt(), buffer, size);
+	current_tx_desc->filled_tx.own = 1;
+
+	auto desc = current_tx_desc;
+
+	out1(base + REG_TPPOLL, TPPOLL_NORMAL_PRIORITY);
+
+	if (current_tx_desc == tx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
+		current_tx_desc = tx_descriptors;
+	}
+	else {
+		current_tx_desc += 1;
+	}
+}
+
+static Nic rtl_nic {.send = rtl_send_packet};
+
 static void rtl_int_handler(InterruptCtx*) {
+	arch_eoi();
+
 	auto status = in2(base + REG_ISR);
+
+	out2(base + REG_ISR, 0b1100000111111111);
 
 	if (status & INT_ROK) {
 		println("receive ok!");
-		println("received ", current_rx_desc->filled.buf_size, " bytes");
-		while (!current_rx_desc->filled.own) {
-			auto addr = PhysAddr {current_rx_desc->buf_addr}.to_virt();
-			auto size = current_rx_desc->filled.buf_size;
-			auto data = as<u8*>(as<void*>(addr));
+		//println("received ", current_rx_desc->filled.buf_size, " bytes");
+		auto addr = PhysAddr {current_rx_desc->buf_addr}.to_virt();
+		auto size = current_rx_desc->filled_rx.buf_size;
+		auto data = as<u8*>(as<void*>(addr));
 
-			auto ethernet_hdr = EthernetHeader::parse(data);
-
-			if (ethernet_hdr->length <= 1500) {
-				println("packet with length ", ethernet_hdr->length);
-			}
-			else if (ethernet_hdr->length == 0x800) {
-				println("received IPv4 packet");
-				auto ipv4_hdr = Ipv4Header::parse(ethernet_hdr->payload);
-				print(ZeroPad(2), Fmt::HexNoPrefix);
-				for (usize i = 0; i < sizeof(Ipv4Header); ++i) {
-					print(ethernet_hdr->payload[i], " ");
-				}
-				println(ZeroPad(0), Fmt::Dec);
-
-				println("version: ", ipv4_hdr->get_version());
-				println("total length: ", ipv4_hdr->total_length);
-				println("protocol: ", ipv4_hdr->protocol);
-				println("hdr length: ", ipv4_hdr->get_hdr_size());
-			}
-			else if (ethernet_hdr->length == 0x86DD) {
-				auto ipv6_hdr = Ipv6Header::parse(ethernet_hdr->payload);
-				u8 type = ipv6_hdr->next_header;
-				u8* ptr = ipv6_hdr->payload;
-
-				println("received IPv6 packet");
-
-				while (true) {
-					// Hop-by-Hop Options
-					if (type == 0) {
-						type = *ptr;
-						u8 hdr_length = ptr[1] * 8 + 8;
-						ptr += hdr_length;
-					}
-					else if (type == 58) {
-						println("ICMPv6 protocol");
-						break;
-					}
-					else {
-						println("unknown hdr type: ", Fmt::HexNoPrefix, type, Fmt::Dec);
-						break;
-					}
-				}
-			}
-			else if (ethernet_hdr->length == 0x806) {
-				println("received ARP packet");
-			}
-			else {
-				println("received unknown packet (type ", ethernet_hdr->length, ")");
-			}
-
-			current_rx_desc->filled.own = 1;
-
-			if (current_rx_desc == rx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
-				current_rx_desc = rx_descriptors;
-			}
-			else {
-				current_rx_desc += 1;
-			}
+		if (!ethernet_process_packet(&rtl_nic, data, size)) {
+			println("rtl: discarding unprocessed packet");
 		}
 
-		out2(base + REG_ISR, INT_ROK);
+		current_rx_desc->init.buf_size = PAGE_SIZE;
+		current_rx_desc->init.own = 1;
+
+		if (current_rx_desc == rx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
+			current_rx_desc = rx_descriptors;
+		}
+		else {
+			current_rx_desc += 1;
+		}
 	}
 	else {
 		print("rtl status: ");
@@ -325,11 +355,7 @@ static void rtl_int_handler(InterruptCtx*) {
 		else if (status & INT_RER) {
 			println("Receive Error");
 		}
-
-		out2(base + REG_ISR, 0b1100000111111111);
 	}
-
-	arch_eoi();
 }
 
 #define PHYAR_FLAG (1 << 31)
@@ -367,8 +393,8 @@ static void phy_write16(u8 reg, u16 value) {
 void init_rtl8169(Pci::Header0* hdr) {
 	println("rtl8169 initializing");
 	bool legacy = true;
-	if (auto msi = as<volatile Pci::MsiCap*>(hdr->get_cap(Pci::Cap::Msi))) {
-		println("msi found");
+	if (auto msi = as<Pci::MsiCap*>(hdr->get_cap(Pci::Cap::Msi))) {
+		/*println("msi found");
 		legacy = false;
 		rtl_int = alloc_int_handler(rtl_int_handler);
 		if (!rtl_int) {
@@ -379,11 +405,29 @@ void init_rtl8169(Pci::Header0* hdr) {
 		msi->set_max_int(1);
 		msi->set_data(rtl_int);
 		msi->set_cpu(0);
-		msi->enable(true);
+		msi->enable(true);*/
 	}
-	if (hdr->get_cap(Pci::Cap::MsiX)) {
+	if (auto msix = cast<Pci::MsiXCap*>(hdr->get_cap(Pci::Cap::MsiX))) {
 		println("msix found");
 		legacy = false;
+		rtl_int = alloc_int_handler(rtl_int_handler);
+		if (!rtl_int) {
+			println("rtl: failed to allocate interrupt");
+			return;
+		}
+
+		auto bar = msix->get_table_bar();
+		if (hdr->is_io_space(bar)) {
+			println("rtl: io space msix bar is not supported");
+			return;
+		}
+		auto mem = PhysAddr {hdr->map_bar(bar) + msix->get_table_offset()}.to_virt();
+		auto entries = as<Pci::MsiXCap::TableEntry*>(as<void*>(mem));
+		entries->mask(false);
+		entries->set_data(rtl_int);
+		entries->set_cpu(0);
+		msix->mask_all(false);
+		msix->enable(true);
 	}
 
 	if (legacy) {
@@ -465,11 +509,13 @@ void init_rtl8169(Pci::Header0* hdr) {
 
 	out2(base + REG_IMR, 0b1100000111111111);
 
-	out4(base + REG_TIMERINT, 0);
+	//out4(base + REG_TIMERINT, 0);
 
 	out1(base + REG_CR, CMD_RE | CMD_TE);
 
 	//out1(base + REG_9346CR, 0);
+
+	memcpy(rtl_nic.mac, mac, sizeof(mac));
 
 	hdr->common.command &= ~Pci::Cmd::InterruptDisable;
 

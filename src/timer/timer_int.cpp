@@ -4,6 +4,7 @@
 #include "console.hpp"
 #include "cpu/cpu.hpp"
 #include "sched/sched.hpp"
+#include "utils/math.hpp"
 #include "utils/misc.hpp"
 
 u16 timer_vec {};
@@ -13,16 +14,6 @@ static usize current_us = 0;
 void start_timer() {
 	current_us = US_IN_SEC;
 	Lapic::start_oneshot(1, timer_vec);
-}
-
-template<typename T>
-constexpr T max(T value1, T value2) {
-	return value1 > value2 ? value1 : value2;
-}
-
-template<typename T>
-constexpr T min(T value1, T value2) {
-	return value1 < value2 ? value1 : value2;
 }
 
 void timer_int(InterruptCtx* ctx) {

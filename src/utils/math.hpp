@@ -30,3 +30,13 @@ static inline u32 bswap32(u32 value) {
 static inline u32 bswap64(u64 value) {
 	return __builtin_bswap64(value);
 }
+
+template<typename T>
+constexpr T max(T value1, T value2) {
+	return value1 > value2 ? value1 : value2;
+}
+
+template<typename T>
+constexpr T min(T value1, T value2) {
+	return value1 < value2 ? value1 : value2;
+}

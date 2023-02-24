@@ -1,4 +1,5 @@
 #include "ps2.hpp"
+#include "acpi/fadt.hpp"
 #include "acpi/io_apic.hpp"
 #include "arch.hpp"
 #include "arch/x86/cpu.hpp"
@@ -8,9 +9,11 @@ static u8 ps2_kb_int = 0;
 extern bool reboot;
 
 static void ps2_int_handler(InterruptCtx* ctx) {
-	Lapic::eoi();
+	println("ps2 int");
+	fadt_reset();
 	reboot = true;
 	*(volatile u8*) nullptr = 0;
+	Lapic::eoi();
 }
 
 void init_ps2() {

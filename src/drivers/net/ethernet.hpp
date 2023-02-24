@@ -15,3 +15,8 @@ struct EthernetHeader {
 		return hdr;
 	}
 };
+
+struct Nic;
+
+bool ethernet_process_packet(Nic* nic, u8* data, usize size);
+EthernetHeader* ethernet_create_packet(Nic* nic, u16 length, const u8 (&dest)[6]);

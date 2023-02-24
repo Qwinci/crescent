@@ -208,10 +208,10 @@ namespace Pci {
 		struct TableEntry {
 			inline void mask(bool mask) {
 				if (mask) {
-					vector_ctrl &= 1;
+					vector_ctrl |= 1;
 				}
 				else {
-					vector_ctrl |= 1;
+					vector_ctrl &= ~1;
 				}
 			}
 
@@ -222,11 +222,17 @@ namespace Pci {
 			}
 
 			inline void set_cpu(u8 cpu) {
-				msg_addr = 0xFEE00000 | as<u64>(cpu) << 12;
+				set_msg_addr(0xFEE00000 | as<u64>(cpu) << 12);
 			}
 
 		private:
-			u64 msg_addr;
+			inline void set_msg_addr(usize addr) {
+				msg_addr_low = addr;
+				msg_addr_high = addr >> 32;
+			}
+
+			u32 msg_addr_low;
+			u32 msg_addr_high;
 			u32 msg_data;
 			u32 vector_ctrl;
 		};
@@ -250,7 +256,7 @@ namespace Pci {
 		}
 
 		[[nodiscard]] inline u16 get_table_size() const {
-			return (msg_control & 0b11111111111);
+			return (msg_control & 0b11111111111) + 1;
 		}
 
 		[[nodiscard]] inline u32 get_table_offset() const {
@@ -266,7 +272,7 @@ namespace Pci {
 		u8 next;
 		u16 msg_control;
 		u32 table_off_bir;
-		u32 pb_off_bir;
+		u32 pba_off_bir;
 	};
 	static_assert(sizeof(MsiXCap) == 1 + 1 + 2 + 4 + 4);
 }

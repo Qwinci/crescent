@@ -118,7 +118,6 @@ void Allocator::dealloc_helper(void* ptr, usize index) { // NOLINT(misc-no-recur
 void Allocator::dealloc(void* ptr, usize size) {
 	auto index = size_to_index(size);
 	if (index_to_size(index) == PAGE_SIZE) {
-		println("alloc dealloc: ", ptr, " size ", size);
 		PAGE_ALLOCATOR.dealloc_new(cast<void*>(VirtAddr {ptr}.to_phys().as_usize()));
 		return;
 	}

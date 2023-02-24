@@ -18,12 +18,11 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 2
         -nic user,hostfwd=tcp::8888-:22,model=rtl8139 -trace pci_nvme_err*)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS src/*.cpp src/*.asm)
-file(GLOB_RECURSE LAI_SRC thirdparty/lai/*.c)
 
 add_executable(usertest tests/main.cpp tests/main.asm)
 target_link_options(usertest PRIVATE -nostdlib -static -static-pie)
 
-add_executable(crescent ${SRC} ${LAI_SRC} thirdparty/tinyvmem/vmem.cpp)
+add_executable(crescent ${SRC} thirdparty/tinyvmem/vmem.cpp)
 add_dependencies(crescent usertest)
 target_include_directories(crescent PRIVATE src thirdparty thirdparty/lai/include)
 
