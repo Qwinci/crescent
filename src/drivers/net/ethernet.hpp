@@ -1,7 +1,12 @@
 #pragma once
+#include "packet.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 #include "utils/math.hpp"
+
+constexpr u8 NET_BROADCAST[6] {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+#define ETH_IPV4 0x800
 
 struct EthernetHeader {
 	u8 dest_mac[6];
@@ -19,4 +24,4 @@ struct EthernetHeader {
 struct Nic;
 
 bool ethernet_process_packet(Nic* nic, u8* data, usize size);
-EthernetHeader* ethernet_create_packet(Nic* nic, u16 length, const u8 (&dest)[6]);
+void ethernet_create_hdr(Nic* nic, Packet& packet, u16 length, const u8 (&dest)[6]);

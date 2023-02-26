@@ -16,7 +16,7 @@ void start_timer() {
 	Lapic::start_oneshot(1, timer_vec);
 }
 
-void timer_int(InterruptCtx* ctx) {
+void timer_int(InterruptCtx* ctx, void*) {
 	Lapic::eoi();
 	timer_us += current_us;
 
@@ -37,14 +37,13 @@ void timer_int(InterruptCtx* ctx) {
 	auto& level = levels[local->current_task->task_level];
 	u64 next_timestamp = level.slice_us;
 
-	while (local->sleeping_tasks) {
-		if (local->sleeping_tasks->sleep_end > timer_us) {
-			next_timestamp = min(next_timestamp, local->sleeping_tasks->sleep_end - timer_us);
+	while (auto task = local->blocked_tasks[as<u8>(TaskStatus::Sleeping)]) {
+		if (task->sleep_end > timer_us) {
+			next_timestamp = min(next_timestamp, task->sleep_end - timer_us);
 			break;
 		}
 		else {
-			auto task = local->sleeping_tasks;
-			local->sleeping_tasks = task->next;
+			local->blocked_tasks[as<u8>(TaskStatus::Sleeping)] = task->next;
 			sched_unblock(task);
 		}
 	}

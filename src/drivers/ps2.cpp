@@ -3,17 +3,17 @@
 #include "acpi/io_apic.hpp"
 #include "arch.hpp"
 #include "arch/x86/cpu.hpp"
-#include "arch/x86/lapic.hpp"
+#include "console.hpp"
 
 static u8 ps2_kb_int = 0;
 extern bool reboot;
 
-static void ps2_int_handler(InterruptCtx* ctx) {
+static void ps2_int_handler(InterruptCtx* ctx, void*) {
 	println("ps2 int");
 	fadt_reset();
 	reboot = true;
 	*(volatile u8*) nullptr = 0;
-	Lapic::eoi();
+	arch_eoi();
 }
 
 void init_ps2() {

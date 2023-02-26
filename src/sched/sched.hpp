@@ -12,7 +12,8 @@ enum class TaskStatus : u8 {
 	Sleeping = 2,
 	Exited = 3,
 	Killed = 4,
-	Waiting = 5
+	Waiting = 5,
+	Max
 };
 
 struct Task {

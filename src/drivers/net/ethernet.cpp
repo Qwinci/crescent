@@ -7,12 +7,13 @@
 #include "memory/std.hpp"
 #include "nic.hpp"
 
-EthernetHeader* ethernet_create_packet(Nic* nic, u16 length, const u8 (&dest)[6]) {
-	auto* hdr = as<EthernetHeader*>(as<void*>(PhysAddr {PAGE_ALLOCATOR.alloc_new()}.to_virt()));
+void ethernet_create_hdr(Nic* nic, Packet& packet, u16 length, const u8 (&dest)[6]) {
+	auto* hdr = cast<EthernetHeader*>(packet.end);
+	packet.end += sizeof(EthernetHeader);
 	memcpy(hdr->dest_mac, dest, sizeof(dest));
 	memcpy(hdr->src_mac, nic->mac, sizeof(nic->mac));
-	hdr->length = length;
-	return hdr;
+	hdr->length = bswap16(length);
+	packet.ethernet = hdr;
 }
 
 bool ethernet_process_packet(Nic* nic, u8* data, usize size) {

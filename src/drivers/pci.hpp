@@ -1,5 +1,7 @@
 #pragma once
 #include "acpi/common.hpp"
+#include "arch/x86/cpu.hpp"
+#include "console.hpp"
 #include "memory/map.hpp"
 #include "memory/memory.hpp"
 #include "memory/pmm.hpp"
@@ -88,65 +90,6 @@ namespace Pci {
 		MsiX = 0x11
 	};
 
-	struct Header0 {
-		[[nodiscard]] bool has_cap_list() const {
-			return common.status & 1 << 4;
-		}
-
-		void* get_cap(Cap cap);
-		usize get_bar_size(u8 bar);
-
-		[[nodiscard]] inline bool is_io_space(u8 bar) const {
-			return bars[bar] & 1;
-		}
-
-		[[nodiscard]] usize map_bar(u8 bar);
-
-		[[nodiscard]] inline u32 get_io_bar(u8 bar) const {
-			return bars[bar] & ~0b11;
-		}
-
-		CommonHeader common;
-		volatile u32 bars[6];
-		u32 cardbus_cis_ptr;
-		u16 subsystem_vendor_id;
-		u16 subsystem_id;
-		u32 expansion_rom_addr;
-		u8 cap_ptr;
-		u8 reserved1[3];
-		u32 reserved2;
-		volatile u8 int_line;
-		volatile u8 int_pin;
-		u8 min_grant;
-		u8 max_latency;
-	};
-
-	struct PowerCap {
-		[[nodiscard]] inline bool no_soft_reset() const {
-			return status_control & 1 << 3;
-		}
-
-		enum class State : u8 {
-			D0 = 0,
-			D1 = 1,
-			D2 = 0b10,
-			D3 = 0b11
-		};
-
-		inline void set_power(State state) {
-			status_control &= ~0b11;
-			status_control |= as<u8>(state);
-		}
-
-	private:
-		u8 id;
-		u8 next;
-		u16 cap_reg;
-		volatile u16 status_control;
-		u8 pm_control_status_ext;
-		u8 data;
-	};
-
 	struct MsiCap {
 		inline void set_addr(u64 addr) volatile {
 			msg_low = as<u32>(addr);
@@ -190,6 +133,14 @@ namespace Pci {
 			return msg_control & 1 << 8;
 		}
 
+		inline void mask_vec(u8 vec, bool mask) {
+			if (mask) {
+				_mask |= 1 << vec;
+			}
+			else {
+				_mask &= 1 << vec;
+			}
+		}
 	private:
 		u8 id;
 		u8 next;
@@ -198,8 +149,7 @@ namespace Pci {
 		u32 msg_high;
 		u16 msg_data;
 		u16 reserved;
-	public:
-		volatile u32 mask;
+		volatile u32 _mask;
 		volatile u32 pending;
 	};
 	static_assert(sizeof(MsiCap) == 1 + 1 + 2 + 8 + 2 + 2 + 4 + 4);
@@ -275,6 +225,110 @@ namespace Pci {
 		u32 pba_off_bir;
 	};
 	static_assert(sizeof(MsiXCap) == 1 + 1 + 2 + 4 + 4);
+
+	struct Header0 {
+		[[nodiscard]] bool has_cap_list() const {
+			return common.status & 1 << 4;
+		}
+
+		void* get_cap(Cap cap);
+		usize get_bar_size(u8 bar);
+
+		[[nodiscard]] inline bool is_io_space(u8 bar) const {
+			return bars[bar] & 1;
+		}
+
+		[[nodiscard]] usize map_bar(u8 bar);
+
+		[[nodiscard]] inline u32 get_io_bar(u8 bar) const {
+			return bars[bar] & ~0b11;
+		}
+
+		void set_irq(u8 num, u8 vec, u8 cpu = get_cpu_local()->id) {
+			if (auto msix = cast<MsiXCap*>(get_cap(Cap::MsiX))) {
+				auto bar = msix->get_table_bar();
+				auto mem = PhysAddr {map_bar(bar) + msix->get_table_offset()}.to_virt();
+				auto entries = as<Pci::MsiXCap::TableEntry*>(as<void*>(mem));
+				entries[num].mask(false);
+				entries[num].set_data(vec);
+				entries[num].set_cpu(cpu);
+				msix->mask_all(true);
+				msix->enable(true);
+			}
+			else if (auto msi = cast<MsiCap*>(get_cap(Cap::Msi))) {
+				msi->set_data(vec);
+				msi->set_cpu(cpu);
+				msi->enable(false);
+			}
+			else {
+				panic("legacy interrupts not supported in PciHeader0::set_irq");
+			}
+		}
+
+		void enable_irqs() {
+			if (auto msix = cast<MsiXCap*>(get_cap(Cap::MsiX))) {
+				msix->mask_all(false);
+			}
+			else if (auto msi = cast<MsiCap*>(get_cap(Cap::Msi))) {
+				msi->enable(true);
+			}
+			else {
+				panic("legacy interrupts not supported in PciHeader0::enable_irqs");
+			}
+		}
+
+		void disable_irqs() {
+			if (auto msix = cast<MsiXCap*>(get_cap(Cap::MsiX))) {
+				msix->mask_all(true);
+			}
+			else if (auto msi = cast<MsiCap*>(get_cap(Cap::Msi))) {
+				msi->enable(false);
+			}
+			else {
+				panic("legacy interrupts not supported in PciHeader0::disable_irqs");
+			}
+		}
+
+		CommonHeader common;
+		volatile u32 bars[6];
+		u32 cardbus_cis_ptr;
+		u16 subsystem_vendor_id;
+		u16 subsystem_id;
+		u32 expansion_rom_addr;
+		u8 cap_ptr;
+		u8 reserved1[3];
+		u32 reserved2;
+		volatile u8 int_line;
+		volatile u8 int_pin;
+		u8 min_grant;
+		u8 max_latency;
+	};
+
+	struct PowerCap {
+		[[nodiscard]] inline bool no_soft_reset() const {
+			return status_control & 1 << 3;
+		}
+
+		enum class State : u8 {
+			D0 = 0,
+			D1 = 1,
+			D2 = 0b10,
+			D3 = 0b11
+		};
+
+		inline void set_power(State state) {
+			status_control &= ~0b11;
+			status_control |= as<u8>(state);
+		}
+
+	private:
+		u8 id;
+		u8 next;
+		u16 cap_reg;
+		volatile u16 status_control;
+		u8 pm_control_status_ext;
+		u8 data;
+	};
 }
 
 void init_pci(void* rsdp);

@@ -1,4 +1,5 @@
 #pragma once
+#include "arch.hpp"
 #include "fb.hpp"
 #include "interrupts/interrupts.hpp"
 #include "types.hpp"
@@ -157,7 +158,7 @@ template<typename... Args>
 	print_nolock("\n");
 	print_lock.unlock();
 	while (true) {
-		asm("hlt");
+		arch_hlt();
 	}
 }
 

@@ -257,13 +257,13 @@ void sched_sleep(u64 us) {
 	local->current_task->status = TaskStatus::Sleeping;
 	local->current_task->sleep_end = end;
 
-	if (!local->sleeping_tasks) {
-		local->sleeping_tasks = local->current_task;
+	if (!local->blocked_tasks[as<u8>(TaskStatus::Sleeping)]) {
+		local->blocked_tasks[as<u8>(TaskStatus::Sleeping)] = local->current_task;
 		local->current_task->next = nullptr;
 	}
 	else {
 		Task* task;
-		for (task = local->sleeping_tasks; task->next; task = task->next) {
+		for (task = local->blocked_tasks[as<u8>(TaskStatus::Sleeping)]; task->next; task = task->next) {
 			if (task->next->sleep_end > end) {
 				break;
 			}

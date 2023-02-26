@@ -1,6 +1,7 @@
 #include "limine/limine.h"
 #include "arch.hpp"
 #include "arch/x86/cpu.hpp"
+#include "arch/x86/gdt.hpp"
 #include "arch/x86/lapic.hpp"
 #include "console.hpp"
 #include "memory/map.hpp"

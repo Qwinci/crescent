@@ -19,7 +19,7 @@ constexpr u32 ONESHOT = 0;
 constexpr u32 PERIODIC = 1 << 17;
 [[maybe_unused]] constexpr u32 TSC = 2 << 17;
 
-static void tmp_handler(InterruptCtx*) {
+static void tmp_handler(InterruptCtx*, void*) {
 	Lapic::eoi();
 }
 
@@ -72,7 +72,7 @@ Lapic::Msg Lapic::current_msg {Msg::None};
 static Spinlock msg_lock {};
 static u8 ipi_vec = 0;
 
-void ipi_handler(InterruptCtx*) {
+void ipi_handler(InterruptCtx*, void*) {
 	disable_interrupts();
 	switch (Lapic::current_msg) {
 		case Lapic::Msg::None:

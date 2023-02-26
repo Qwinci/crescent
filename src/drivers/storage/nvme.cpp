@@ -1,4 +1,4 @@
-#include "arch/x86/lapic.hpp"
+#include "arch.hpp"
 #include "console.hpp"
 #include "drivers/dev.hpp"
 #include "drivers/pci.hpp"
@@ -213,27 +213,122 @@ enum class Op : u8 {
 	GetLbaStatus = 0x86
 };
 
-#define CNS_CONTROLLER 1
+enum class Cns : u8 {
+	Namespace = 0,
+	Controller = 1,
+	NamespaceList = 2
+};
+
+enum class QueuePriority : u32 {
+	Urgent = 0,
+	High = 0b1,
+	Medium = 0b10,
+	Low = 0b11
+};
 
 struct Cmd {
 	Op op;
 	u8 flags;
 	u16 cid;
 	union {
-		struct {
+		struct [[gnu::packed]] {
+			u32 nsid;
+			u32 cmd2;
+			u32 cmd3;
+			u64 mptr;
+			u64 dtpr[2];
+			u32 cmd10;
+			u32 cmd11;
+			u32 cmd12;
+			u32 cmd13;
+			u32 cmd14;
+			u32 cmd15;
+		} common;
+		struct [[gnu::packed]] {
 			u32 nsid;
 			u32 reserved1[2];
-			u32 mtpr;
+			u64 mtpr;
 			u64 dtpr[2];
-			u8 cns;
+			Cns cns;
 			u8 reserved2;
 			u16 cntid;
 			u16 cns_ident;
 			u8 reserved3;
 			u8 csi;
 		} identify;
+		struct [[gnu::packed]] {
+			u32 reserved1[3];
+			u64 mtpr;
+			u64 dtpr[2];
+			u16 qid;
+			u16 qsize;
+			// Physically Contiguous
+			u32 pc : 1;
+			// Interrupts Enabled
+			u32 ien : 1;
+			u32 reserved2 : 16;
+			// Interrupt Vector
+			u32 iv : 16;
+		} create_io_comp_queue;
+		struct [[gnu::packed]] {
+			u32 reserved1[3];
+			u64 mtpr;
+			u64 dtpr[2];
+			u16 qid;
+			u16 qsize;
+			// Physically Contiguous
+			u32 pc : 1;
+			// Queue Priority
+			QueuePriority qrio : 2;
+			u32 reserved2 : 13;
+			// Completion Queue Identifier
+			u32 cqid : 16;
+		} create_io_sub_queue;
+		struct [[gnu::packed]] {
+			u32 nsid;
+			u32 reserved1[2];
+			u64 mtpr;
+			u64 dtpr[2];
+			// Starting LBA
+			u64 slba;
+			// Number of Logical Blocks (-1)
+			u16 nlb;
+			u8 reserved2;
+			// Storage Tag Check
+			u8 stc : 1;
+			u8 reserved3 : 1;
+			// Protection Information Field
+			u8 prinfo : 4;
+			// Force Unit Access
+			u8 fua : 1;
+			// Limited Retry
+			u8 lr : 1;
+		} io_read;
+		struct [[gnu::packed]] {
+			u32 nsid;
+			u32 reserved1[2];
+			u64 mtpr;
+			u64 dtpr[2];
+			// Starting LBA
+			u64 slba;
+			// Number of Logical Blocks (-1)
+			u16 nlb;
+			u8 reserved2 : 4;
+			// Directive Type
+			u8 dtype : 4;
+			// Storage Tag Check
+			u8 stc : 1;
+			u8 reserved3 : 1;
+			// Protection Information Field
+			u8 prinfo : 4;
+			// Force Unit Access
+			u8 fua : 1;
+			// Limited Retry
+			u8 lr : 1;
+		} io_write;
 	};
 };
+static_assert(sizeof(Cmd) == 64);
 
 struct CompletionEntry {
 	u32 cmd_specific1;
@@ -249,10 +344,198 @@ struct CompletionEntry {
 	u16 status : 15;
 };
 
+struct [[gnu::packed]] NamespaceListIdentDescriptor {
+	enum : u8 {
+		NIDT_RESERVED = 0,
+		NIDT_IEEE = 1,
+		NIDT_GUID = 2,
+		NIDT_UUID = 3,
+		NIDT_CSI = 4
+	} nidt;
+	// Namespace Identifier Length
+	u8 nidl;
+	u8 reserved[2];
+	union {
+		u8 csi;
+		u64 ieee;
+		u64 uuid[2];
+	};
+};
+
+struct [[gnu::packed]] NamespaceIdent {
+	// Namespace Size in logical blocks
+	u64 nsze;
+	// Namespace Capacity
+	u64 ncap;
+	// Namespace Utilization
+	u64 nuse;
+	// Namespace Features
+	struct {
+		// Thin Provisioning
+		u8 thinp : 1;
+		// NAWUN, NAWUPF, NACWU
+		u8 nsabp : 1;
+		// Deallocated or Unwritten Logical Block Error
+		u8 dae : 1;
+		u8 uidreuse : 1;
+		// NPWG, NPWA, NPDG, NPDA
+		u8 optperf : 1;
+		u8 reserved : 3;
+	} nsfeat;
+	// Number of LBA Formats
+	u8 nlbaf;
+	// Formatted LBA Size
+	struct {
+		u8 fmt_index_low : 4;
+		u8 extended_metadata : 1;
+		u8 fmt_index_high : 2;
+		u8 reserved : 1;
+	} flbas;
+	// Metadata Capabilities
+	struct {
+		u8 extended_metadata_support : 1;
+		u8 separate_metadata_support : 1;
+		u8 reserved : 6;
+	} mc;
+	// End-to-end Data Protection Capabilities
+	struct {
+		// Protection Information Type 1 Supported
+		u8 pit1s : 1;
+		// Protection Information Type 2 Supported
+		u8 pit2s : 1;
+		// Protection Information Type 3 Supported
+		u8 pit3s : 1;
+		// Protection Information In First Bytes
+		u8 piifb : 1;
+		// Protection Information In Last Bytes
+		u8 piilb : 1;
+		u8 reserved : 3;
+	} dpc;
+	// End-to-end Data Protection Type Settings
+	struct {
+		// Protection Information Type
+		u8 pit : 3;
+		// Protection Information Position
+		u8 pip : 1;
+		u8 reserved : 4;
+	} dps;
+	// Namespace Multi-path IO and Namespace Sharing Capabilities
+	u8 nmic;
+	// Reservation Capabilities
+	u8 rescap;
+	// Format Progress Indicator
+	u8 fpi;
+	// Deallocate Logical Block Features
+	struct {
+		u8 behaviour : 3;
+		u8 deallocate_write_zero : 1;
+		u8 guard_crc : 1;
+		u8 reserved : 3;
+	} dlfeat;
+	// Namespace Atomic Write Unit Normal
+	u16 nawun;
+	// Namespace Atomic Write Unit Power Fail
+	u16 nawupf;
+	// Namespace Atomic Compare & Write Unit
+	u16 nacwu;
+	// Namespace Atomic Boundary Size Normal
+	u16 nabsn;
+	// Namespace Atomic Boundary Offset
+	u16 nabo;
+	// Namespace Atomic Boundary Size Power Fail
+	u16 nabspf;
+	// Namespace Optimal IO Boundary
+	u16 noiob;
+	// NVM Capacity in bytes
+	u64 nvmcap[2];
+	// Namespace Preferred Write Granularity
+	u16 npwg;
+	// Namespace Preferred Write Alignment
+	u16 npwa;
+	// Namespace Preferred Deallocate Granularity
+	u16 npdg;
+	// Namespace Preferred Deallocate Alignment
+	u16 npda;
+	// Namespace Optimal Write Size
+	u16 nows;
+	// Maximum Single Source Range Length
+	u16 mssrl;
+	// Maximum Copy Length
+	u32 mcl;
+	// Maximum Source Range Count
+	u8 msrc;
+	u8 reserved1[11];
+	// ANA Group Identifier
+	u32 anagrpid;
+	u8 reserved2[3];
+	// Namespace Attributes
+	struct {
+		u8 write_protected : 1;
+		u8 reserved : 7;
+	} nsattr;
+	// NVM Set Identifier
+	u16 nvmsetid;
+	// Endurance Group Identifier
+	u16 endgid;
+	u64 nguid[2];
+	u64 eui64;
+	struct {
+		// Metadata size
+		u16 ms;
+		// LBA Data Size (power of two)
+		u8 lbads;
+		enum : u8 {
+			RP_BEST_PERF = 0,
+			RP_BETTER_PERF = 0b1,
+			RP_GOOD_PERF = 0b10,
+			RP_DEGRADED_PERF = 0b11
+		} rp : 2;
+	} formats[];
+};
+
+static u8 nvme_vec {};
+
 struct NvmeController {
-	static void irq(InterruptCtx* ctx) {
+	static void irq(InterruptCtx* ctx, void* s) {
+		auto& self = *as<NvmeController*>(s);
 		println("nvme irq");
-		Lapic::eoi();
+
+		auto index = self.admin_comp_queue_i;
+
+		const auto& entry = self.admin_sub_queue[self.admin_comp_queue[index].sqhd - 1];
+		auto addr = PhysAddr {entry.identify.dtpr[0]}.to_virt();
+
+		auto ptr = as<u8*>(as<void*>(addr));
+
+		usize max_transfer_size = ptr[77];
+		if (max_transfer_size == 0) {
+			println("no max transfer size");
+		}
+		else {
+			max_transfer_size = pow2(max_transfer_size);
+			println("max transfer size: ", max_transfer_size, " pages");
+		}
+
+		auto type = ptr[111];
+		if (type == 1) {
+			println("io controller");
+		}
+		else {
+			println("unknown nvme controller type ", type);
+		}
+
+		while (index < admin_comp_queue_size && self.admin_comp_queue[index].p) {
+			if (self.admin_comp_queue[index].status == 0) {
+				println("success");
+			}
+			println("completed sub queue ", self.admin_comp_queue[index].sqid, " entry ", self.admin_comp_queue[index].sqhd - 1, " entry");
+			index += 1;
+		}
+
+		auto doorbell = cast<volatile u32*>(self.base + COMPLETION_Q_HEAD_DOORBELL(0, self.doorbell_stride));
+		*doorbell = index % admin_comp_queue_size;
+
+		arch_eoi();
 	}
 
 	bool init(Pci::Header0* hdr, usize base_addr) {
@@ -272,16 +555,24 @@ struct NvmeController {
 			return false;
 		}
 
+		if (!nvme_vec) {
+			nvme_vec = alloc_int_handler(irq, this);
+			if (!nvme_vec) {
+				panic("[nvme] failed to allocate interrupt");
+			}
+			hdr->set_irq(0, nvme_vec);
+		}
+
 		regs->cc &= ~CC_EN_MASK;
 
 		while (CSTS_RDY(regs->csts)) {
-			__builtin_ia32_pause();
+			arch_spinloop_hint();
 		}
 
-		auto admin_sub_queue = cast<Cmd*>(new u8[0x1000]);
-		auto admin_comp_queue = cast<CompletionEntry*>(new u8[0x1000]);
+		admin_sub_queue = cast<Cmd*>(new u8[0x1000]());
+		admin_comp_queue = cast<CompletionEntry*>(new u8[0x1000]());
 
-		regs->aqa = AQA_ASQS_V(0x1000 / 64) | AQA_ACQS_V(0x1000 / 16);
+		regs->aqa = AQA_ASQS_V(admin_sub_queue_size) | AQA_ACQS_V(admin_comp_queue_size);
 
 		regs->asq = VirtAddr {admin_sub_queue}.to_phys().as_usize();
 		regs->acq = VirtAddr {admin_comp_queue}.to_phys().as_usize();
@@ -306,34 +597,43 @@ struct NvmeController {
 
 		auto stride = pow2(CAP_DSTRD(regs->cap) + 2);
 		println("doorbell stride: ", stride);
+		doorbell_stride = stride;
 
 		auto data = new u8[0x1000]();
 
 		Cmd identify_cmd {
 			.op = Op::Identify,
 		};
-		identify_cmd.identify.cns = CNS_CONTROLLER;
+		identify_cmd.identify.cns = Cns::Controller;
 		identify_cmd.identify.dtpr[0] = VirtAddr {data}.to_phys().as_usize();
 		identify_cmd.identify.mtpr = 0;
 
 		*admin_sub_queue = identify_cmd;
+		admin_sub_queue_i += 1;
 
-		auto msix = cast<Pci::MsiXCap*>(hdr->get_cap(Pci::Cap::MsiX));
-		auto table_phys = hdr->map_bar(msix->get_table_bar()) + msix->get_table_offset();
-		auto table = cast<Pci::MsiXCap::TableEntry*>(PhysAddr {table_phys}.to_virt().as_usize());
-
-		auto irq_num = alloc_int_handler(NvmeController::irq);
-		table->set_cpu(0);
-		table->set_data(irq_num);
+		hdr->enable_irqs();
 
 		auto doorbell = cast<volatile u32*>(base + SUBMISSION_Q_TAIL_DOORBELL(0, stride));
+		auto comp_doorbell = cast<volatile u32*>(base + COMPLETION_Q_HEAD_DOORBELL(0, stride));
+		admin_sub_queue_doorbell = doorbell;
+		admin_comp_queue_doorbell = comp_doorbell;
+
 		*doorbell = 1;
 
 		return true;
 	}
 private:
-	volatile Regs* regs;
-	usize base;
+	volatile Regs* regs {};
+	usize base {};
+	static constexpr usize admin_sub_queue_size = PAGE_SIZE / sizeof(Cmd);
+	static constexpr usize admin_comp_queue_size = PAGE_SIZE / sizeof(CompletionEntry);
+	Cmd* admin_sub_queue {};
+	volatile CompletionEntry* admin_comp_queue {};
+	u16 admin_sub_queue_i {};
+	u16 admin_comp_queue_i {};
+	usize doorbell_stride {};
+	volatile u32* admin_sub_queue_doorbell {};
+	volatile u32* admin_comp_queue_doorbell {};
 };
 
 void init_nvme(Pci::Header0* hdr) {

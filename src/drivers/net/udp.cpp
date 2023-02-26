@@ -1,16 +1,39 @@
 #include "udp.hpp"
+#include "console.hpp"
+#include "dhcp.hpp"
+#include "ip.hpp"
 #include "utils.hpp"
+#include "utils/math.hpp"
+#include "packet.hpp"
 
-struct UdpHeader {
-	u16 src_port;
-	u16 dst_port;
-	u16 length;
-	u16 checksum;
-	u8 data[];
-};
+void UdpHeader::serialize() {
+	src_port = bswap16(src_port);
+	dst_port = bswap16(dst_port);
+	length = bswap16(length);
+	checksum = bswap16(checksum);
+}
+
+void UdpHeader::update_checksum() {
+	checksum = net_checksum(cast<u8*>(this), as<usize>(bswap16(length)) + sizeof(UdpPseudoIpv4Hdr), ChecksumType::Udp);
+}
 
 void udp_process_packet(Nic* nic, u8* data, u8 (&src)[6]) {
 	auto* hdr = cast<UdpHeader*>(data);
 	// todo checksum
+	hdr->serialize();
+	if (hdr->src_port == 67 && hdr->dst_port == 68) {
+		println("received dhcp packet");
+		dhcp_process_packet(nic, hdr->data, src);
+	}
+}
 
+void udp_create_hdr(Packet& packet, u16 src_port, u16 dst_port, u16 length) {
+	auto hdr = cast<UdpHeader*>(packet.end);
+	packet.end += sizeof(UdpHeader);
+	hdr->src_port = src_port;
+	hdr->dst_port = dst_port;
+	hdr->length = length + sizeof(UdpHeader);
+	hdr->checksum = 0;
+
+	packet.udp = hdr;
 }

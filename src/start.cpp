@@ -30,7 +30,9 @@ extern "C" fn __init_array_end[]; // NOLINT(bugprone-reserved-identifier)
 	arch_init_usermode();
 	sched_init(false);
 	start_timer();
-	while (true) asm("hlt");
+	while (true) {
+		arch_hlt();
+	}
 }
 
 #define EI_MAG0 0
@@ -152,6 +154,6 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	init_pci(rsdp);
 
 	while (true) {
-		asm("hlt");
+		arch_hlt();
 	}
 }

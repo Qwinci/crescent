@@ -17,7 +17,7 @@ bool reboot = false;
 	while (true) asm("hlt"); \
 }
 
-[[noreturn]] void double_fault_exception(InterruptCtx* ctx) {
+[[noreturn]] void double_fault_exception(InterruptCtx* ctx, void*) {
 	if (reboot) {
 		println("double fault (reboot)");
 		*(volatile u8*) nullptr = 0;
@@ -34,7 +34,7 @@ bool reboot = false;
 	while (true) asm("hlt");
 }
 
-[[noreturn]] void gp_fault_exception(InterruptCtx* ctx) {
+[[noreturn]] void gp_fault_exception(InterruptCtx* ctx, void*) {
 	print_lock.lock();
 	set_fg(0xFF0000);
 
@@ -46,7 +46,7 @@ bool reboot = false;
 	while (true) asm("hlt");
 }
 
-[[noreturn]] void page_fault_exception(InterruptCtx* ctx) {
+[[noreturn]] void page_fault_exception(InterruptCtx* ctx, void*) {
 	if (reboot) {
 		println("page fault (reboot)");
 		*(volatile u8*) nullptr = 0;
@@ -94,23 +94,23 @@ bool reboot = false;
 	while (true) asm("hlt");
 }
 
-[[noreturn]] void division_exception(InterruptCtx* ctx) GENERIC_FAULT(division error)
-[[noreturn]] void debug_exception(InterruptCtx* ctx) GENERIC_FAULT(debug exception)
-[[noreturn]] void nmi_exception(InterruptCtx* ctx) GENERIC_FAULT(nmi exception)
-[[noreturn]] void breakpoint_exception(InterruptCtx* ctx) GENERIC_FAULT(breakpoint exception)
-[[noreturn]] void overflow_exception(InterruptCtx* ctx) GENERIC_FAULT(overflow exception)
-[[noreturn]] void bound_range_exception(InterruptCtx* ctx) GENERIC_FAULT(bound range Exceeded)
-[[noreturn]] void invalid_op_exception(InterruptCtx* ctx) GENERIC_FAULT(invalid opcode)
-[[noreturn]] void device_not_available_exception(InterruptCtx* ctx) GENERIC_FAULT(device not available)
-[[noreturn]] void invalid_tss_exception(InterruptCtx* ctx) GENERIC_FAULT(invalid tss)
-[[noreturn]] void seg_not_present_exception(InterruptCtx* ctx) GENERIC_FAULT(segment not present)
-[[noreturn]] void stack_seg_fault_exception(InterruptCtx* ctx) GENERIC_FAULT(stack segmentation fault)
-[[noreturn]] void x87_float_exception(InterruptCtx* ctx) GENERIC_FAULT(x86 floating point exception)
-[[noreturn]] void alignment_exception(InterruptCtx* ctx) GENERIC_FAULT(alignment check)
-[[noreturn]] void machine_check_exception(InterruptCtx* ctx) GENERIC_FAULT(machine check)
-[[noreturn]] void simd_float_exception(InterruptCtx* ctx) GENERIC_FAULT(simd floating point exception)
-[[noreturn]] void virtualization_exception(InterruptCtx* ctx) GENERIC_FAULT(virtualization exception)
-[[noreturn]] void control_protection_exception(InterruptCtx* ctx) GENERIC_FAULT(control protection exception)
-[[noreturn]] void hypervisor_injection_exception(InterruptCtx* ctx) GENERIC_FAULT(hypervisor injection exception)
-[[noreturn]] void vmm_communication_exception(InterruptCtx* ctx) GENERIC_FAULT(vmm communication exception)
-[[noreturn]] void security_exception(InterruptCtx* ctx) GENERIC_FAULT(security exception)
+[[noreturn]] void division_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(division error)
+[[noreturn]] void debug_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(debug exception)
+[[noreturn]] void nmi_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(nmi exception)
+[[noreturn]] void breakpoint_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(breakpoint exception)
+[[noreturn]] void overflow_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(overflow exception)
+[[noreturn]] void bound_range_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(bound range Exceeded)
+[[noreturn]] void invalid_op_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(invalid opcode)
+[[noreturn]] void device_not_available_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(device not available)
+[[noreturn]] void invalid_tss_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(invalid tss)
+[[noreturn]] void seg_not_present_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(segment not present)
+[[noreturn]] void stack_seg_fault_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(stack segmentation fault)
+[[noreturn]] void x87_float_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(x86 floating point exception)
+[[noreturn]] void alignment_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(alignment check)
+[[noreturn]] void machine_check_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(machine check)
+[[noreturn]] void simd_float_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(simd floating point exception)
+[[noreturn]] void virtualization_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(virtualization exception)
+[[noreturn]] void control_protection_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(control protection exception)
+[[noreturn]] void hypervisor_injection_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(hypervisor injection exception)
+[[noreturn]] void vmm_communication_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(vmm communication exception)
+[[noreturn]] void security_exception(InterruptCtx* ctx, void*) GENERIC_FAULT(security exception)

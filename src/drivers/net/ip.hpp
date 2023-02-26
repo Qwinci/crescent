@@ -40,9 +40,16 @@ public:
 };
 static_assert(sizeof(Ipv6Header) == 40);
 
+enum class ChecksumType {
+	Ip,
+	Udp
+};
+
+uint16_t net_checksum(const u8* data, usize count, ChecksumType type);
+
 struct Ipv4Header {
-	u8 version_ihl;
-	u8 dscp_ecn;
+	u8 ihl_version;
+	u8 ecn_dscp;
 	u16 total_length;
 	u16 identification;
 	u16 flags_fragment_offset;
@@ -53,15 +60,11 @@ struct Ipv4Header {
 	u32 dst_ip_addr;
 
 	[[nodiscard]] inline u8 get_version() const {
-		return version_ihl & 0b1111;
+		return ihl_version >> 4;
 	}
 
 	[[nodiscard]] inline u8 get_hdr_size() const {
-		return (version_ihl >> 4) * 4;
-	}
-
-	static inline bool is_ipv4(u8 first) {
-		return (first & 0b1111) == 4;
+		return (ihl_version & 0b1111) * 4;
 	}
 
 	static inline Ipv4Header* parse(u8* data) {
@@ -70,11 +73,25 @@ struct Ipv4Header {
 		hdr->identification = bswap16(hdr->identification);
 		hdr->flags_fragment_offset = bswap16(hdr->flags_fragment_offset);
 		hdr->header_checksum = bswap16(hdr->header_checksum);
-		hdr->src_ip_addr = bswap32(hdr->src_ip_addr);
-		hdr->dst_ip_addr = bswap32(hdr->dst_ip_addr);
 		return hdr;
+	}
+
+	inline void serialize() {
+		total_length = bswap16(total_length);
+		identification = bswap16(identification);
+		flags_fragment_offset = bswap16(flags_fragment_offset);
+		header_checksum = bswap16(header_checksum);
+	}
+
+	void update_checksum() {
+		const u8* addr = cast<const u8*>(this);
+		u16 count = get_hdr_size();
+		header_checksum = net_checksum(addr, count, ChecksumType::Ip);
 	}
 };
 static_assert(sizeof(Ipv4Header) == 20);
 
+struct Packet;
+
 void ipv4_process_packet(Nic* nic, u8* data, u8 (&src)[6]);
+void ipv4_create_hdr(Nic* nic, Packet& packet, const u8 (&dest)[6], u16 size, u8 protocol, u32 src_ip, u32 dst_ip);

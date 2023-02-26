@@ -39,11 +39,11 @@ struct Idt {
 	IdtEntry interrupts[256];
 };
 
-using Handler = void (*)(InterruptCtx* ctx);
+using Handler = void (*)(InterruptCtx* ctx, void* arg);
 
 void set_exceptions();
-void register_int_handler(u8 vec, Handler handler);
-[[nodiscard]] u16 alloc_int_handler(Handler handler);
+void register_int_handler(u8 vec, Handler handler, void* arg = nullptr);
+[[nodiscard]] u16 alloc_int_handler(Handler handler, void* arg = nullptr);
 Handler get_int_handler(u8 vec);
 void load_idt();
 

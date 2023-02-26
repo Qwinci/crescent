@@ -56,5 +56,5 @@ private:
 	static usize base;
 
 	friend void parse_madt(const void* madt_ptr);
-	friend void ipi_handler(struct InterruptCtx* ctx);
+	friend void ipi_handler(struct InterruptCtx* ctx, void*);
 };

@@ -1,9 +1,10 @@
 #include "arch.hpp"
 #include "console.hpp"
+#include "dhcp.hpp"
 #include "drivers/dev.hpp"
 #include "ethernet.hpp"
-#include "ip.hpp"
 #include "io.hpp"
+#include "ip.hpp"
 #include "memory/std.hpp"
 
 #define REG_IDR0 0
@@ -156,8 +157,11 @@ static_assert(sizeof(Descriptor) == 16);
 
 static Descriptor* rx_descriptors;
 static Descriptor* tx_descriptors;
-static volatile Descriptor* current_rx_desc;
-static volatile Descriptor* current_tx_desc;
+static volatile usize rx_index = 0;
+static volatile usize tx_index = 0;
+constexpr usize DESC_COUNT = PAGE_SIZE / sizeof(Descriptor);
+constexpr usize RECEIVE_BUF_SIZE = 2048;
+constexpr usize TRANSMIT_BUF_SIZE = 4096;
 
 static bool init_descriptors() {
 	auto rx_addr = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
@@ -166,6 +170,7 @@ static bool init_descriptors() {
 	}
 	auto tx_addr = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
 	if (!tx_addr.as_usize()) {
+		PAGE_ALLOCATOR.dealloc_new(cast<void*>(rx_addr.as_usize()));
 		return false;
 	}
 
@@ -174,45 +179,25 @@ static bool init_descriptors() {
 	tx_descriptors = as<Descriptor*>(as<void*>(tx_addr.to_virt()));
 	memset(tx_descriptors, 0, PAGE_SIZE);
 
-	current_rx_desc = rx_descriptors;
-	current_tx_desc = tx_descriptors;
+	for (usize i = 0; i < DESC_COUNT; ++i) {
+		auto& tx_desc = tx_descriptors[i];
+		auto& rx_desc = rx_descriptors[i];
 
-	for (usize i = 0; i < PAGE_SIZE / sizeof(Descriptor); ++i) {
-		auto& desc = tx_descriptors[i];
-		if (i == PAGE_SIZE / sizeof(Descriptor) - 1) {
-			desc.init.eor = 1;
-		}
-		desc.filled_tx.fs = 1;
-		desc.filled_tx.ls = 1;
+		tx_desc.filled_tx.fs = 1;
+		tx_desc.filled_tx.ls = 1;
 
-		auto buf = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
-		if (!buf.as_usize()) {
-			for (usize j = 0; j < i; ++j) {
-				PAGE_ALLOCATOR.dealloc_new(cast<void*>(tx_descriptors[j].buf_addr));
-			}
-			return false;
-		}
+		rx_desc.filled_rx.own = 1;
 
-		desc.buf_addr = buf.as_usize();
+		auto tx_buf = new u8[TRANSMIT_BUF_SIZE];
+		auto rx_buf = new u8[RECEIVE_BUF_SIZE];
+
+		tx_desc.buf_addr = VirtAddr {tx_buf}.to_phys().as_usize();
+		rx_desc.buf_addr = VirtAddr {rx_buf}.to_phys().as_usize();
+		rx_desc.filled_rx.buf_size = RECEIVE_BUF_SIZE;
 	}
 
-	for (usize i = 0; i < PAGE_SIZE / sizeof(Descriptor); ++i) {
-		auto& desc = rx_descriptors[i];
-		if (i == PAGE_SIZE / sizeof(Descriptor) - 1) {
-			desc.init.eor = 1;
-		}
-		desc.init.own = 1;
-
-		auto buf = PhysAddr {PAGE_ALLOCATOR.alloc_new()};
-		if (!buf.as_usize()) {
-			for (usize j = 0; j < i; ++j) {
-				PAGE_ALLOCATOR.dealloc_new(cast<void*>(rx_descriptors[j].buf_addr));
-			}
-			return false;
-		}
-		desc.buf_addr = buf.as_usize();
-		desc.init.buf_size = PAGE_SIZE;
-	}
+	tx_descriptors[DESC_COUNT - 1].filled_tx.eor = 1;
+	rx_descriptors[DESC_COUNT - 1].filled_rx.eor = 1;
 
 	return true;
 }
@@ -273,29 +258,29 @@ static void rtl_send_packet(void* buffer, usize size) {
 		return;
 	}
 
-	while (current_tx_desc->init.own) {
+	auto flags = enter_critical();
+
+	volatile auto* desc = &tx_descriptors[tx_index];
+
+	while (desc->filled_tx.own) {
 		// todo sched sleep
 		udelay(1000);
 	}
-	current_tx_desc->filled_tx.buf_size = size;
-	memcpy(PhysAddr {current_tx_desc->buf_addr}.to_virt(), buffer, size);
-	current_tx_desc->filled_tx.own = 1;
 
-	auto desc = current_tx_desc;
+	desc->filled_tx.buf_size = size;
+	memcpy(PhysAddr {desc->buf_addr}.to_virt(), buffer, size);
+	desc->filled_tx.own = 1;
 
 	out1(base + REG_TPPOLL, TPPOLL_NORMAL_PRIORITY);
 
-	if (current_tx_desc == tx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
-		current_tx_desc = tx_descriptors;
-	}
-	else {
-		current_tx_desc += 1;
-	}
+	tx_index = (tx_index + 1) % DESC_COUNT;
+
+	leave_critical(flags);
 }
 
 static Nic rtl_nic {.send = rtl_send_packet};
 
-static void rtl_int_handler(InterruptCtx*) {
+static void rtl_int_handler(InterruptCtx*, void*) {
 	arch_eoi();
 
 	auto status = in2(base + REG_ISR);
@@ -303,26 +288,21 @@ static void rtl_int_handler(InterruptCtx*) {
 	out2(base + REG_ISR, 0b1100000111111111);
 
 	if (status & INT_ROK) {
-		println("receive ok!");
-		//println("received ", current_rx_desc->filled.buf_size, " bytes");
-		auto addr = PhysAddr {current_rx_desc->buf_addr}.to_virt();
-		auto size = current_rx_desc->filled_rx.buf_size;
-		auto data = as<u8*>(as<void*>(addr));
-
-		if (!ethernet_process_packet(&rtl_nic, data, size)) {
-			println("rtl: discarding unprocessed packet");
-		}
-
-		current_rx_desc->init.buf_size = PAGE_SIZE;
-		current_rx_desc->init.own = 1;
-
-		if (current_rx_desc == rx_descriptors + PAGE_SIZE / sizeof(Descriptor) - 1) {
-			current_rx_desc = rx_descriptors;
-		}
-		else {
-			current_rx_desc += 1;
+		for (usize i = 0; i < DESC_COUNT; ++i) {
+			auto& desc = rx_descriptors[i];
+			if (!desc.filled_rx.own) {
+				auto addr = PhysAddr {desc.buf_addr}.to_virt();
+				auto size = desc.filled_rx.buf_size;
+				auto data = as<u8*>(as<void*>(addr));
+				if (!ethernet_process_packet(&rtl_nic, data, size)) {
+					println("rtl: discarding unprocessed packet");
+				}
+				desc.filled_rx.buf_size = RECEIVE_BUF_SIZE;
+				desc.filled_rx.own = 1;
+			}
 		}
 	}
+	else if (status & INT_TOK);
 	else {
 		print("rtl status: ");
 		if (status & INT_SERR) {
@@ -348,9 +328,6 @@ static void rtl_int_handler(InterruptCtx*) {
 		}
 		else if (status & INT_TER) {
 			println("Transmit Error");
-		}
-		else if (status & INT_TOK) {
-			println("Transmit OK");
 		}
 		else if (status & INT_RER) {
 			println("Receive Error");
@@ -392,47 +369,15 @@ static void phy_write16(u8 reg, u16 value) {
 
 void init_rtl8169(Pci::Header0* hdr) {
 	println("rtl8169 initializing");
-	bool legacy = true;
-	if (auto msi = as<Pci::MsiCap*>(hdr->get_cap(Pci::Cap::Msi))) {
-		/*println("msi found");
-		legacy = false;
-		rtl_int = alloc_int_handler(rtl_int_handler);
-		if (!rtl_int) {
-			println("failed to allocate interrupt");
-			return;
-		}
 
-		msi->set_max_int(1);
-		msi->set_data(rtl_int);
-		msi->set_cpu(0);
-		msi->enable(true);*/
-	}
-	if (auto msix = cast<Pci::MsiXCap*>(hdr->get_cap(Pci::Cap::MsiX))) {
-		println("msix found");
-		legacy = false;
+	if (!rtl_int) {
 		rtl_int = alloc_int_handler(rtl_int_handler);
 		if (!rtl_int) {
 			println("rtl: failed to allocate interrupt");
 			return;
 		}
-
-		auto bar = msix->get_table_bar();
-		if (hdr->is_io_space(bar)) {
-			println("rtl: io space msix bar is not supported");
-			return;
-		}
-		auto mem = PhysAddr {hdr->map_bar(bar) + msix->get_table_offset()}.to_virt();
-		auto entries = as<Pci::MsiXCap::TableEntry*>(as<void*>(mem));
-		entries->mask(false);
-		entries->set_data(rtl_int);
-		entries->set_cpu(0);
-		msix->mask_all(false);
-		msix->enable(true);
-	}
-
-	if (legacy) {
-		println("rtl8169: legacy interrupts are not supported");
-		return;
+		hdr->set_irq(0, rtl_int);
+		hdr->enable_irqs();
 	}
 
 	hdr->common.command |= Pci::Cmd::IoSpace | Pci::Cmd::MemSpace | Pci::Cmd::BusMaster
@@ -485,18 +430,16 @@ void init_rtl8169(Pci::Header0* hdr) {
 		return;
 	}
 
-	//out1(base + REG_9346CR, CMD_93C56_EEM_CONF_WRITE);
+	out1(base + REG_9346CR, CMD_93C56_EEM_CONF_WRITE);
 
 	out1(base + REG_CR, CMD_TE);
 	out4(base + REG_TCR, TCR_IFG_NORMAL | TCR_MXDMA_UNLIMITED);
 
 	//out4(base + REG_RCR, RCR_RXFTH_NO_THRESHOLD | RCR_MXDMA_UNLIMITED /*| RCR_AER*/ | RCR_AAP);
-	out4(base + REG_RCR, RCR_RXFTH_NO_THRESHOLD | RCR_MXDMA_UNLIMITED | 0b1 | 1 << 2);
+	out4(base + REG_RCR, RCR_RXFTH_NO_THRESHOLD | RCR_MXDMA_UNLIMITED | 0b1 | 1 << 1 | 1 << 2 | 1 << 3);
 
-	// 3968 max tx size
-	out1(base + REG_MTPS, 0x1F);
-	// 0x1000 max rx size
-	out2(base + REG_RMS, PAGE_SIZE);
+	out1(base + REG_MTPS, 0x3B);
+	out2(base + REG_RMS, 0x1FFF);
 
 	auto tx_phys = VirtAddr {tx_descriptors}.to_phys().as_usize();
 	auto rx_phys = VirtAddr {rx_descriptors}.to_phys().as_usize();
@@ -513,13 +456,13 @@ void init_rtl8169(Pci::Header0* hdr) {
 
 	out1(base + REG_CR, CMD_RE | CMD_TE);
 
-	//out1(base + REG_9346CR, 0);
+	out1(base + REG_9346CR, 0);
 
 	memcpy(rtl_nic.mac, mac, sizeof(mac));
 
-	hdr->common.command &= ~Pci::Cmd::InterruptDisable;
-
 	println("rtl8169 initialized!");
+
+	dhcp_discover(&rtl_nic);
 }
 
 static PciDriver pci_driver {
