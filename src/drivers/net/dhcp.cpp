@@ -86,7 +86,7 @@ static Packet dhcp_create_packet(Nic* nic, const u8 (&dest)[6], u32 dst_ip, usiz
 	*pseudo = {
 		.src_addr = packet.ipv4->src_ip_addr,
 		.dst_addr = packet.ipv4->dst_ip_addr,
-		.total_length = packet.ipv4->total_length,
+		.total_length = packet.udp->length,
 		.protocol = packet.ipv4->protocol,
 		.zero = 0
 	};
@@ -237,6 +237,8 @@ void dhcp_discover(Nic* nic) {
 	dhcp_packet->options[4] = DHCP_OPT_END;
 
 	dhcp_packet->serialize();
+
+	packet.udp->update_checksum();
 
 	nic->send(packet.begin, packet.size());
 }
