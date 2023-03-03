@@ -8,8 +8,6 @@
 #include "udp.hpp"
 #include "utils/utils.hpp"
 
-#define IP_UDP 0x11
-
 enum class DhcpOp : u8 {
 	BootRequest = 1,
 	BootReply = 2
@@ -72,26 +70,26 @@ static Packet dhcp_create_packet(Nic* nic, const u8 (&dest)[6], u32 dst_ip, usiz
 	Packet packet {};
 	ethernet_create_hdr(nic, packet, ETH_IPV4, dest);
 	u16 size = sizeof(UdpHeader) + sizeof(DhcpPacket) + options_size;
-	ipv4_create_hdr(nic, packet, dest, size, IP_UDP, 0, dst_ip);
-	packet.ipv4->serialize();
-	packet.ipv4->update_checksum();
+	ipv4_create_hdr(packet, size, IP_UDP, 0, dst_ip);
+	packet.second.ipv4->serialize();
+	packet.second.ipv4->update_checksum();
 
 	udp_create_hdr(packet, 68, 67, sizeof(DhcpPacket) + options_size);
-	packet.udp->serialize();
+	packet.third.udp->serialize();
 
-	packet.dhcp = cast<DhcpPacket*>(packet.end);
+	packet.fourth.dhcp = cast<DhcpPacket*>(packet.end);
 	packet.end += sizeof(DhcpPacket) + options_size;
 
 	auto pseudo = cast<UdpPseudoIpv4Hdr*>(packet.end);
 	*pseudo = {
-		.src_addr = packet.ipv4->src_ip_addr,
-		.dst_addr = packet.ipv4->dst_ip_addr,
-		.total_length = packet.udp->length,
-		.protocol = packet.ipv4->protocol,
+		.src_addr = packet.second.ipv4->src_ip_addr,
+		.dst_addr = packet.second.ipv4->dst_ip_addr,
+		.total_length = packet.third.udp->length,
+		.protocol = packet.second.ipv4->protocol,
 		.zero = 0
 	};
 
-	auto dhcp = packet.dhcp;
+	auto dhcp = packet.fourth.dhcp;
 
 	dhcp->op = DhcpOp::BootRequest;
 	dhcp->htype = 1;
@@ -129,7 +127,7 @@ void dhcp_request(Nic* nic, u32 ip, u32 server_ip) {
 
 	auto packet = dhcp_create_packet(nic, NET_BROADCAST, 0xFFFFFFFF, 16);
 
-	auto dhcp = packet.dhcp;
+	auto dhcp = packet.fourth.dhcp;
 
 	dhcp->options[0] = DHCP_OPT_MSG_TYPE;
 	dhcp->options[1] = 1;
@@ -211,7 +209,7 @@ void dhcp_process_packet(Nic* nic, u8* data, const u8 (&src)[6]) {
 				server_ip >> 8 & 0xFF, ".",
 				server_ip >> 16 & 0xFF, ".",
 				server_ip >> 24 & 0xFF);
-		memcpy(nic->ipv4, &dhcp_hdr->yiaddr, sizeof(nic->ipv4));
+		memcpy(nic->ipv4.arr, &dhcp_hdr->yiaddr, sizeof(nic->ipv4));
 		nic->state = IpState::Has;
 	}
 }
@@ -220,7 +218,7 @@ constexpr u16 FLAG_BROADCAST = 1 << 15;
 
 void dhcp_discover(Nic* nic) {
 	auto packet = dhcp_create_packet(nic, NET_BROADCAST, 0xFFFFFFFF, 5);
-	auto dhcp_packet = packet.dhcp;
+	auto dhcp_packet = packet.fourth.dhcp;
 
 	dhcp_packet->flags = FLAG_BROADCAST;
 
@@ -237,8 +235,6 @@ void dhcp_discover(Nic* nic) {
 	dhcp_packet->options[4] = DHCP_OPT_END;
 
 	dhcp_packet->serialize();
-
-	packet.udp->update_checksum();
 
 	nic->send(packet.begin, packet.size());
 }

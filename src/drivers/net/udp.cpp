@@ -17,13 +17,20 @@ void UdpHeader::update_checksum() {
 	checksum = net_checksum(cast<u8*>(this), as<usize>(bswap16(length)) + sizeof(UdpPseudoIpv4Hdr), ChecksumType::Udp);
 }
 
-void udp_process_packet(Nic* nic, u8* data, u8 (&src)[6]) {
+void udp_process_packet(Nic* nic, Packet& packet, u8* data, u8 (&src)[6]) {
 	auto* hdr = cast<UdpHeader*>(data);
 	// todo checksum
 	hdr->serialize();
+
+	packet.third.udp = hdr;
+
 	if (hdr->src_port == 67 && hdr->dst_port == 68) {
 		println("received dhcp packet");
 		dhcp_process_packet(nic, hdr->data, src);
+	}
+	else if (hdr->dst_port == 1234) {
+		println("gdb packet");
+		debug_process_packet(nic, packet, hdr->data, hdr->length - sizeof(UdpHeader), src);
 	}
 }
 
@@ -35,5 +42,5 @@ void udp_create_hdr(Packet& packet, u16 src_port, u16 dst_port, u16 length) {
 	hdr->length = length + sizeof(UdpHeader);
 	hdr->checksum = 0;
 
-	packet.udp = hdr;
+	packet.third.udp = hdr;
 }

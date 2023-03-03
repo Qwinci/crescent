@@ -93,5 +93,7 @@ static_assert(sizeof(Ipv4Header) == 20);
 
 struct Packet;
 
-void ipv4_process_packet(Nic* nic, u8* data, u8 (&src)[6]);
-void ipv4_create_hdr(Nic* nic, Packet& packet, const u8 (&dest)[6], u16 size, u8 protocol, u32 src_ip, u32 dst_ip);
+#define IP_UDP 0x11
+
+void ipv4_process_packet(Nic* nic, Packet& packet, u8* data, u8 (&src)[6]);
+void ipv4_create_hdr(Packet& packet, u16 size, u8 protocol, u32 src_ip, u32 dst_ip);

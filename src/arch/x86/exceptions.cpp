@@ -2,6 +2,7 @@
 #include "arch.hpp"
 #include "console.hpp"
 #include "cpu.hpp"
+#include "debug/backtrace.hpp"
 #include "interrupts/interrupts.hpp"
 #include "lapic.hpp"
 
@@ -13,7 +14,8 @@ bool reboot = false;
 	set_fg(0xFF0000); \
 	if (full_int_init) println_nolock(#Name, " on cpu ", get_cpu_local()->id); \
     else println_nolock(#Name, " on unknown cpu (not init yet)");\
-	println_nolock("IP: ", Fmt::Hex, ctx->ip); \
+	println_nolock("IP: ", Fmt::Hex, ctx->ip, Fmt::Dec); \
+	debug_backtrace(false); \
 	while (true) asm("hlt"); \
 }
 
@@ -28,7 +30,10 @@ bool reboot = false;
 
 	if (full_int_init) println_nolock("double fault on cpu ", get_cpu_local()->id);
 	else println_nolock("double fault on unknown cpu (not init yet)");
-	println_nolock("IP: ", Fmt::Hex, ctx->ip);
+	println_nolock("IP: ", Fmt::Hex, ctx->ip, Fmt::Dec);
+
+	debug_backtrace(false);
+
 	print_lock.unlock();
 
 	while (true) asm("hlt");
@@ -40,7 +45,10 @@ bool reboot = false;
 
 	if (full_int_init) println_nolock("general protection fault on cpu ", get_cpu_local()->id);
 	else println_nolock("general protection fault on unknown cpu (not init yet)");
-	println_nolock("IP: ", Fmt::Hex, ctx->ip);
+	println_nolock("IP: ", Fmt::Hex, ctx->ip, Fmt::Dec);
+
+	debug_backtrace(false);
+
 	print_lock.unlock();
 
 	while (true) asm("hlt");
@@ -70,7 +78,7 @@ bool reboot = false;
 	set_fg(0xFF0000);
 	if (full_int_init) println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on cpu ", get_cpu_local()->id);
 	else println_nolock("page fault at address ", Fmt::Hex, addr, Fmt::Dec, " on unknown cpu (not init yet)");
-	println_nolock(Fmt::Hex, "IP: ", ctx->ip);
+	println_nolock(Fmt::Hex, "IP: ", ctx->ip, Fmt::Dec);
 	println_nolock(
 			"Present: ", present,
 			", Write: ", write,
@@ -78,6 +86,8 @@ bool reboot = false;
 			", Reserved Write: ", reserved_write,
 			", Instruction Fetch: ", inst_fetch
 			);
+
+	debug_backtrace(false);
 
 	if (user) {
 		println_nolock("USER TASK '", as<const char*>(arch_get_cpu_local()->current_task->name),

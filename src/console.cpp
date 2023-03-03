@@ -1,5 +1,4 @@
 #include "console.hpp"
-#include "memory/memory.hpp"
 #include "memory/vmem.hpp"
 
 Spinlock print_lock {};
@@ -41,17 +40,17 @@ static inline void print_char(char c) {
 	column += 1;
 }
 
-[[gnu::used]] void print_string(const char* str) {
-	for (; *str; ++str) {
-		if (*str == '\t') {
+[[gnu::used]] void print_string(const noalloc::String& str) {
+	for (usize i = 0; i < str.len(); ++i) {
+		if (str[i] == '\t') {
 			column += 4 - column % 4;
 		}
-		else if (*str == '\n') {
+		else if (str[i] == '\n') {
 			column = 0;
 			line += 1;
 		}
 		else {
-			print_char(*str);
+			print_char(str[i]);
 		}
 	}
 }

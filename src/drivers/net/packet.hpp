@@ -10,28 +10,26 @@ struct DhcpPacket;
 struct ArpPacket;
 
 struct Packet {
-	Packet();
+	explicit Packet(bool alloc = true);
 	~Packet();
-
-	Packet(const Packet& other);
 
 	u8* begin;
 	u8* end;
-	union {
+	union First {
 		EthernetHeader* ethernet;
-	};
-	union {
+	} first;
+	union Second {
 		Ipv4Header* ipv4;
 		Ipv6Header* ipv6;
 		ArpPacket* arp;
-	};
+	} second;
 	union {
 		UdpHeader* udp;
 		TcpHeader* tcp;
-	};
+	} third;
 	union {
 		DhcpPacket* dhcp;
-	};
+	} fourth;
 
 	[[nodiscard]] usize size() const;
 };

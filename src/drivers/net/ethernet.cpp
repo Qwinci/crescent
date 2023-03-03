@@ -13,28 +13,30 @@ void ethernet_create_hdr(Nic* nic, Packet& packet, u16 length, const u8 (&dest)[
 	memcpy(hdr->dest_mac, dest, sizeof(dest));
 	memcpy(hdr->src_mac, nic->mac, sizeof(nic->mac));
 	hdr->length = bswap16(length);
-	packet.ethernet = hdr;
+	packet.first.ethernet = hdr;
 }
 
 bool ethernet_process_packet(Nic* nic, u8* data, usize size) {
-	// todo dhcp
-
 	auto ethernet_hdr = EthernetHeader::parse(data);
+
+	Packet packet {false};
+	packet.first.ethernet = ethernet_hdr;
+
 	if (ethernet_hdr->length <= 1500) {
 		println("packet with length ", ethernet_hdr->length);
 	}
 	// IPv4
-	else if (ethernet_hdr->length == 0x800) {
+	else if (ethernet_hdr->length == ETH_IPV4) {
 		println("IPv4");
-		ipv4_process_packet(nic, ethernet_hdr->payload, ethernet_hdr->src_mac);
+		ipv4_process_packet(nic, packet, ethernet_hdr->payload, ethernet_hdr->src_mac);
 	}
 	// ARP
-	else if (ethernet_hdr->length == 0x806) {
+	else if (ethernet_hdr->length == ETH_ARP) {
 		println("ARP");
 		arp_process_packet(nic, ethernet_hdr->payload);
 	}
 	// IPv6
-	else if (ethernet_hdr->length == 0x86DD) {
+	else if (ethernet_hdr->length == ETH_IPV6) {
 		println("IPv6");
 	}
 	else {

@@ -2,6 +2,7 @@
 #include "arch.hpp"
 #include "fb.hpp"
 #include "interrupts/interrupts.hpp"
+#include "noalloc/string.hpp"
 #include "types.hpp"
 #include "utils.hpp"
 #include "utils/spinlock.hpp"
@@ -55,8 +56,8 @@ inline void print_nolock(T* value) {
 }
 
 template<>
-inline void print_nolock(const char* value) {
-	extern void print_string(const char* str);
+inline void print_nolock(const noalloc::String& value) {
+	extern void print_string(const noalloc::String& str);
 	print_string(value);
 }
 
@@ -83,8 +84,18 @@ inline void print_nolock(u64 value) {
 
 template<>
 inline void print_nolock(bool value) {
-	extern void print_string(const char* str);
+	extern void print_string(const noalloc::String& str);
 	print_string(value ? "true" : "false");
+}
+template<>
+inline void print_nolock(const char* value) {
+	extern void print_string(const noalloc::String& str);
+	print_string(value);
+}
+template<>
+inline void print_nolock(noalloc::String value) {
+	extern void print_string(const noalloc::String& str);
+	print_string(value);
 }
 
 template<>
@@ -153,7 +164,7 @@ template<typename... Args>
 	set_fg(0xFF0000);
 	disable_interrupts();
 	print_lock.lock();
-	print("KERNEL PANIC: ");
+	print_nolock("KERNEL PANIC: ");
 	print_nolock(args...);
 	print_nolock("\n");
 	print_lock.unlock();

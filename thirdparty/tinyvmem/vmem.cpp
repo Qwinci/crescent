@@ -411,6 +411,11 @@ void *vmem_xalloc(Vmem *vmp, size_t size, size_t align, size_t phase,
 
    ASSERT(new_seg && new_seg2);
 
+   if ((size & (size - 1)) != 0)
+   {
+	   first_list++;
+   }
+
    while (true)
    {
 	   if (vmflag & VM_INSTANTFIT) /* VM_INSTANTFIT */

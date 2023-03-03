@@ -19,6 +19,7 @@ static volatile limine_module_request MODULE_REQUEST {.id = LIMINE_MODULE_REQUES
 static volatile limine_rsdp_request RSDP_REQUEST {.id = LIMINE_RSDP_REQUEST};
 static volatile limine_kernel_address_request KERNEL_ADDRESS_REQUEST {.id = LIMINE_KERNEL_ADDRESS_REQUEST};
 static volatile limine_smp_request SMP_REQUEST {.id = LIMINE_SMP_REQUEST};
+static volatile limine_kernel_file_request KERNEL_FILE_REQUEST {.id = LIMINE_KERNEL_FILE_REQUEST};
 
 static atomic_uint_fast8_t cpus_init = 0;
 static Spinlock smp_lock {};
@@ -268,4 +269,8 @@ void arch_init_mem() {
 	}
 
 	page_map->load();
+}
+
+const void* arch_get_kernel_file() {
+	return KERNEL_FILE_REQUEST.response->kernel_file->address;
 }

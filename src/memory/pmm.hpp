@@ -17,11 +17,16 @@ struct Page {
 		mappings = mapping;
 	}
 
-	void remove_mapping(PageMap* map) const {
+	void remove_mapping(PageMap* map) {
 		Mapping* prev = nullptr;
 		for (auto mapping = mappings;; mapping = mapping->next) {
 			if (mapping->map == map) {
-				prev->next = mapping->next;
+				if (prev) {
+					prev->next = mapping->next;
+				}
+				else {
+					mappings = mapping->next;
+				}
 				ALLOCATOR.dealloc(mapping, sizeof(Mapping));
 				break;
 			}

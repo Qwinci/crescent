@@ -7,6 +7,8 @@
 constexpr u8 NET_BROADCAST[6] {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 #define ETH_IPV4 0x800
+#define ETH_ARP 0x806
+#define ETH_IPV6 0x86DD
 
 struct EthernetHeader {
 	u8 dest_mac[6];

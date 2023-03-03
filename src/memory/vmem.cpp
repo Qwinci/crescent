@@ -4,12 +4,14 @@
 #include "memory.hpp"
 #include "pmm.hpp"
 #include "tinyvmem/vmem.h"
+//#include "vmem_impl/vmem.hpp"
 #include "utils.hpp"
 
 static Vmem kernel_vmem;
 static Vmem user_vmem;
 
 void vm_user_init(usize size) {
+	//user_vmem.init("User vmem", cast<void*>(0xFA000), size - 0xFA000, PAGE_SIZE, VM_INSTANTFIT);
 	vmem_init(
 			&user_vmem, "User vmem", cast<void*>(0xFA000),
 			size - 0xFA000, PAGE_SIZE, nullptr, nullptr, nullptr,
@@ -18,11 +20,13 @@ void vm_user_init(usize size) {
 
 void* vm_user_alloc(usize count) {
 	void* mem = vmem_alloc(&user_vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+	//void* mem = user_vmem.alloc(count * PAGE_SIZE, VM_INSTANTFIT);
 	return mem;
 }
 
 void vm_user_dealloc(void* ptr, usize count) {
 	vmem_free(&user_vmem, ptr, count * PAGE_SIZE);
+	//user_vmem.free(ptr, count * PAGE_SIZE);
 }
 
 void* vm_user_alloc_kernel_mapping(PageMap* map, void* ptr, usize count) {
@@ -102,10 +106,12 @@ void vm_kernel_init(usize base, usize size) {
 			&kernel_vmem, "Kernel vmem", cast<void*>(base),
 			size, PAGE_SIZE, nullptr, nullptr, nullptr,
 			0, VM_INSTANTFIT);
+	//kernel_vmem.init("Kernel vmem", cast<void*>(base), size, PAGE_SIZE, VM_INSTANTFIT);
 }
 
 void* vm_kernel_alloc(usize count) {
 	void* mem = vmem_alloc(&kernel_vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+	//void* mem = kernel_vmem.alloc(count * PAGE_SIZE, VM_INSTANTFIT);
 	if (!mem) {
 		panic("vm_kernel_alloc failed");
 	}
@@ -114,6 +120,7 @@ void* vm_kernel_alloc(usize count) {
 
 void vm_kernel_dealloc(void* ptr, usize count) {
 	vmem_free(&kernel_vmem, ptr, count * PAGE_SIZE);
+	//kernel_vmem.free(ptr, count * PAGE_SIZE);
 }
 
 void* vm_kernel_alloc_backed(usize count) {

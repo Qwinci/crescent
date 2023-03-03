@@ -12,6 +12,17 @@ stub%+i:
 %assign i i + 1
 %endrep
 
+struc InterruptCtx
+	.regs: resq 15
+	.vec: resq 1
+	.error: resq 1
+	.ip: resq 1
+	.cs: resq 1
+	.flags: resq 1
+	.sp: resq 1
+	.ss: resq 1
+endstruc
+
 int_common:
 	push rax
 	push rbx
@@ -32,10 +43,12 @@ int_common:
 	; save the original rsp
 	mov r15, rsp
 	cld
-	; align stack down on 16 bytes
-	and rsp, ~0xF
 
 	mov rdi, r15
+	push qword [rdi + InterruptCtx.ip]
+    and rsp, ~0xF
+	mov rbp, rsp
+
 	call int_handler
 	mov rsp, r15
 
@@ -56,6 +69,7 @@ int_common:
 	pop rax
 
 	add rsp, 16
+
 	iretq
 
 section .data

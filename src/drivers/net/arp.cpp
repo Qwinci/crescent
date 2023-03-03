@@ -93,21 +93,16 @@ void arp_probe(Nic* nic, u32 ip) {
 
 	probe = probe.serialize();
 
-	packet.arp = cast<ArpPacket*>(packet.end);
+	packet.second.arp = cast<ArpPacket*>(packet.end);
 	packet.end += sizeof(ArpPacket);
 
-	memcpy(packet.arp, &probe, sizeof(probe));
+	memcpy(packet.second.arp, &probe, sizeof(probe));
 
 	nic->send(packet.begin, packet.size());
 }
 
 void arp_process_packet(Nic* nic, u8* data) {
 	auto arp_packet = ArpPacket::parse(data);
-	// todo
-	nic->ipv4[0] = 192;
-	nic->ipv4[1] = 168;
-	nic->ipv4[2] = 1;
-	nic->ipv4[3] = 106;
 
 	if (arp_packet->operation == ArpOp::Reply) {
 		u32 ip = arp_packet->sender_protocol_addr[0];
@@ -117,7 +112,7 @@ void arp_process_packet(Nic* nic, u8* data) {
 		arp_hashtab.insert(ip, arp_packet->sender_hw_addr);
 	}
 
-	if (memcmp(arp_packet->target_protocol_addr, nic->ipv4, sizeof(nic->ipv4)) == 0) {
+	if (nic->ipv4.whole && memcmp(arp_packet->target_protocol_addr, nic->ipv4.arr, sizeof(nic->ipv4)) == 0) {
 		//println("arp packet IP match");
 		if (arp_packet->operation == ArpOp::Request) {
 			Packet packet {};
@@ -137,10 +132,10 @@ void arp_process_packet(Nic* nic, u8* data) {
 
 			reply = reply.serialize();
 
-			packet.arp = cast<ArpPacket*>(packet.end);
+			packet.second.arp = cast<ArpPacket*>(packet.end);
 			packet.end += sizeof(ArpPacket);
 
-			memcpy(packet.arp, &reply, sizeof(reply));
+			memcpy(packet.second.arp, &reply, sizeof(reply));
 
 			nic->send(packet.begin, packet.size());
 			println("ARP reply sent");

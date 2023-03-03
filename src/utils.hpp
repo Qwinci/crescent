@@ -14,3 +14,8 @@ template<typename T>
 inline T offset(T value, isize offset) {
 	return reinterpret_cast<T>(reinterpret_cast<usize>(value) + offset);
 }
+
+template<typename T>
+inline T offset(T value, usize offset) {
+	return reinterpret_cast<T>(reinterpret_cast<usize>(value) + offset);
+}

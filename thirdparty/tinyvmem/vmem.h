@@ -134,7 +134,7 @@ Allocates size bytes at offset phase from an align boundary such that the result
 [addr, addr + size) is a subset of [minaddr, maxaddr) that does not straddle a nocross−
 aligned boundary. vmflag is as above. One performance caveat: if either minaddr or maxaddr is
 non−NULL, vmem may not be able to satisfy the allocation in constant time. If allocations within a
-given [minaddr, maxaddr) range are common it is more efficient to declare that range to be its own
+given [minaddr, maxaddr) range are common it is more efficient to declare that range to be its vmem_impl
 arena and use unconstrained allocations on the new arena (cited from paper).
 */
 void *vmem_xalloc(Vmem *vmp, size_t size, size_t align, size_t phase,

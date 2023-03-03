@@ -19,3 +19,4 @@ void arch_sched_load_balance_hlt(u8 cpu);
 void arch_eoi();
 void arch_spinloop_hint();
 void arch_hlt();
+const void* arch_get_kernel_file();

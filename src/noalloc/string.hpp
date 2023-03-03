@@ -1,9 +1,10 @@
+#pragma once
 #include "types.hpp"
 
 namespace noalloc {
-	constexpr inline usize strlen(const char* str) {
+	constexpr usize strlen(const char* str) {
 		usize len = 0;
-		for (; *str; ++str) ++len;
+		while (*str++) ++len;
 		return len;
 	}
 
@@ -28,6 +29,10 @@ namespace noalloc {
 			}
 
 			return true;
+		}
+
+		constexpr char operator[](usize index) const {
+			return str[index];
 		}
 	private:
 		const char* str;

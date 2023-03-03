@@ -42,16 +42,6 @@ static inline void* kptr(void* uptr) {
 	return phys_base.offset(ptr_offset).to_virt();
 }
 
-static inline const void* kptr(const void* uptr) {
-	auto base = ALIGNDOWN(cast<usize>(uptr), PAGE_SIZE);
-	auto ptr_offset = cast<usize>(uptr) - base;
-	auto phys_base = arch_get_cpu_local()->current_task->get_map()->virt_to_phys(VirtAddr {base});
-	if (phys_base.as_usize() == 0) {
-		return nullptr;
-	}
-	return phys_base.offset(ptr_offset).to_virt();
-}
-
 #define VERIFY_PTR(name, uptr, error) auto name = as<decltype(uptr)>(kptr(uptr)); \
 if (!(name)) return error
 

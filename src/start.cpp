@@ -4,12 +4,9 @@
 #include "arch/x86/lapic.hpp"
 #include "console.hpp"
 #include "cpu/cpu.hpp"
+#include "debug/backtrace.hpp"
 #include "drivers/pci.hpp"
 #include "drivers/ps2.hpp"
-#include "memory/pmm.hpp"
-#include "memory/std.hpp"
-#include "memory/vmem.hpp"
-#include "noalloc/string.hpp"
 #include "sched/sched.hpp"
 #include "timer/timer.hpp"
 #include "timer/timer_int.hpp"
@@ -18,7 +15,7 @@
 [[gnu::used]] u8 stack[0x2000];
 
 extern "C" [[noreturn, gnu::naked, gnu::used]] void start() {
-	asm volatile("lea rsp, [stack + 0x2000]; push qword ptr 0; jmp kstart");
+	asm volatile("lea rsp, [stack + 0x2000]; xor rbp, rbp; call kstart");
 }
 
 using fn = void (*)();
@@ -35,46 +32,6 @@ extern "C" fn __init_array_end[]; // NOLINT(bugprone-reserved-identifier)
 	}
 }
 
-#define EI_MAG0 0
-#define EI_MAG1 1
-#define EI_MAG2 2
-#define EI_MAG3 3
-
-#define ELFMAG0 0x7F
-#define ELFMAG1 0x45
-#define ELFMAG2 0x4C
-#define ELFMAG3 0x46
-
-struct ElfEHdr {
-	u8 e_ident[16];
-	u16 e_type;
-	u16 e_machine;
-	u32 e_version;
-	u64 e_entry;
-	u64 e_phoff;
-	u64 e_shoff;
-	u32 e_flags;
-	u16 e_ehsize;
-	u16 e_phentsize;
-	u16 e_phnum;
-	u16 e_shentsize;
-	u16 e_shnum;
-	u16 e_shstrndx;
-};
-
-#define PT_LOAD 0x1
-
-struct ElfPHdr {
-	u32 p_type;
-	u32 p_flags;
-	u64 p_offset;
-	u64 p_vaddr;
-	u64 p_paddr;
-	u64 p_filesz;
-	u64 p_memsz;
-	u64 p_align;
-};
-
 extern "C" [[noreturn, gnu::used]] void kstart() {
 	for (fn* f = __init_array_start; f != __init_array_end; ++f) {
 		(*f)();
@@ -87,6 +44,7 @@ extern "C" [[noreturn, gnu::used]] void kstart() {
 	set_fg(0x00FF00);
 
 	arch_init_mem();
+
 	arch_init_cpu_locals();
 	full_int_init = true;
 

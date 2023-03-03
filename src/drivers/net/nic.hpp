@@ -9,7 +9,10 @@ enum class IpState : u8 {
 
 struct Nic {
 	u8 mac[6] {};
-	u8 ipv4[4] {};
+	union {
+		u8 arr[4] {};
+		u32 whole;
+	} ipv4;
 	u8 ipv6[16] {};
 	void (*send)(void* buffer, usize size) {};
 
