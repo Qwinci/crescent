@@ -622,6 +622,13 @@ struct NvmeController {
 
 		return true;
 	}
+
+	void queue_admin_cmd(Cmd cmd) {
+		// todo
+		//if (admin_sub_queue->cid )
+		*admin_sub_queue = cmd;
+		admin_sub_queue_i = (admin_sub_queue_i + 1) % admin_sub_queue_size;
+	}
 private:
 	volatile Regs* regs {};
 	usize base {};

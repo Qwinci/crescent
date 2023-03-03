@@ -16,8 +16,8 @@ void Mutex::lock() {
 		task->status = TaskStatus::Waiting;
 		task->next = waiting_tasks;
 		waiting_tasks = task;
-		sched();
 		leave_critical(flags);
+		sched();
 	}
 }
 

@@ -38,7 +38,8 @@ struct Task {
 	TaskStatus status;
 	u8 task_level;
 	bool user;
-	u8 reserved[5];
+	u8 priority;
+	u8 reserved[4];
 	u64 syscall_rsp;
 };
 

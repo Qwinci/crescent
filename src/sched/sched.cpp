@@ -94,6 +94,7 @@ Task* create_user_task(const char* name, PageMap* map, void (*fn)(), void* arg) 
 	task->map = VirtAddr {map}.to_phys().as_usize();
 	task->task_level = SCHED_MAX_LEVEL - 1;
 	task->user = true;
+	task->priority = 0;
 
 	return task;
 }
@@ -122,6 +123,7 @@ Task* create_kernel_task(const char* name, void (*fn)(), void* arg) {
 	task->map = VirtAddr {get_map()}.to_phys().as_usize();
 	task->task_level = SCHED_MAX_LEVEL - 1;
 	task->user = false;
+	task->priority = 0;
 
 	return task;
 }
@@ -236,15 +238,20 @@ void sched_unblock(Task* task) {
 	}
 	auto flags = enter_critical();
 	auto local = arch_get_cpu_local();
-	if (local->current_task->task_level < task->task_level) {
+	u16 priority = local->current_task->task_level + local->current_task->priority;
+	u16 task_priority = task->task_level + task->priority;
+	if (priority < task_priority) {
 		auto& level = local->levels[task->task_level];
+		task->status = TaskStatus::Ready;
 		task->next = level.ready_tasks;
 		level.ready_tasks = task;
+		leave_critical(flags);
+		sched();
 	}
 	else {
 		sched_queue_task(task);
+		leave_critical(flags);
 	}
-	leave_critical(flags);
 }
 
 void sched_sleep(u64 us) {
