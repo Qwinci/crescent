@@ -1,2 +1,3 @@
 target_sources(crescent PRIVATE
-        pmalloc.c)
+        pmalloc.c
+        page.c)

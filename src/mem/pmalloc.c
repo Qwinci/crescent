@@ -29,9 +29,10 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 		usize count = index_to_size(new_i);
 		usize size = count * PAGE_SIZE;
 
-		usize buddy = (page->phys - page->region->base) & (index_to_size(new_i + 1) * PAGE_SIZE) ? page->phys - size : page->phys + size;
+		usize region_free_base = page->region->base + page->region->used_pages * PAGE_SIZE;
+		usize buddy = ((page->phys - region_free_base) & (index_to_size(new_i + 1) * PAGE_SIZE) - 1) ? page->phys - size : page->phys + size;
 		usize buddy_index = (buddy - page->region->base) / PAGE_SIZE;
-		if (!freelists[new_i] || new_i + 1 == FREELIST_COUNT || buddy_index >= page->region->size) {
+		if (new_i + 1 == FREELIST_COUNT || buddy_index >= page->region->size) {
 			break;
 		}
 
@@ -71,43 +72,6 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 		if (freelists[index]) {
 			freelists[index]->prev = page;
 		}
-		freelists[index] = page;
-	}
-}
-
-static void freelist_insert(usize index, Page* page) { // NOLINT(misc-no-recursion)
-	page->type = PAGE_FREE;
-	page->prev = NULL;
-
-	usize size = index_to_size(index) * PAGE_SIZE;
-	usize buddy = (page->phys - page->region->base) & (index_to_size(index + 1)) ? page->phys - size : page->phys + size;
-	usize buddy_index = (buddy - page->region->base) / PAGE_SIZE;
-	if (freelists[index] && index + 1 < FREELIST_COUNT && buddy_index < page->region->size) {
-		Page* buddy_page = &page->region->pages[buddy_index];
-		if (buddy_page->type == PAGE_FREE) {
-			if (buddy_page->prev) {
-				buddy_page->prev->next = buddy_page->next;
-			}
-			else {
-				freelists[index] = buddy_page->next;
-			}
-			if (buddy_page->next) {
-				buddy_page->next->prev = buddy_page->prev;
-			}
-
-			Page* first_page = page < buddy_page ? page : buddy_page;
-			freelist_insert(index + 1, first_page);
-			return;
-		}
-	}
-
-	if (!freelists[index]) {
-		page->next = NULL;
-		freelists[index] = page;
-	}
-	else {
-		page->next = freelists[index];
-		freelists[index]->prev = page;
 		freelists[index] = page;
 	}
 }
@@ -163,37 +127,6 @@ static Page* freelist_get_nonrecursive(usize index) {
 	return page;
 }
 
-static Page* freelist_get(usize index) { // NOLINT(misc-no-recursion)
-	if (!freelists[index]) {
-		usize size = index_to_size(index);
-		if (index < FREELIST_COUNT - 2) {
-			Page* first_half = freelist_get(index + 1);
-			if (!first_half) {
-				return NULL;
-			}
-
-			PRegion* region = first_half->region;
-			usize first_page_num = (first_half->phys - region->base) / PAGE_SIZE;
-			Page* second_half = &region->pages[first_page_num + size / 2];
-
-			first_half->type = PAGE_USED;
-			freelist_insert(index, second_half);
-			return first_half;
-		}
-		else {
-			return NULL;
-		}
-	}
-
-	Page* page = freelists[index];
-	freelists[index] = page->next;
-	if (page->next) {
-		page->next->prev = NULL;
-	}
-	page->type = PAGE_USED;
-	return page;
-}
-
 void pmalloc_add_mem(void* base, usize size) {
 	kprintf("[kernel][mem]: adding mem 0x%p size %ukb\n", base, size / 1024);
 
@@ -210,6 +143,7 @@ void pmalloc_add_mem(void* base, usize size) {
 	region->next = NULL;
 	region->base = (usize) base;
 	region->size = page_count;
+	region->used_pages = used_pages;
 	if (region > pregions_end) {
 		region->prev = pregions_end;
 		if (pregions_end) {
@@ -255,8 +189,13 @@ void pmalloc_add_mem(void* base, usize size) {
 		}
 		usize count = index_to_size(index);
 
-		//freelist_insert(index, &region->pages[i]);
-		freelist_insert_nonrecursive(index, &region->pages[i]);
+		Page* page = &region->pages[i];
+		page->prev = NULL;
+		page->next = freelists[index];
+		if (page->next) {
+			page->next->prev = page;
+		}
+		freelists[index] = page;
 
 		i += count;
 		free_pages -= count;
@@ -276,12 +215,14 @@ Page* pmalloc(usize count) {
 		index += 1;
 	}
 
-	//return freelist_get(index);
 	return freelist_get_nonrecursive(index);
 }
 
 void pfree(Page* ptr, usize count) {
 	usize index = size_to_index(count);
-	//freelist_insert(index, ptr);
+	if (count & (count - 1)) {
+		index += 1;
+	}
+
 	freelist_insert_nonrecursive(index, ptr);
 }
