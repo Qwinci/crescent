@@ -1,4 +1,5 @@
 #include "stdio.h"
+#include "arch/misc.h"
 #include "dev/con.h"
 #include "inttypes.h"
 #include "string.h"
@@ -8,6 +9,8 @@ void kputs(const char* str, usize len) {
 	if (!kernel_con) {
 		return;
 	}
+
+	void* flags = enter_critical();
 
 	for (; len; --len, ++str) {
 		if (*str == '\n') {
@@ -21,6 +24,8 @@ void kputs(const char* str, usize len) {
 			kernel_con->write(kernel_con, *str);
 		}
 	}
+
+	leave_critical(flags);
 }
 
 static const char hex_digits[] = "0123456789ABCDEF";
@@ -55,12 +60,11 @@ static char* fmt_u(usize value, char* str) {
 	return str;
 }
 
-void kprintf(const char* fmt, ...) {
-	va_list valist;
-	va_start(valist, fmt);
+void kvprintf(const char* fmt, va_list valist) {
 	char buffer[101];
 	buffer[64] = 0;
 
+	void* flags = enter_critical();
 	while (true) {
 		if (!*fmt) {
 			break;
@@ -139,5 +143,25 @@ void kprintf(const char* fmt, ...) {
 		kputs(ptr, len);
 	}
 
+	leave_critical(flags);
+}
+
+void kprintf(const char* fmt, ...) {
+	va_list valist;
+	va_start(valist, fmt);
+	kvprintf(fmt, valist);
 	va_end(valist);
+}
+
+NORETURN void panic(const char* fmt, ...) {
+	enter_critical();
+	va_list valist;
+	va_start(valist, fmt);
+	kernel_con->fg = 0xFF0000;
+	kvprintf(fmt, valist);
+	va_end(valist);
+
+	while (true) {
+		arch_hlt();
+	}
 }
