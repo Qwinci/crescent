@@ -2,6 +2,7 @@
 #include "limine/limine.h"
 #include "mem/pmalloc.h"
 #include "mem/utils.h"
+#include "mem/vm.h"
 
 usize HHDM_OFFSET = 0;
 
@@ -40,8 +41,7 @@ void x86_init_mem() {
 
 	usize aligned_max_phys = ALIGNUP(max_phys, SIZE_2MB);
 
-	// todo
-	// vm kernel init (HHDM_OFFSET + aligned_max_phys, 0xFFFFFFFF80000000 - (HHDM_OFFSET + aligned_max_phys))
+	vm_kernel_init(HHDM_OFFSET + aligned_max_phys, 0xFFFFFFFF80000000 - (HHDM_OFFSET + aligned_max_phys));
 
 	for (usize i = 0; i < SIZE_4GB; i += SIZE_2MB) {
 		arch_map_page(KERNEL_MAP, (usize) to_virt(i), i, PF_READ | PF_WRITE | PF_HUGE);
