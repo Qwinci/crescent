@@ -149,6 +149,9 @@ void pmalloc_add_mem(void* base, usize size) {
 		if (pregions_end) {
 			pregions_end->next = region;
 		}
+		else {
+			pregions = region;
+		}
 		pregions_end = region;
 	}
 	else {

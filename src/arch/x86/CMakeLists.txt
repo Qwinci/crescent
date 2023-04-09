@@ -11,4 +11,12 @@ target_sources(crescent PRIVATE
         interrupts/int_stubs.asm
         interrupts/gdt.c
         interrupts/gdt.asm
+        interrupts/exceptions.c
+        smp.c
+        cpu.c
+        cpuid.c
+        user_map.c
         )
+
+add_subdirectory(dev)
+add_subdirectory(sched)

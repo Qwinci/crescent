@@ -1,4 +1,6 @@
 #include "arch/misc.h"
+#include "arch/x86/dev/lapic.h"
+#include "cpu.h"
 #include "types.h"
 
 void arch_hlt() {
@@ -27,4 +29,12 @@ void leave_critical(void* flags) {
 	if (flags) {
 		x86_enable_interrupts();
 	}
+}
+
+void arch_hlt_cpu(usize index) {
+	X86Cpu* cpu = container_of(arch_get_cpu(index), X86Cpu, common);
+
+	void* flags = enter_critical();
+	lapic_ipi(cpu->apic_id, LAPIC_MSG_HALT);
+	leave_critical(flags);
 }

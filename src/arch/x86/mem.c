@@ -60,10 +60,13 @@ void x86_init_mem() {
 			usize j = 0;
 			while (j < size) {
 				usize phys = entry->base + j;
-				// todo WC
 				arch_map_page(KERNEL_MAP, (usize) to_virt(phys), phys, PF_READ | PF_WRITE | PF_NC | PF_SPLIT);
 				j += PAGE_SIZE;
 			}
+			continue;
+		}
+
+		if (entry->base + size < SIZE_4GB) {
 			continue;
 		}
 

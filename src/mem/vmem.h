@@ -58,7 +58,7 @@ void vmem_new(
 		VMem* source,
 		size_t qcache_max,
 		VMFlags flags);
-void vmem_destroy(VMem* self);
+void vmem_destroy(VMem* self, bool assert_allocations);
 
 void* vmem_alloc(VMem* self, size_t size, VMFlags flags);
 void vmem_free(VMem* self, void* ptr, size_t size);

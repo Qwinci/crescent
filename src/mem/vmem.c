@@ -214,7 +214,7 @@ void vmem_new(
 	self->freelists[list_index] = init;
 }
 
-void vmem_destroy(VMem* self) {
+void vmem_destroy(VMem* self, bool assert_allocations) {
 	while (self->seg_page_list) {
 		VMemSeg* seg = self->seg_page_list;
 		self->seg_page_list = seg->next;
@@ -222,7 +222,9 @@ void vmem_destroy(VMem* self) {
 	}
 	self->free_segs = NULL;
 	for (size_t i = 0; i < VMEM_HASHTAB_COUNT; ++i) {
-		ASSERT(!self->hash_tab[i] && "tried to destroy vmem with allocations");
+		if (assert_allocations) {
+			ASSERT(self->hash_tab[i] && "tried to destroy vmem with allocations");
+		}
 		self->hash_tab[i] = NULL;
 	}
 }
