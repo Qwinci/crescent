@@ -2,7 +2,7 @@
 
 void fb_set_pixel(Framebuffer* self, usize x, usize y, u32 color) {
 	if (self->fmt == FB_FMT_BGRA32) {
-		*offset(self->base, u32, y * self->pitch + x * self->bpp) = color;
+		*offset(self->base, u32*, y * self->pitch + x * self->bpp) = color;
 	}
 	else {
 		return;
@@ -11,7 +11,7 @@ void fb_set_pixel(Framebuffer* self, usize x, usize y, u32 color) {
 
 u32 fb_get_pixel(Framebuffer* self, usize x, usize y) {
 	if (self->fmt == FB_FMT_BGRA32) {
-		return *offset(self->base, u32, y * self->pitch + x * self->bpp);
+		return *offset(self->base, u32*, y * self->pitch + x * self->bpp);
 	}
 	else {
 		return 0;

@@ -46,7 +46,7 @@ static int fbcon_write(Con* self, char c) {
 	u32 bytes_per_line = (fb->font->width + 7) / 8;
 
 	usize offset = sizeof(PsfFont) + (usize) c * fb->font->bytes_per_glyph;
-	const u8* font_c = offset(fb->font, const u8, offset);
+	const u8* font_c = offset(fb->font, const u8*, offset);
 	usize init_x = self->column * fb->font->width;
 	usize init_y = self->line * fb->font->height;
 	for (usize y = 0; y < fb->font->height; ++y) {
@@ -75,7 +75,7 @@ static int fbcon_write_at(Con* self, usize x, usize y, char c) {
 	u32 bytes_per_line = (fb->font->width + 7) / 8;
 
 	usize offset = sizeof(PsfFont) + (usize) c * fb->font->bytes_per_glyph;
-	const u8* font_c = offset(fb->font, const u8, offset);
+	const u8* font_c = offset(fb->font, const u8*, offset);
 	usize init_x = x * fb->font->width;
 	usize init_y = y * fb->font->height;
 	for (usize py = 0; y < fb->font->height; ++py) {
