@@ -3,14 +3,15 @@
 #include "dev/con.h"
 #include "inttypes.h"
 #include "string.h"
+#include "utils/spinlock.h"
 #include <stdarg.h>
 
-void kputs(const char* str, usize len) {
+Spinlock PRINT_LOCK = {};
+
+void kputs_nolock(const char* str, usize len) {
 	if (!kernel_con) {
 		return;
 	}
-
-	void* flags = enter_critical();
 
 	for (; len; --len, ++str) {
 		if (*str == '\n') {
@@ -24,7 +25,15 @@ void kputs(const char* str, usize len) {
 			kernel_con->write(kernel_con, *str);
 		}
 	}
+}
 
+void kputs(const char* str, usize len) {
+	void* flags = enter_critical();
+	spinlock_lock(&PRINT_LOCK);
+
+	kputs_nolock(str, len);
+
+	spinlock_unlock(&PRINT_LOCK);
 	leave_critical(flags);
 }
 
@@ -60,11 +69,10 @@ static char* fmt_u(usize value, char* str) {
 	return str;
 }
 
-void kvprintf(const char* fmt, va_list valist) {
+void kvprintf_nolock(const char* fmt, va_list valist) {
 	char buffer[101];
 	buffer[64] = 0;
 
-	void* flags = enter_critical();
 	while (true) {
 		if (!*fmt) {
 			break;
@@ -75,7 +83,7 @@ void kvprintf(const char* fmt, va_list valist) {
 		usize percent_count = 0;
 		for (; fmt[0] == '%' && fmt[1] == '%'; ++percent_count, fmt += 2);
 		usize len = fmt - start - percent_count;
-		kputs(start, len);
+		kputs_nolock(start, len);
 		if (len) {
 			continue;
 		}
@@ -100,11 +108,11 @@ void kvprintf(const char* fmt, va_list valist) {
 		}
 		else if (*fmt == 's') {
 			const char* value = va_arg(valist, const char*);
-			kputs(value, strlen(value));
+			kputs_nolock(value, strlen(value));
 		}
 		else if (*fmt == 'c') {
 			char c = va_arg(valist, int);
-			kputs(&c, 1);
+			kputs_nolock(&c, 1);
 		}
 		else if (*fmt == 'd' || *fmt == 'i') {
 			isize value = va_arg(valist, isize);
@@ -131,6 +139,14 @@ void kvprintf(const char* fmt, va_list valist) {
 			ptr = fmt_b(value, ptr);
 			len = (buffer + sizeof(buffer) - 2) - ptr;
 		}
+		else if (*fmt == 'f' && fmt[1] == 'g') {
+			kernel_con->fg = va_arg(valist, u32);
+			fmt += 1;
+		}
+		else if (*fmt == 'b' && fmt[1] == 'g') {
+			kernel_con->bg = va_arg(valist, u32);
+			fmt += 1;
+		}
 		fmt += 1;
 
 		if (len < precision) {
@@ -140,9 +156,15 @@ void kvprintf(const char* fmt, va_list valist) {
 			len = precision;
 		}
 
-		kputs(ptr, len);
+		kputs_nolock(ptr, len);
 	}
+}
 
+void kvprintf(const char* fmt, va_list valist) {
+	void* flags = enter_critical();
+	spinlock_lock(&PRINT_LOCK);
+	kvprintf_nolock(fmt, valist);
+	spinlock_unlock(&PRINT_LOCK);
 	leave_critical(flags);
 }
 
@@ -153,12 +175,22 @@ void kprintf(const char* fmt, ...) {
 	va_end(valist);
 }
 
+void kprintf_nolock(const char* fmt, ...) {
+	va_list valist;
+	va_start(valist, fmt);
+	kvprintf_nolock(fmt, valist);
+	va_end(valist);
+}
+
 NORETURN void panic(const char* fmt, ...) {
 	enter_critical();
 	va_list valist;
 	va_start(valist, fmt);
 	kernel_con->fg = 0xFF0000;
-	kvprintf(fmt, valist);
+	spinlock_lock(&PRINT_LOCK);
+	kputs_nolock("KERNEL PANIC: ", sizeof("KERNEL PANIC: ") - 1);
+	kvprintf_nolock(fmt, valist);
+	spinlock_unlock(&PRINT_LOCK);
 	va_end(valist);
 
 	while (true) {

@@ -16,4 +16,4 @@ typedef float f32;
 typedef double f64;
 
 #define container_of(ptr, base, field) ((base*) ((usize) ptr - offsetof(base, field)))
-#define offset(ptr, type, off) ((type*) ((usize) ptr + off))
+#define offset(ptr, type, off) ((type) ((usize) ptr + off))

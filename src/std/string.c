@@ -29,6 +29,15 @@ int strncmp(const char* lhs, const char* rhs, size_t count) {
 	return 0;
 }
 
+char* strncpy(char* restrict dest, const char* restrict src, size_t count) {
+	char* dest_ptr = dest;
+	for (; count > 1 && *src; --count) {
+		*dest_ptr++ = *src++;
+	}
+	*dest_ptr = 0;
+	return dest;
+}
+
 int memcmp(const void* lhs, const void* rhs, size_t count) {
 	const unsigned char* lhs_ptr = (const unsigned char*) lhs;
 	const unsigned char* rhs_ptr = (const unsigned char*) rhs;
