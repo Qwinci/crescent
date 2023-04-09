@@ -9,10 +9,15 @@ set(CMAKE_C_STANDARD 23)
 set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg
+        basic
         )
 
 add_executable(crescent src/main.c)
 target_include_directories(crescent PRIVATE src thirdparty)
+
+add_executable(basic tests/basic.c tests/basic.asm)
+
+add_dependencies(crescent basic)
 
 target_compile_options(crescent PRIVATE
         $<$<COMPILE_LANGUAGE:C>: -Wall
