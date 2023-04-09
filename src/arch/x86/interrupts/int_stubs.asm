@@ -1,4 +1,5 @@
 extern x86_int_handler
+global int_common:function hidden (int_common.end - int_common)
 
 section .text
 %assign i 0
@@ -60,6 +61,7 @@ int_common:
 
 	add rsp, 16
 	iretq
+.end:
 
 section .data
 global x86_int_stubs

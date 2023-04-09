@@ -1,5 +1,8 @@
 #include "arch/interrupts.h"
+#include "arch/x86/dev/lapic.h"
 #include "stdio.h"
+#include "utils/elf.h"
+#include "interrupts.h"
 
 static u32 used_ints[256 / 32 - 1] = {};
 
@@ -33,16 +36,83 @@ void arch_dealloc_int(u32 i) {
 	handlers[i].userdata = NULL;
 }
 
-typedef struct {
-	u64 r15, r14, r13, r12, r11, r10, r9, r8, rbp, rsi, rdi, rdx, rcx, rbx, rax;
-	u64 vec;
-	u64 error;
-	u64 ip;
-	u64 cs;
-	u64 flags;
-	u64 sp;
-	u64 ss;
-} InterruptCtx;
+typedef struct Frame {
+	struct Frame* rbp;
+	u64 rip;
+} Frame;
+
+#include "limine/limine.h"
+#include "string.h"
+
+static volatile struct limine_kernel_file_request KERNEL_FILE_REQUEST = {
+	.id = LIMINE_KERNEL_FILE_REQUEST
+};
+
+static const char* strtab = NULL;
+static void* symtab = NULL;
+static usize symtab_size = 0;
+static usize symtab_ent_size = 0;
+
+void debug_init() {
+	const Elf64EHdr* ehdr = (const Elf64EHdr*) KERNEL_FILE_REQUEST.response->kernel_file->address;
+
+	const Elf64SHdr* shstrtab_sect = (const Elf64SHdr*) offset(ehdr, const Elf64SHdr*, ehdr->e_shoff + ehdr->e_shstrndx * ehdr->e_shentsize);
+	const char* shstrtab = (const char*) ehdr + shstrtab_sect->sh_offset;
+
+	for (usize i = 0; i < ehdr->e_shnum; ++i) {
+		const Elf64SHdr* shdr = (const Elf64SHdr*) offset(ehdr, const Elf64SHdr*, ehdr->e_shoff + i * ehdr->e_shentsize);
+		const char* name = shstrtab + shdr->sh_name;
+		if (strcmp(name, ".symtab") == 0) {
+			symtab = (void*) ((usize) ehdr + shdr->sh_offset);
+			symtab_size = shdr->sh_size;
+			symtab_ent_size = shdr->sh_entsize;
+			if (strtab) {
+				break;
+			}
+		}
+		else if (strcmp(name, ".strtab") == 0) {
+			strtab = (const char*) ehdr + shdr->sh_offset;
+			if (symtab) {
+				break;
+			}
+		}
+	}
+}
+
+const char* resolve_ip(usize ip) {
+	const char* name = NULL;
+
+	for (usize i = 0; i < symtab_size; i += symtab_ent_size) {
+		Elf64Sym* sym = offset(symtab, Elf64Sym*, i);
+		if (ELF64_ST_TYPE(sym->st_info) != STT_FUNC || !sym->st_size || !sym->st_name) {
+			continue;
+		}
+
+		if (ip < sym->st_value || ip >= sym->st_value + sym->st_size) {
+			continue;
+		}
+
+		name = strtab + sym->st_name;
+		break;
+	}
+
+	return name;
+}
+
+void backtrace_display(bool lock) {
+	Frame* frame;
+	__asm__ volatile("mov %0, rbp" : "=rm"(frame));
+	while (frame->rbp) {
+		const char* name = resolve_ip(frame->rip);
+		if (lock) {
+			kprintf("\t%s <0x%x>\n", name ? name : "<unknown>", frame->rip);
+		}
+		else {
+			kprintf_nolock("\t%s <0x%x>\n", name ? name : "<unknown>", frame->rip);
+		}
+		frame = frame->rbp;
+	}
+}
 
 void x86_int_handler(InterruptCtx* ctx) {
 	if (ctx->cs == 0x2b) {
@@ -55,8 +125,12 @@ void x86_int_handler(InterruptCtx* ctx) {
 		data->handler(ctx, data->userdata);
 	}
 	else {
-		kprintf("[kernel][x86]: unhandled interrupt %u\n", ctx->vec);
+		kprintf("[kernel][x86]: unhandled interrupt 0x%x\n", ctx->vec);
+
+		backtrace_display(true);
 	}
+
+	lapic_eoi();
 
 	if (ctx->cs == 0x2b) {
 		__asm__ volatile("swapgs");
