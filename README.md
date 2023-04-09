@@ -2,24 +2,24 @@
 ## An experimental kernel
 
 ### Todo
-- [ ] Basic logging
-- [ ] Memory
-	- [ ] Page frame allocator
-	- [ ] Page table manager
-	- [ ] General purpose memory allocator
+- [x] Basic logging
+- [x] Memory
+	- [x] Page frame allocator
+	- [x] Page table manager
+	- [x] General purpose memory allocator
 - [ ] Interrupt handling
-	- [ ] APIC
-	- [ ] Exceptions
+	- [x] APIC
+	- [x] Exceptions
 	- [ ] IO-APIC
 - [ ] Elf loading from modules
-- [ ] Per-cpu multilevel feedback queue scheduler
+- [x] Per-cpu multilevel feedback queue scheduler
 - [ ] ACPI
 	- [ ] FADT
 	- [ ] MADT
 - [ ] Filesystems
 	- [ ] FAT32
 - [ ] Drivers
-	- [ ] SMP
+	- [x] SMP
 	- [ ] AHCI SATA
 	- [ ] NVMe
 	- [ ] PS2
