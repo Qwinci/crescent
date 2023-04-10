@@ -4,6 +4,8 @@ global _start
 %define SYS_CREATE_THREAD 1
 
 thread:
+	.loop:
+		jmp .loop
 	mov edi, SYS_EXIT
 	mov eax, 1
 	syscall

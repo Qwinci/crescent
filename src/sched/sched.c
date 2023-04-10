@@ -2,6 +2,7 @@
 #include "arch/cpu.h"
 #include "arch/misc.h"
 #include "dev/timer.h"
+#include "mutex.h"
 #include "sched_internals.h"
 #include "stdio.h"
 #include "task.h"
@@ -13,9 +14,9 @@
 	}
 }
 
-void sched_switch_from(Task* old_task, Task* self) {
-	self->status = TASK_STATUS_RUNNING;
+static Mutex proc_mutex = {};
 
+void sched_switch_from(Task* old_task, Task* self) {
 	Cpu* cpu = arch_get_cur_task()->cpu;
 	if (old_task->status == TASK_STATUS_RUNNING) {
 		if (old_task == cpu->idle_task) {
@@ -29,6 +30,8 @@ void sched_switch_from(Task* old_task, Task* self) {
 		cpu->thread_count -= 1;
 		arch_destroy_task(old_task);
 	}
+
+	self->status = TASK_STATUS_RUNNING;
 
 	arch_sched_switch_from(old_task, self);
 }
@@ -100,6 +103,34 @@ void sched() {
 		}
 		else {
 			return;
+		}
+	}
+	while (task->status == TASK_STATUS_KILLED) {
+		kprintf("task '%s' was killed\n", task->name);
+		if (task->parent) {
+			mutex_lock(&proc_mutex);
+
+			if (task->child_prev) {
+				task->child_prev->child_next = task->child_next;
+			}
+			else {
+				task->parent->children = task->child_next;
+			}
+			if (task->child_next) {
+				task->child_next->child_prev = task->child_prev;
+			}
+
+			mutex_unlock(&proc_mutex);
+		}
+		task = sched_get_next_task();
+		if (!task) {
+			if (cpu->current_task->status != TASK_STATUS_RUNNING) {
+				task = cpu->idle_task;
+				cpu->idle_start = arch_get_ns_since_boot();
+			}
+			else {
+				return;
+			}
 		}
 	}
 
@@ -177,9 +208,33 @@ void sched_sleep(usize us) {
 	leave_critical(flags);
 }
 
-NORETURN void sched_exit() {
+NORETURN void sched_exit(int status) {
 	Task* self = arch_get_cur_task();
+
 	self->status = TASK_STATUS_EXITED;
+	self->exit_status = status;
+
+	if (self->parent) {
+		mutex_lock(&proc_mutex);
+
+		if (self->child_prev) {
+			self->child_prev->child_next = self->child_next;
+		}
+		else {
+			self->parent->children = self->child_next;
+		}
+		if (self->child_next) {
+			self->child_next->child_prev = self->child_prev;
+		}
+
+		mutex_unlock(&proc_mutex);
+	}
+	if (self->children) {
+		for (Task* task = self->children; task; task = task->child_next) {
+			sched_kill_child(task);
+		}
+	}
+
 	sched();
 	while (true);
 }
@@ -190,9 +245,11 @@ NORETURN void sched_kill_cur() {
 	while (true);
 }
 
-void sched_kill_task(Task* task) {
-	// todo what if the task has exited at this time
+void sched_kill_child(Task* task) {
+	mutex_lock(&proc_mutex);
+	task->parent = NULL;
 	task->status = TASK_STATUS_KILLED;
+	mutex_unlock(&proc_mutex);
 }
 
 NORETURN void sched_load_balance() {
@@ -240,6 +297,7 @@ NORETURN void sched_load_balance() {
 						else {
 							level->ready_tasks = task->next;
 						}
+						kprintf("moved task '%s' from cpu %u to %u\n", task->name, max_cpu_i, min_cpu_i);
 						sched_queue_task_for_cpu(task, min_cpu);
 						++amount;
 					}

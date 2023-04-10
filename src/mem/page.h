@@ -13,7 +13,9 @@ typedef struct Page {
 		PAGE_FREE,
 		PAGE_USED
 	} type;
-	char pad[7];
+	union {
+		char pad[7];
+	};
 } Page;
 
 static_assert(sizeof(Page) == 40);

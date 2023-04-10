@@ -1,8 +1,9 @@
 #include "arch/map.h"
+#include "map.h"
+#include "mem/allocator.h"
 #include "mem/pmalloc.h"
 #include "mem/utils.h"
 #include "string.h"
-#include "map.h"
 
 u64 x86_pf_from_generic(PageFlags flags) {
 	u64 x86_flags = 0;
@@ -34,29 +35,44 @@ usize arch_get_hugepage_size() {
 void* x86_create_user_map() {
 	Page* page = pmalloc(1);
 	assert(page);
-	void* virt = to_virt(page->phys);
-	u64* map = (u64*) virt;
-	memset(map, 0, 256 * 8);
-	memcpy(map + 256, to_virt(((Page*) KERNEL_MAP)->phys + 256 * 8), 256 * 8);
-	return page;
+	u64* virt = (u64*) to_virt(page->phys);
+	memset(virt, 0, 256 * 8);
+	memcpy(virt + 256, to_virt(((X86PageMap*) KERNEL_MAP)->page->phys + 256 * 8), 256 * 8);
+
+	X86PageMap* map = kmalloc(sizeof(X86PageMap));
+	assert(map);
+	map->page = page;
+
+	return map;
 }
 
 void* arch_create_map() {
 	Page* page = pmalloc(1);
 	assert(page);
-	void* virt = to_virt(page->phys);
-	u64* map = (u64*) virt;
+	u64* virt = (u64*) to_virt(page->phys);
 	for (usize i = 256; i < 512; ++i) {
 		Page* frame_phys = pmalloc(1);
 		assert(frame_phys);
 		memset(to_virt(frame_phys->phys), 0, PAGE_SIZE);
-		map[i] = X86_PF_P | X86_PF_RW | frame_phys->phys;
+		virt[i] = X86_PF_P | X86_PF_RW | frame_phys->phys;
 	}
-	return page;
+
+	X86PageMap* map = kmalloc(sizeof(X86PageMap));
+	assert(map);
+	map->page = page;
+	map->ref_count = 1;
+
+	return map;
 }
 
 void arch_destroy_map(void* map) {
-	pfree((Page*) map, 1);
+	X86PageMap* p = (X86PageMap*) map;
+	if (p->ref_count > 1) {
+		--p->ref_count;
+		return;
+	}
+	pfree(p->page, 1);
+	kfree(p, sizeof(X86PageMap));
 }
 
 void x86_refresh_page(usize addr) {
@@ -64,7 +80,7 @@ void x86_refresh_page(usize addr) {
 }
 
 void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
-	u64* pml4 = (u64*) to_virt(((Page*) map)->phys);
+	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
 
 	u64 x86_flags = x86_pf_from_generic(flags);
 
@@ -158,7 +174,7 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 }
 
 void arch_unmap_page(void* map, usize virt, bool dealloc) {
-	u64* pml4 = (u64*) to_virt(((Page*) map)->phys);
+	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
 
 	usize orig_virt = virt;
 
@@ -238,7 +254,7 @@ dealloc_huge:
 }
 
 usize arch_virt_to_phys(void* map, usize virt) {
-	u64* pml4 = (u64*) to_virt(((Page*) map)->phys);
+	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
 
 	virt >>= 12;
 	u64 pt_offset = virt & 0x1FF;
@@ -281,7 +297,7 @@ usize arch_virt_to_phys(void* map, usize virt) {
 }
 
 void arch_use_map(void* map) {
-	__asm__ volatile("mov cr3, %0" : : "r"(((Page*) map)->phys) : "memory");
+	__asm__ volatile("mov cr3, %0" : : "r"(((X86PageMap*) map)->page->phys) : "memory");
 }
 
 void* KERNEL_MAP = NULL;

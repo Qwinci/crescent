@@ -17,17 +17,16 @@ void* syscall_handlers[] = {
 void sys_exit(int status) {
 	Task* task = arch_get_cur_task();
 	kprintf("task '%s' exited with status %d\n", task->name, status);
-	Task* child = task->children;
-	for (; child; child = child->child_next) {
-		kprintf("killing child task '%s'", *child->name ? child->name : "<no name>");
-		sched_kill_task(child);
+	for (Task* child = task->children; child; child = child->child_next) {
+		kprintf("killing child task '%s'\n", *child->name ? child->name : "<no name>");
+		sched_kill_child(child);
 	}
-	sched_exit();
+	sched_exit(status);
 }
 
 Task* sys_create_thread(void (*fn)(), void* arg) {
 	Task* self = arch_get_cur_task();
-	Task* task = arch_create_user_task_with_map("", fn, arg, self, self->map);
+	Task* task = arch_create_user_task_with_map("", fn, arg, self, self->map, self->user_vmem);
 	if (!task) {
 		return NULL;
 	}

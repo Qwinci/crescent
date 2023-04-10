@@ -21,7 +21,7 @@ typedef struct {
 
 Task* arch_create_kernel_task(const char* name, void (*fn)(), void* arg);
 Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent);
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map);
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, struct VMem* vmem);
 void arch_set_user_task_fn(Task* task, void (*fn)());
 void arch_destroy_task(Task* task);
 
@@ -30,6 +30,6 @@ void sched_queue_task(Task* task);
 void sched_block(TaskStatus status);
 bool sched_unblock(Task* task);
 void sched_sleep(usize us);
-NORETURN void sched_exit();
+NORETURN void sched_exit(int status);
 NORETURN void sched_kill_cur();
-void sched_kill_task(Task* task);
+void sched_kill_child(Task* task);

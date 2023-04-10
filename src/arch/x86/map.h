@@ -41,5 +41,12 @@
 
 #define X86_HUGEPAGE_SIZE 0x200000
 
+typedef struct Page Page;
+
+typedef struct {
+	Page* page;
+	usize ref_count;
+} X86PageMap;
+
 u64 x86_pf_from_generic(PageFlags flags);
 void x86_refresh_page(usize addr);

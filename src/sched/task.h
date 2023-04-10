@@ -1,6 +1,6 @@
 #pragma once
-#include "mem/vmem.h"
 #include "types.h"
+#include "utils/spinlock.h"
 
 typedef enum : u8 {
 	TASK_STATUS_RUNNING = 0,
@@ -14,6 +14,8 @@ typedef enum : u8 {
 
 typedef struct Cpu Cpu;
 
+typedef struct VMem VMem;
+
 typedef struct Task {
 	char name[128];
 	struct Task* next;
@@ -22,12 +24,14 @@ typedef struct Task {
 	struct Page* allocated_pages;
 	void* map;
 	struct Task* parent;
+	struct Task* child_prev;
 	struct Task* child_next;
 	struct Task* children;
-	VMem user_vmem;
+	Spinlock lock;
+	struct VMem* user_vmem;
 	int exit_status;
 	bool detached;
-	_Atomic(TaskStatus) status;
+	TaskStatus status;
 	u8 level;
 	u8 priority;
 	bool pin_level;

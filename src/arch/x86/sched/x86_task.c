@@ -1,5 +1,6 @@
 #include "x86_task.h"
 #include "arch/map.h"
+#include "arch/x86/map.h"
 #include "mem/allocator.h"
 #include "mem/page.h"
 #include "mem/pmalloc.h"
@@ -8,6 +9,7 @@
 #include "sched/sched.h"
 #include "sched/sched_internals.h"
 #include "string.h"
+#include "mem/vmem.h"
 
 #define KERNEL_STACK_SIZE 0x2000
 #define USER_STACK_SIZE 0x2000
@@ -39,7 +41,10 @@ extern void x86_usermode_ret();
 
 extern void* x86_create_user_map();
 
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map) {
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, VMem* vmem) {
+	X86PageMap* m = (X86PageMap*) map;
+	m->ref_count += 1;
+
 	X86Task* task = kmalloc(sizeof(X86Task));
 	if (!task) {
 		return NULL;
@@ -47,7 +52,15 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
 	task->common.map = map;
-	vm_user_init(&task->common, 0xFF000, 0x20000);
+	if (!vmem) {
+		vmem = (VMem*) kmalloc(sizeof(VMem));
+		memset(vmem, 0, sizeof(VMem));
+		task->common.user_vmem = vmem;
+		vm_user_init(&task->common, 0xFF000, 0x20000);
+	}
+	else {
+		task->common.user_vmem = vmem;
+	}
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
 	if (!kernel_stack) {
@@ -95,7 +108,7 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 }
 
 Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent) {
-	return arch_create_user_task_with_map(name, fn, arg, parent, x86_create_user_map());
+	return arch_create_user_task_with_map(name, fn, arg, parent, x86_create_user_map(), NULL);
 }
 
 void arch_set_user_task_fn(Task* task, void (*fn)()) {
@@ -150,7 +163,11 @@ void arch_destroy_task(Task* task) {
 			page = next;
 		}
 
-		vm_user_free(task);
+		X86PageMap* map = (X86PageMap*) task->map;
+
+		if (map->ref_count == 1) {
+			vm_user_free(task);
+		}
 
 		arch_destroy_map(x86_task->common.map);
 	}
@@ -159,4 +176,25 @@ void arch_destroy_task(Task* task) {
 	}
 
 	kfree(x86_task, sizeof(X86Task));
+}
+
+void x86_task_add_map_page(X86Task* task, struct Page* page) {
+	page->prev = NULL;
+	page->next = task->map_pages;
+	if (page->next) {
+		page->next->prev = page;
+	}
+	task->map_pages = page;
+}
+
+void x86_task_remove_map_page(X86Task* task, struct Page* page) {
+	if (page->prev) {
+		page->prev->next = page->next;
+	}
+	else {
+		task->map_pages = page->next;
+	}
+	if (page->next) {
+		page->next->prev = page->prev;
+	}
 }
