@@ -205,6 +205,8 @@ void pmalloc_add_mem(void* base, usize size) {
 	}
 }
 
+static Spinlock PMALLOC_SPINLOCK = {};
+
 Page* pmalloc(usize count) {
 	if (!count) {
 		return NULL;
@@ -218,7 +220,10 @@ Page* pmalloc(usize count) {
 		index += 1;
 	}
 
-	return freelist_get_nonrecursive(index);
+	spinlock_lock(&PMALLOC_SPINLOCK);
+	void* ptr = freelist_get_nonrecursive(index);
+	spinlock_unlock(&PMALLOC_SPINLOCK);
+	return ptr;
 }
 
 void pfree(Page* ptr, usize count) {
@@ -227,5 +232,7 @@ void pfree(Page* ptr, usize count) {
 		index += 1;
 	}
 
+	spinlock_lock(&PMALLOC_SPINLOCK);
 	freelist_insert_nonrecursive(index, ptr);
+	spinlock_unlock(&PMALLOC_SPINLOCK);
 }

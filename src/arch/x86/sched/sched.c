@@ -1,4 +1,3 @@
-#include "arch/cpu.h"
 #include "arch/map.h"
 #include "arch/misc.h"
 #include "arch/x86/cpu.h"

@@ -10,6 +10,13 @@
 #include "string.h"
 #include "utils/elf.h"
 
+void bruh_task() {
+	while (true) {
+		arch_hlt();
+		kprintf("a\n");
+	}
+}
+
 [[noreturn]] void kmain() {
 	kprintf("[kernel]: entered main\n");
 
@@ -62,7 +69,14 @@
 
 	arch_set_user_task_fn(test_user, user_fn);
 
+	void* flags = enter_critical();
 	sched_queue_task(test_user);
+
+	for (usize i = 0; i < 10; ++i) {
+		Task* task = arch_create_kernel_task("", bruh_task, NULL);
+		sched_queue_task(task);
+	}
+	leave_critical(flags);
 
 	sched_block(TASK_STATUS_WAITING);
 	while (true) {

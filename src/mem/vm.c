@@ -6,17 +6,23 @@
 #include "sched/task.h"
 
 static VMem kernel_vmem = {};
+static Spinlock KERNEL_VM_LOCK = {};
 
 void vm_kernel_init(usize base, usize size) {
 	vmem_new(&kernel_vmem, "kernel vmem", (void*) base, size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
 }
 
 void* vm_kernel_alloc(usize count) {
-	return vmem_alloc(&kernel_vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+	spinlock_lock(&KERNEL_VM_LOCK);
+	void* ptr = vmem_alloc(&kernel_vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+	spinlock_unlock(&KERNEL_VM_LOCK);
+	return ptr;
 }
 
 void vm_kernel_dealloc(void* ptr, usize count) {
+	spinlock_lock(&KERNEL_VM_LOCK);
 	vmem_free(&kernel_vmem, ptr, count * PAGE_SIZE);
+	spinlock_unlock(&KERNEL_VM_LOCK);
 }
 
 void* vm_kernel_alloc_backed(usize count, PageFlags flags) {
