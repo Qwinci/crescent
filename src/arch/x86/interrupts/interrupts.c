@@ -119,6 +119,8 @@ void x86_int_handler(InterruptCtx* ctx) {
 		__asm__ volatile("swapgs");
 	}
 
+	lapic_eoi();
+
 	HandlerData* data = &handlers[ctx->vec];
 
 	if (data->handler) {
@@ -129,8 +131,6 @@ void x86_int_handler(InterruptCtx* ctx) {
 
 		backtrace_display(true);
 	}
-
-	lapic_eoi();
 
 	if (ctx->cs == 0x2b) {
 		__asm__ volatile("swapgs");
