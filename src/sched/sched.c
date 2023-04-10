@@ -230,8 +230,16 @@ NORETURN void sched_exit(int status) {
 		mutex_unlock(&proc_mutex);
 	}
 	if (self->children) {
-		for (Task* task = self->children; task; task = task->child_next) {
-			sched_kill_child(task);
+		Task* task = self->children;
+		while (task->children) {
+			task = task->children;
+		}
+		while (task) {
+			for (Task* child = task; child; child = child->child_next) {
+				kprintf("killing child task '%s'\n", *child->name ? child->name : "<no name>");
+				sched_kill_child(child);
+			}
+			task = task->parent;
 		}
 	}
 

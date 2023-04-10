@@ -17,10 +17,6 @@ void* syscall_handlers[] = {
 void sys_exit(int status) {
 	Task* task = arch_get_cur_task();
 	kprintf("task '%s' exited with status %d\n", task->name, status);
-	for (Task* child = task->children; child; child = child->child_next) {
-		kprintf("killing child task '%s'\n", *child->name ? child->name : "<no name>");
-		sched_kill_child(child);
-	}
 	sched_exit(status);
 }
 
