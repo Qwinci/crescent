@@ -16,6 +16,6 @@ void vm_user_free(Task* task);
 void* vm_user_alloc(Task* task, usize count);
 void vm_user_dealloc(Task* task, void* ptr, usize count);
 
-void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, bool map_in_kernel);
-void vm_user_dealloc_kernel(void* ptr, usize count);
-void vm_user_dealloc_backed(Task* task, void* ptr, usize count, bool unmap_in_kernel);
+void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, void** kernel_mapping);
+void vm_user_dealloc_kernel(void* kernel_mapping, usize count);
+void vm_user_dealloc_backed(Task* task, void* ptr, usize count, void* kernel_mapping);

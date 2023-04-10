@@ -38,10 +38,14 @@
 		}
 	}
 
-	Task* test_user = arch_create_user_task("basic", NULL, NULL);
+	Task* test_user = arch_create_user_task("basic", NULL, NULL, NULL);
 
-	void* mem = vm_user_alloc_backed(test_user, ALIGNUP(in_mem_size, PAGE_SIZE) / PAGE_SIZE, PF_READ | PF_WRITE | PF_EXEC | PF_USER, true);
-	assert(mem);
+	void* mem;
+	void* user_mem = vm_user_alloc_backed(
+		test_user,
+		ALIGNUP(in_mem_size, PAGE_SIZE) / PAGE_SIZE,
+		PF_READ | PF_WRITE | PF_EXEC | PF_USER, &mem);
+	assert(user_mem);
 	memset(mem, 0, ALIGNUP(in_mem_size, PAGE_SIZE));
 
 	for (u16 i = 0; i < ehdr->e_phnum; ++i) {
@@ -54,7 +58,7 @@
 
 	vm_user_dealloc_kernel(mem, ALIGNUP(in_mem_size, PAGE_SIZE) / PAGE_SIZE);
 
-	void (*user_fn)() = (void (*)()) ((usize) mem + (ehdr->e_entry - base));
+	void (*user_fn)() = (void (*)()) ((usize) user_mem + (ehdr->e_entry - base));
 
 	arch_set_user_task_fn(test_user, user_fn);
 

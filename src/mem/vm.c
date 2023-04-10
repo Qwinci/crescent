@@ -76,10 +76,19 @@ void vm_user_dealloc(Task* task, void* ptr, usize count) {
 	vmem_free(&task->user_vmem, ptr, count * PAGE_SIZE);
 }
 
-void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, bool map_in_kernel) {
+void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, void** kernel_mapping) {
 	void* vm = vm_user_alloc(task, count);
 	if (!vm) {
 		return NULL;
+	}
+	void* kernel_vm = NULL;
+	if (kernel_mapping) {
+		*kernel_mapping = vm_kernel_alloc(count);
+		if (!*kernel_mapping) {
+			vm_user_dealloc(task, vm, count);
+			return NULL;
+		}
+		kernel_vm = *kernel_mapping;
 	}
 
 	for (usize i = 0; i < count; ++i) {
@@ -90,18 +99,21 @@ void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, bool map_in
 				task_remove_page(task, cur_page);
 				pfree(cur_page, 1);
 
-				if (map_in_kernel) {
-					arch_unmap_page(KERNEL_MAP, (usize) vm + j * PAGE_SIZE, true);
+				if (kernel_vm) {
+					arch_unmap_page(KERNEL_MAP, (usize) kernel_vm + j * PAGE_SIZE, true);
 				}
 				arch_user_unmap_page(task, (usize) vm + j * PAGE_SIZE, true);
 			}
 			vm_user_dealloc(task, vm, count);
+			if (kernel_vm) {
+				vm_kernel_dealloc(kernel_vm, count);
+			}
 			return NULL;
 		}
 		task_add_page(task, page);
 
-		if (map_in_kernel) {
-			arch_map_page(KERNEL_MAP, (usize) vm + i * PAGE_SIZE, page->phys, flags);
+		if (kernel_vm) {
+			arch_map_page(KERNEL_MAP, (usize) kernel_vm + i * PAGE_SIZE, page->phys, flags);
 		}
 		arch_user_map_page(task, (usize) vm + i * PAGE_SIZE, page->phys, flags);
 	}
@@ -109,22 +121,22 @@ void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, bool map_in
 	return vm;
 }
 
-void vm_user_dealloc_kernel(void* ptr, usize count) {
+void vm_user_dealloc_kernel(void* kernel_mapping, usize count) {
 	for (usize i = 0; i < count; ++i) {
-		usize virt = (usize) ptr + i * PAGE_SIZE;
+		usize virt = (usize) kernel_mapping + i * PAGE_SIZE;
 		arch_unmap_page(KERNEL_MAP, virt, true);
 	}
 }
 
-void vm_user_dealloc_backed(Task* task, void* ptr, usize count, bool unmap_in_kernel) {
+void vm_user_dealloc_backed(Task* task, void* ptr, usize count, void* kernel_mapping) {
 	for (usize i = 0; i < count; ++i) {
 		usize virt = (usize) ptr + i * PAGE_SIZE;
 		usize phys = arch_virt_to_phys(task->map, virt);
 		if (!phys) {
 			panic("vm_kernel_dealloc_backed: phys is null\n");
 		}
-		if (unmap_in_kernel) {
-			arch_unmap_page(KERNEL_MAP, virt, true);
+		if (kernel_mapping) {
+			arch_unmap_page(KERNEL_MAP, (usize) kernel_mapping + i * PAGE_SIZE, true);
 		}
 		arch_user_unmap_page(task, virt, true);
 
@@ -133,4 +145,7 @@ void vm_user_dealloc_backed(Task* task, void* ptr, usize count, bool unmap_in_ke
 		pfree(page, 1);
 	}
 	vm_user_dealloc(task, ptr, count);
+	if (kernel_mapping) {
+		vm_kernel_dealloc(kernel_mapping, count);
+	}
 }
