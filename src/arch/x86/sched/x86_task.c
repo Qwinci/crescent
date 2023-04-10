@@ -39,14 +39,14 @@ extern void x86_usermode_ret();
 
 extern void* x86_create_user_map();
 
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent) {
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map) {
 	X86Task* task = kmalloc(sizeof(X86Task));
 	if (!task) {
 		return NULL;
 	}
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
-	task->common.map = x86_create_user_map();
+	task->common.map = map;
 	vm_user_init(&task->common, 0xFF000, 0x20000);
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
@@ -92,6 +92,10 @@ Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* par
 	task->common.parent = parent;
 
 	return &task->common;
+}
+
+Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent) {
+	return arch_create_user_task_with_map(name, fn, arg, parent, x86_create_user_map());
 }
 
 void arch_set_user_task_fn(Task* task, void (*fn)()) {

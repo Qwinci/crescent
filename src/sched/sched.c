@@ -190,6 +190,11 @@ NORETURN void sched_kill_cur() {
 	while (true);
 }
 
+void sched_kill_task(Task* task) {
+	// todo what if the task has exited at this time
+	task->status = TASK_STATUS_KILLED;
+}
+
 NORETURN void sched_load_balance() {
 	while (true) {
 		usize min_thread_count = UINT64_MAX;
