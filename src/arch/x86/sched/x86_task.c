@@ -39,23 +39,38 @@ extern void x86_usermode_ret();
 
 extern void* x86_create_user_map();
 
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg) {
+Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent) {
 	X86Task* task = kmalloc(sizeof(X86Task));
+	if (!task) {
+		return NULL;
+	}
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
 	task->common.map = x86_create_user_map();
 	vm_user_init(&task->common, 0xFF000, 0x20000);
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
-	assert(kernel_stack);
+	if (!kernel_stack) {
+		vm_user_free(&task->common);
+		arch_destroy_map(task->common.map);
+		return NULL;
+	}
 	memset(kernel_stack, 0, KERNEL_STACK_SIZE);
 	task->kernel_rsp = (usize) kernel_stack + KERNEL_STACK_SIZE;
 
-	u8* stack = (u8*) vm_user_alloc_backed(&task->common, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, true);
-	assert(stack);
+	u8* stack;
+	u8* user_stack = (u8*) vm_user_alloc_backed(&task->common, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);
+	if (!user_stack) {
+		kfree(kernel_stack, KERNEL_STACK_SIZE);
+		vm_user_free(&task->common);
+		arch_destroy_map(task->common.map);
+		return NULL;
+	}
+	u8* stack_base = stack;
 	memset(stack, 0, USER_STACK_SIZE);
-	task->stack_base = (usize) stack;
+	task->stack_base = (usize) user_stack;
 	stack += USER_STACK_SIZE - sizeof(UserInitStackFrame);
+	user_stack += USER_STACK_SIZE - sizeof(UserInitStackFrame);
 
 	UserInitStackFrame* frame = (UserInitStackFrame*) stack;
 	frame->after_switch = x86_switch_from_init;
@@ -65,15 +80,16 @@ Task* arch_create_user_task(const char* name, void (*fn)(), void* arg) {
 	frame->null_rbp = 0;
 	frame->null_rip = 0;
 
-	vm_user_dealloc_kernel((void*) task->stack_base, USER_STACK_SIZE / PAGE_SIZE);
+	vm_user_dealloc_kernel(stack_base, USER_STACK_SIZE / PAGE_SIZE);
 
 	strncpy(task->common.name, name, sizeof(task->common.name));
 	task->common.status = TASK_STATUS_READY;
 
-	task->rsp = (usize) stack;
+	task->rsp = (usize) user_stack;
 	task->common.level = SCHED_MAX_LEVEL - 1;
 	task->user = true;
 	task->common.priority = 0;
+	task->common.parent = parent;
 
 	return &task->common;
 }
@@ -120,7 +136,7 @@ void arch_destroy_task(Task* task) {
 	X86Task* x86_task = container_of(task, X86Task, common);
 
 	if (x86_task->user) {
-		vm_user_dealloc_backed(&x86_task->common, (void*) x86_task->stack_base, USER_STACK_SIZE / PAGE_SIZE, false);
+		vm_user_dealloc_backed(&x86_task->common, (void*) x86_task->stack_base, USER_STACK_SIZE / PAGE_SIZE, NULL);
 
 		kfree((void*) (x86_task->kernel_rsp - KERNEL_STACK_SIZE), KERNEL_STACK_SIZE);
 

@@ -20,7 +20,7 @@ typedef struct {
 } SchedLevel;
 
 Task* arch_create_kernel_task(const char* name, void (*fn)(), void* arg);
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg);
+Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent);
 void arch_set_user_task_fn(Task* task, void (*fn)());
 void arch_destroy_task(Task* task);
 

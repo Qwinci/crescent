@@ -178,7 +178,8 @@ void sched_sleep(usize us) {
 }
 
 NORETURN void sched_exit() {
-	arch_get_cur_task()->status = TASK_STATUS_EXITED;
+	Task* self = arch_get_cur_task();
+	self->status = TASK_STATUS_EXITED;
 	sched();
 	while (true);
 }

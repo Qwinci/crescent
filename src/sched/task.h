@@ -21,8 +21,13 @@ typedef struct Task {
 	Cpu* cpu;
 	struct Page* allocated_pages;
 	void* map;
+	struct Task* parent;
+	struct Task* child_next;
+	struct Task* children;
 	VMem user_vmem;
-	TaskStatus status;
+	int exit_status;
+	bool detached;
+	_Atomic(TaskStatus) status;
 	u8 level;
 	u8 priority;
 	bool pin_level;
