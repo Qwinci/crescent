@@ -25,6 +25,7 @@ target_compile_options(crescent PRIVATE
         -masm=intel -fno-stack-protector -fno-exceptions -fno-rtti
         -fno-omit-frame-pointer -Wno-interrupt-service-routine
         -fPIC -nostdlibinc>)
+target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld)
 
 find_program(XORRISO xorriso REQUIRED)
 find_program(CP cp REQUIRED)
