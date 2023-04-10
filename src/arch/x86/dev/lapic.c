@@ -68,3 +68,21 @@ void lapic_ipi(u8 id, LapicMsg msg) {
 
 	spinlock_unlock(&msg_lock);
 }
+
+void lapic_ipi_all(LapicMsg msg) {
+	spinlock_lock(&msg_lock);
+	if (!ipi_vec) {
+		ipi_vec = arch_alloc_int((IntHandler) ipi_handler, NULL);
+		assert(ipi_vec);
+	}
+	g_msg = msg;
+
+	u32 value = ipi_vec | 1 << 15 | 3 << 18;
+	lapic_write(LAPIC_REG_INT_CMD_BASE, value);
+
+	while (lapic_read(LAPIC_REG_INT_CMD_BASE) & 1 << 12) {
+		arch_spinloop_hint();
+	}
+
+	spinlock_unlock(&msg_lock);
+}

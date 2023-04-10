@@ -248,7 +248,22 @@ NORETURN void sched_exit(int status) {
 }
 
 NORETURN void sched_kill_cur() {
-	arch_get_cur_task()->status = TASK_STATUS_KILLED;
+	Task* self = arch_get_cur_task();
+	self->status = TASK_STATUS_KILLED;
+
+	if (self->children) {
+		Task* task = self->children;
+		while (task->children) {
+			task = task->children;
+		}
+		while (task) {
+			for (Task* child = task; child; child = child->child_next) {
+				kprintf("killing child task '%s'\n", *child->name ? child->name : "<no name>");
+				sched_kill_child(child);
+			}
+			task = task->parent;
+		}
+	}
 	sched();
 	while (true);
 }

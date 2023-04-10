@@ -40,3 +40,4 @@ u32 lapic_read(LapicReg reg);
 void lapic_write(LapicReg reg, u32 value);
 void lapic_eoi();
 void lapic_ipi(u8 id, LapicMsg msg);
+void lapic_ipi_all(LapicMsg msg);

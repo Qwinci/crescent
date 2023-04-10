@@ -2,14 +2,19 @@
 #include "arch/x86/cpu.h"
 #include "interrupts.h"
 #include "stdio.h"
+#include "arch/x86/dev/lapic.h"
 
-#define GENERIC_EX(name, msg) \
-NORETURN void ex_##name(void* void_ctx, void*) {\
+#define GENERIC_EX(ex_name, msg) \
+NORETURN void ex_##ex_name(void* void_ctx, void*) {\
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx; \
 	spinlock_lock(&PRINT_LOCK); \
 	kprintf_nolock("%fg%s\n%s", COLOR_RED, msg, "backtrace:\n"); \
     backtrace_display(false); \
 	spinlock_unlock(&PRINT_LOCK); \
+	if (ctx->cs == 0x2b) { \
+		kprintf("killing user task '%s'", arch_get_cur_task()->name); \
+		sched_kill_cur(); \
+	} \
 	while (true) { \
 		arch_hlt(); \
 	} \
@@ -71,6 +76,14 @@ NORETURN void ex_pf(void* void_ctx, void*) {
 	kputs_nolock("backtrace:\n", sizeof("backtrace:\n") - 1);
 	backtrace_display(false);
 	spinlock_unlock(&PRINT_LOCK);
+
+	if (ctx->cs == 0x2b) {
+		kprintf("killing user task '%s'", arch_get_cur_task()->name);
+		sched_kill_cur();
+	}
+
+	lapic_ipi_all(LAPIC_MSG_PANIC);
+
 	while (true) {
 		arch_hlt();
 	}
