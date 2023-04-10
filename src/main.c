@@ -12,8 +12,8 @@
 
 void bruh_task() {
 	while (true) {
-		arch_hlt();
 		kprintf("a\n");
+		sched_sleep(US_IN_MS * 1000);
 	}
 }
 

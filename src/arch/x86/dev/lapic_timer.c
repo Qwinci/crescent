@@ -42,16 +42,25 @@ static bool lapic_timer_int(void*, void*) {
 		cpu->common.current_task->level -= 1;
 	}
 
-	cpu->lapic_timer.period_us = next_us;
-	lapic_timer_start(US_IN_SEC / next_us);
+	usize us_since_switch = cpu->lapic_timer.us - cpu->lapic_timer.last_sched_us;
 
-	if (cpu->lapic_timer.us >= cpu->lapic_timer.last_sched_us + cpu->common.sched_levels[cur_task->level].slice_us || do_sched) {
+	if (us_since_switch >= cpu->common.sched_levels[cur_task->level].slice_us) {
+		do_sched = true;
+	}
+
+	if (do_sched) {
 		cpu->lapic_timer.last_sched_us = cpu->lapic_timer.us;
 		Task* next = sched_get_next_task();
 		if (next) {
 			next_us = MIN(next_us, cpu->common.sched_levels[next->level].slice_us);
 		}
+		cpu->lapic_timer.period_us = next_us;
+		lapic_timer_start(US_IN_SEC / next_us);
 		sched_with_next(next);
+	}
+	else {
+		cpu->lapic_timer.period_us = next_us;
+		lapic_timer_start(US_IN_SEC / next_us);
 	}
 
 	return true;
