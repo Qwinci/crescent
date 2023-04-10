@@ -32,7 +32,7 @@ static bool lapic_timer_int(void*, void*) {
 		}
 		else {
 			cpu->common.blocked_tasks[TASK_STATUS_SLEEPING] = task->next;
-			do_sched = sched_unblock(task);
+			do_sched |= sched_unblock(task);
 		}
 	}
 
