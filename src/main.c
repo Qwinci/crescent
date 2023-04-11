@@ -1,7 +1,6 @@
 #include "arch/misc.h"
 #include "arch/x86/mod.h"
 #include "assert.h"
-#include "mem/allocator.h"
 #include "mem/page.h"
 #include "mem/utils.h"
 #include "mem/vm.h"
@@ -10,7 +9,7 @@
 #include "string.h"
 #include "utils/elf.h"
 
-void bruh_task() {
+void task() {
 	while (true) {
 		kprintf("a\n");
 		sched_sleep(US_IN_MS * 1000);
@@ -70,12 +69,8 @@ void bruh_task() {
 	arch_set_user_task_fn(test_user, user_fn);
 
 	void* flags = enter_critical();
-	sched_queue_task(test_user);
+	//sched_queue_task(test_user);
 
-	for (usize i = 0; i < 10; ++i) {
-		Task* task = arch_create_kernel_task("", bruh_task, NULL);
-		sched_queue_task(task);
-	}
 	leave_critical(flags);
 
 	sched_block(TASK_STATUS_WAITING);

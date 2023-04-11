@@ -1,6 +1,7 @@
 #include "allocator.h"
 #include "page.h"
 #include "pmalloc.h"
+#include "sched/mutex.h"
 #include "string.h"
 #include "utils.h"
 #include "vm.h"
@@ -83,7 +84,7 @@ static void* freelist_get_nonrecursive(usize index, Page** new_page) {
 	return node;
 }
 
-static Spinlock MALLOC_LOCK = {};
+static Mutex MALLOC_LOCK = {};
 
 void* kmalloc(usize size) {
 	if (!size) {
@@ -97,9 +98,9 @@ void* kmalloc(usize size) {
 		index += 1;
 	}
 
-	spinlock_lock(&MALLOC_LOCK);
+	mutex_lock(&MALLOC_LOCK);
 	void* ptr = freelist_get_nonrecursive(index, NULL);
-	spinlock_unlock(&MALLOC_LOCK);
+	mutex_unlock(&MALLOC_LOCK);
 	return ptr;
 }
 
@@ -115,7 +116,7 @@ void kfree(void* ptr, usize size) {
 		index += 1;
 	}
 
-	spinlock_lock(&MALLOC_LOCK);
+	mutex_lock(&MALLOC_LOCK);
 	freelist_insert_nonrecursive(index, ptr);
-	spinlock_unlock(&MALLOC_LOCK);
+	mutex_unlock(&MALLOC_LOCK);
 }

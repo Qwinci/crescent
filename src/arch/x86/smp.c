@@ -75,9 +75,10 @@ static X86Task* create_this_task(Cpu* cpu) {
 	x86_init_usermode();
 	spinlock_lock(&TIMER_LOCK);
 	lapic_timer_start(1);
-	spinlock_unlock(&TIMER_LOCK);
 
+	spinlock_lock(&START_LOCK);
 	sched_init(false);
+	spinlock_unlock(&TIMER_LOCK);
 	sched_block(TASK_STATUS_WAITING);
 	while (true);
 }

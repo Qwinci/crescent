@@ -1,6 +1,7 @@
 #include "pmalloc.h"
 #include "arch/misc.h"
 #include "page.h"
+#include "sched/mutex.h"
 #include "stdio.h"
 #include "utils.h"
 
@@ -205,7 +206,7 @@ void pmalloc_add_mem(void* base, usize size) {
 	}
 }
 
-static Spinlock PMALLOC_SPINLOCK = {};
+static Mutex PMALLOC_LOCK = {};
 
 Page* pmalloc(usize count) {
 	if (!count) {
@@ -220,9 +221,9 @@ Page* pmalloc(usize count) {
 		index += 1;
 	}
 
-	spinlock_lock(&PMALLOC_SPINLOCK);
+	mutex_lock(&PMALLOC_LOCK);
 	void* ptr = freelist_get_nonrecursive(index);
-	spinlock_unlock(&PMALLOC_SPINLOCK);
+	mutex_unlock(&PMALLOC_LOCK);
 	return ptr;
 }
 
@@ -232,7 +233,7 @@ void pfree(Page* ptr, usize count) {
 		index += 1;
 	}
 
-	spinlock_lock(&PMALLOC_SPINLOCK);
+	mutex_lock(&PMALLOC_LOCK);
 	freelist_insert_nonrecursive(index, ptr);
-	spinlock_unlock(&PMALLOC_SPINLOCK);
+	mutex_unlock(&PMALLOC_LOCK);
 }

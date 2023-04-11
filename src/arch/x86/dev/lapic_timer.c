@@ -51,9 +51,11 @@ static bool lapic_timer_int(void*, void*) {
 	if (do_sched) {
 		cpu->lapic_timer.last_sched_us = cpu->lapic_timer.us;
 		Task* next = sched_get_next_task();
+
 		if (next) {
 			next_us = MIN(next_us, cpu->common.sched_levels[next->level].slice_us);
 		}
+
 		cpu->lapic_timer.period_us = next_us;
 		lapic_timer_start(US_IN_SEC / next_us);
 		sched_with_next(next);
