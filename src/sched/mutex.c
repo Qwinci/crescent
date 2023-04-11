@@ -23,6 +23,7 @@ void mutex_lock(Mutex* self) {
 		}
 		else {
 			self->waiting_tasks = task;
+			self->waiting_tasks_end = task;
 		}
 
 		spinlock_unlock(&self->task_protector);

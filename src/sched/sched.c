@@ -356,18 +356,16 @@ static void create_kernel_tasks(bool bsp) {
 		load_balance_task->pin_level = true;
 		sched_queue_task(load_balance_task);
 	}
-}
-
-void sched_init(bool bsp) {
-	void* flags = enter_critical();
 
 	usize inc = (SCHED_SLICE_MAX_US - SCHED_SLICE_MIN_US) / SCHED_MAX_LEVEL;
-
-	Cpu* cpu = arch_get_cur_task()->cpu;
 
 	for (usize i = 0; i < SCHED_MAX_LEVEL; ++i) {
 		cpu->sched_levels[i].slice_us = (SCHED_MAX_LEVEL - 1) * inc;
 	}
+}
+
+void sched_init(bool bsp) {
+	void* flags = enter_critical();
 
 	create_kernel_tasks(bsp);
 
