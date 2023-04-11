@@ -15,6 +15,9 @@ NORETURN void ex_##ex_name(void* void_ctx, void*) {\
 		kprintf("killing user task '%s'", arch_get_cur_task()->name); \
 		sched_kill_cur(); \
 	} \
+	\
+	lapic_ipi_all(LAPIC_MSG_PANIC);\
+	\
 	while (true) { \
 		arch_hlt(); \
 	} \
