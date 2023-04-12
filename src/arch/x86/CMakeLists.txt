@@ -1,11 +1,11 @@
 target_sources(crescent PRIVATE
         start.c
         utils.c
-        std_mem.c
+        mem/std_mem.c
         con.c
         mod.c
-        map.c
-        mem.c
+        mem/map.c
+        mem/mem.c
         interrupts/interrupts.c
         interrupts/idt.c
         interrupts/int_stubs.asm
@@ -15,7 +15,8 @@ target_sources(crescent PRIVATE
         smp.c
         cpu.c
         cpuid.c
-        user_map.c
+        mem/user_map.c
+        acpi/fadt.c
         )
 
 add_subdirectory(dev)

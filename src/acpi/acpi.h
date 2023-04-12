@@ -13,11 +13,32 @@ typedef struct {
 	u32 creator_revision;
 } SdtHeader;
 
+typedef enum : u8 {
+	ACPI_ADDR_SPACE_SYS_MEM = 0,
+	ACPI_ADDR_SPACE_SYS_IO = 1,
+	ACPI_ADDR_SPACE_PCI_CONF = 2,
+	ACPI_ADDR_SPACE_EMBEDDED_CONTROLLER = 3,
+	ACPI_ADDR_SPACE_SYS_MANAGEMENT_BUS = 4,
+	ACPI_ADDR_SPACE_SYS_CMOS = 5,
+	ACPI_ADDR_SPACE_PCI_BAR = 6,
+	ACPI_ADDR_SPACE_IPMI = 7,
+	ACPI_ADDR_SPACE_GP_IO = 8,
+	ACPI_ADDR_SPACE_GP_SERIAL = 9,
+	ACPI_ADDR_SPACE_PLATFORM_COM_CHANNEL = 10
+} AcpiAddrSpace;
+
+typedef enum : u8 {
+	ACPI_ACCESS_SIZE_1 = 1,
+	ACPI_ACCESS_SIZE_2 = 2,
+	ACPI_ACCESS_SIZE_4 = 3,
+	ACPI_ACCESS_SIZE_8 = 4
+} AcpiAccessSize;
+
 typedef struct [[gnu::packed]] {
-	u8 addr_space_id;
-	u8 reg_bit_width;
-	u8 reg_bit_offset;
-	u8 reserved;
+	AcpiAddrSpace addr_space_id;
+	u8 bit_width;
+	u8 bit_offset;
+	AcpiAccessSize access_size;
 	u64 address;
 } AcpiAddr;
 

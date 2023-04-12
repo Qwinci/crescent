@@ -1,15 +1,15 @@
 #include "x86_task.h"
 #include "arch/map.h"
-#include "arch/x86/map.h"
+#include "arch/x86/mem/map.h"
 #include "mem/allocator.h"
 #include "mem/page.h"
 #include "mem/pmalloc.h"
 #include "mem/utils.h"
 #include "mem/vm.h"
+#include "mem/vmem.h"
 #include "sched/sched.h"
 #include "sched/sched_internals.h"
 #include "string.h"
-#include "mem/vmem.h"
 
 #define KERNEL_STACK_SIZE 0x2000
 #define USER_STACK_SIZE 0x2000

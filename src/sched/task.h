@@ -15,6 +15,7 @@ typedef enum : u8 {
 typedef struct Cpu Cpu;
 
 typedef struct VMem VMem;
+typedef struct File File;
 
 typedef struct Task {
 	char name[128];
@@ -29,6 +30,9 @@ typedef struct Task {
 	struct Task* children;
 	Spinlock lock;
 	struct VMem* user_vmem;
+	File* stdout;
+	File* stderr;
+	File* stdin;
 	int exit_status;
 	bool detached;
 	TaskStatus status;

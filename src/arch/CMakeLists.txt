@@ -1,4 +1,4 @@
-include(archdetect.cmake)
+include(archdetect)
 
 target_arch(ARCH)
 
