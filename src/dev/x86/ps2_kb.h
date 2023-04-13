@@ -1,8 +1,3 @@
-//
-// Created by visa on 13.4.2023.
-//
+#pragma once
 
-#ifndef CRESCENT_PS2_KB_H
-#define CRESCENT_PS2_KB_H
-
-#endif //CRESCENT_PS2_KB_H
+void ps2_kb_init(bool second);

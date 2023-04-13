@@ -1,13 +1,14 @@
 #include "ps2.h"
 #include "arch/x86/dev/io.h"
 #include "dev/timer.h"
+#include "ps2_kb.h"
 #include "stdio.h"
 
 #define PS2_DATA_PORT 0x60
 #define PS2_STATUS_PORT 0x64
 #define PS2_CMD_PORT 0x64
 
-static u8 ps2_data_read() {
+u8 ps2_data_read() {
 	return in1(PS2_DATA_PORT);
 }
 
@@ -40,7 +41,7 @@ static void ps2_data_write(u8 data) {
 #define CMD_ENABLE_PORT1 0xAE
 #define CMD_WRITE_PORT2 0xD4
 
-static u8 ps2_status_read() {
+u8 ps2_status_read() {
 	return in1(PS2_STATUS_PORT);
 }
 
@@ -62,12 +63,27 @@ static void wait_for_completion() {
 	}
 }
 
-#define DEV_RESET 0xFF
+#define DISABLE_SCANNING 0xF5
+#define IDENTIFY 0xF2
+#define ENABLE_SCANNING 0xF4
 #define ACK 0xFA
 #define RESEND 0xFE
+#define DEV_RESET 0xFF
+
+static void ps2_write_port2(u8 data) {
+	ps2_cmd_write(CMD_WRITE_PORT2);
+	wait_for_completion();
+	ps2_data_write(data);
+	wait_for_completion();
+}
 
 void ps2_init() {
 	kprintf("[kernel][x86]: ps2 init\n");
+	// todo the keyboard doesn't work after all this code,
+	// but if ps2_kb_init is called here without executing any of the controller init code
+	// it works fine
+	ps2_kb_init(false);
+	return;
 	ps2_cmd_write(CMD_DISABLE_PORT1);
 	wait_for_completion();
 	ps2_cmd_write(CMD_DISABLE_PORT2);
@@ -196,11 +212,12 @@ void ps2_init() {
 		usize start = arch_get_ns_since_boot();
 		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
 			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS) {
+			if (time > start + NS_IN_US * US_IN_MS * 5) {
 				kprintf("[kernel][x86]: second ps2 port didn't respond to reset\n");
 				second_works = false;
 				break;
 			}
+			io_wait();
 		}
 
 		u8 res = ps2_data_read();
@@ -231,6 +248,104 @@ void ps2_init() {
 	wait_for_completion();
 
 	if (first_works) {
-		
+		ps2_data_write(DISABLE_SCANNING);
+		wait_for_output();
+		if (ps2_data_read() != ACK) {
+			kprintf("[kernel][x86]: failed to disable scanning for the first ps2 port\n");
+			goto test_second;
+		}
+
+		ps2_data_write(IDENTIFY);
+		wait_for_output();
+		if (ps2_data_read() != ACK) {
+			kprintf("[kernel][x86]: failed to identify the first ps2 device\n");
+			goto test_second;
+		}
+
+		usize start = arch_get_ns_since_boot();
+		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
+			usize time = arch_get_ns_since_boot();
+			if (time > start + NS_IN_US * US_IN_MS * 5) {
+				break;
+			}
+			io_wait();
+		}
+		bool has_byte1 = ps2_status_read() & STATUS_OUTPUT_FULL;
+
+		u8 bytes[2] = {ps2_data_read()};
+
+		io_wait();
+		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
+			usize time = arch_get_ns_since_boot();
+			if (time > start + NS_IN_US * US_IN_MS * 5) {
+				break;
+			}
+			io_wait();
+		}
+
+		bytes[1] = ps2_data_read();
+
+		ps2_data_write(ENABLE_SCANNING);
+		wait_for_completion();
+
+		if (!has_byte1 || (bytes[0] == 0xAB &&
+						   (bytes[1] == 0x83 || bytes[1] == 0xC1 || bytes[1] == 0x84 || bytes[1] == 0x85 ||
+							bytes[1] == 0x86 || bytes[1] == 0x90 || bytes[1] == 0x91 || bytes[1] == 0x92)) ||
+			(bytes[0] == 0xAC && bytes[1] == 0xA1)) {
+			ps2_kb_init(false);
+		}
 	}
+
+	test_second:
+	if (second_works) {
+		ps2_write_port2(DISABLE_SCANNING);
+		wait_for_output();
+		if (ps2_data_read() != ACK) {
+			kprintf("[kernel][x86]: failed to disable scanning for the second ps2 port\n");
+			goto end;
+		}
+
+		ps2_write_port2(IDENTIFY);
+		wait_for_output();
+		if (ps2_data_read() != ACK) {
+			kprintf("[kernel][x86]: failed to identify the second ps2 device\n");
+			goto end;
+		}
+
+		usize start = arch_get_ns_since_boot();
+		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
+			usize time = arch_get_ns_since_boot();
+			if (time > start + NS_IN_US * US_IN_MS * 5) {
+				break;
+			}
+			io_wait();
+		}
+		bool has_byte1 = ps2_status_read() & STATUS_OUTPUT_FULL;
+
+		u8 bytes[2] = {ps2_data_read()};
+
+		io_wait();
+		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
+			usize time = arch_get_ns_since_boot();
+			if (time > start + NS_IN_US * US_IN_MS * 5) {
+				break;
+			}
+			io_wait();
+		}
+
+		bytes[1] = ps2_data_read();
+
+		ps2_write_port2(ENABLE_SCANNING);
+		wait_for_completion();
+
+		if (!has_byte1 || (bytes[0] == 0xAB &&
+						   (bytes[1] == 0x83 || bytes[1] == 0xC1 || bytes[1] == 0x84 || bytes[1] == 0x85 ||
+							bytes[1] == 0x86 || bytes[1] == 0x90 || bytes[1] == 0x91 || bytes[1] == 0x92)) ||
+			(bytes[0] == 0xAC && bytes[1] == 0xA1)) {
+			ps2_kb_init(true);
+		}
+	}
+
+	end:
+	(void) 0;
 }
