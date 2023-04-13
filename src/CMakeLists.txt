@@ -1,3 +1,6 @@
+include(archdetect)
+target_arch(ARCH)
+
 add_subdirectory(arch)
 add_subdirectory(dev)
 add_subdirectory(std)

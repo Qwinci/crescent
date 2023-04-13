@@ -1,7 +1,3 @@
-include(archdetect)
-
-target_arch(ARCH)
-
 message(NOTICE "Compiling for architecture ${ARCH}")
 
 if(ARCH STREQUAL "x86_64")

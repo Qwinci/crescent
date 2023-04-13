@@ -1,13 +1,15 @@
 #include "fadt.h"
 #include "acpi/acpi.h"
 #include "arch/misc.h"
+#include "arch/x86/dev/io.h"
+#include "dev/x86/ps2.h"
 #include "mem/utils.h"
 #include "stdio.h"
-#include "arch/x86/dev/io.h"
 
-typedef struct {
+typedef struct [[gnu::packed]] {
 	SdtHeader header;
 	u32 fw_ctrl;
+	u32 dsdt;
 	u8 reserved;
 	u8 preferred_power_management_profile;
 	u16 sci_int;
@@ -63,19 +65,18 @@ static bool is_io = false;
 static u64 reset_reg = 0;
 static u8 reset_value = 0;
 
-void x86_parse_fadt(void* rsdp) {
+void x86_parse_fadt() {
 	const Fadt* fadt = (const Fadt*) acpi_get_table("FACP");
 	if (!fadt) {
 		return;
 	}
 
-	// ps2
-	if (fadt->boot_arch_flags & 1 << 1) {
-		// todo
-	}
-
 	if (fadt->boot_arch_flags & 1 << 3) {
 		panic("msi is not supported");
+	}
+
+	if (fadt->boot_arch_flags & 1 << 1) {
+		ps2_init();
 	}
 
 	if (fadt->flags & 1 << 10) {

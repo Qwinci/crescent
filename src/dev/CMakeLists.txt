@@ -4,10 +4,6 @@ target_sources(crescent PRIVATE
         fbcon.c
         file.c)
 
-include(archdetect)
-
-target_arch(ARCH)
-
 if(ARCH STREQUAL "x86_64")
     add_subdirectory(x86)
 endif()

@@ -3,7 +3,7 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 1
         -drive file=nvm.img,if=none,id=nvm,format=raw
         -device nvme,serial=deadbeef,drive=nvm -M smm=off
         -trace pci_nvme_err*
-        -device qemu-xhci -device usb-kbd
+        -device qemu-xhci
         -netdev user,id=mynet0 -device virtio-net-pci-non-transitional,netdev=mynet0
         )
 
