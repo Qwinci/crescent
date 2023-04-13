@@ -3,4 +3,5 @@ target_sources(crescent PRIVATE
         lapic_timer.c
         tsc.c
         timer.c
-        hpet.c)
+        hpet.c
+        io_apic.c)

@@ -17,6 +17,7 @@ target_sources(crescent PRIVATE
         cpuid.c
         mem/user_map.c
         acpi/fadt.c
+        acpi/madt.c
         )
 
 add_subdirectory(dev)

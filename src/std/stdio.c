@@ -21,6 +21,9 @@ void kputs_nolock(const char* str, usize len) {
 		else if (*str == '\t') {
 			kernel_con->column += 4 - (kernel_con->column % 4);
 		}
+		else if (*str == '\r') {
+			kernel_con->column = 0;
+		}
 		else {
 			kernel_con->write(kernel_con, *str);
 		}

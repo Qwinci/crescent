@@ -7,15 +7,16 @@
 	- [x] Page frame allocator
 	- [x] Page table manager
 	- [x] General purpose memory allocator
-- [ ] Interrupt handling
+- [x] Interrupt handling
 	- [x] APIC
 	- [x] Exceptions
-	- [ ] IO-APIC
+	- [x] IO-APIC
 - [ ] Elf loading from modules
 - [x] Per-cpu multilevel feedback queue scheduler
 - [ ] ACPI
-	- [ ] FADT
-	- [ ] MADT
+	- [x] FADT
+	- [x] MADT
+    - [ ] MCFG
 - [ ] Filesystems
 	- [ ] FAT32
 - [ ] Drivers

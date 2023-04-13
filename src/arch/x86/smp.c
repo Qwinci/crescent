@@ -25,6 +25,7 @@ static atomic_size_t CPUS_ONLINE = 0;
 static Spinlock START_LOCK = {};
 static X86Cpu* CPUS = NULL;
 static Spinlock TIMER_LOCK = {};
+u8 X86_BSP_ID = 0;
 
 [[noreturn]] static void x86_ap_entry(struct limine_smp_info* info);
 
@@ -84,6 +85,8 @@ static X86Task* create_this_task(Cpu* cpu) {
 }
 
 void arch_init_smp() {
+	X86_BSP_ID = SMP_REQUEST.response->bsp_lapic_id;
+
 	CPUS = kmalloc(SMP_REQUEST.response->cpu_count * sizeof(X86Cpu));
 	assert(CPUS);
 	memset(CPUS, 0, SMP_REQUEST.response->cpu_count * sizeof(X86Cpu));

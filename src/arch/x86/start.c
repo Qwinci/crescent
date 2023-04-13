@@ -1,6 +1,7 @@
 #include "acpi/acpi.h"
 #include "arch/cpu.h"
 #include "arch/x86/acpi/fadt.h"
+#include "arch/x86/acpi/madt.h"
 #include "arch/x86/interrupts/gdt.h"
 #include "interrupts/idt.h"
 #include "limine/limine.h"
@@ -34,6 +35,7 @@ static volatile struct limine_rsdp_request RSDP_REQUEST = {
 	arch_init_smp();
 
 	if (RSDP_REQUEST.response) {
+		x86_parse_madt();
 		x86_parse_fadt();
 	}
 
