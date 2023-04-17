@@ -96,6 +96,9 @@ void sched() {
 	Cpu* cpu = arch_get_cur_task()->cpu;
 
 	Task* task = sched_get_next_task();
+	while (task && task->status != TASK_STATUS_READY) {
+		task = sched_get_next_task();
+	}
 	if (!task) {
 		if (cpu->current_task->status != TASK_STATUS_RUNNING) {
 			task = cpu->idle_task;
@@ -168,6 +171,10 @@ void sched_block(TaskStatus status) {
 }
 
 bool sched_unblock(Task* task) {
+	if (task->status <= TASK_STATUS_READY) {
+		return false;
+	}
+
 	if (task->level < SCHED_MAX_LEVEL - 1) {
 		task->level += 1;
 	}

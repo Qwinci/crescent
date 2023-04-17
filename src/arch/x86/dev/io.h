@@ -30,7 +30,3 @@ static inline void out2(u16 port, u16 value) {
 static inline void out4(u16 port, u32 value) {
 	__asm__ volatile("out %0, %1" : : "Nd"(port), "a"(value));
 }
-
-static inline void io_wait() {
-	out1(0x80, 0);
-}

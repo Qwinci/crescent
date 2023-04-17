@@ -13,7 +13,7 @@ set(FILES
         )
 
 add_executable(crescent src/main.c)
-target_include_directories(crescent PRIVATE src thirdparty)
+target_include_directories(crescent PRIVATE src thirdparty include)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/.config")
 

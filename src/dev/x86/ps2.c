@@ -12,7 +12,7 @@ u8 ps2_data_read() {
 	return in1(PS2_DATA_PORT);
 }
 
-static void ps2_data_write(u8 data) {
+void ps2_data_write(u8 data) {
 	out1(PS2_DATA_PORT, data);
 }
 
@@ -49,303 +49,271 @@ static void ps2_cmd_write(u8 data) {
 	out1(PS2_CMD_PORT, data);
 }
 
-static void wait_for_output() {
-	io_wait();
+bool ps2_wait_for_output() {
+	usize time = arch_get_ns_since_boot();
 	while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-		io_wait();
+		if (arch_get_ns_since_boot() >= time + NS_IN_US * 5) {
+			return false;
+		}
 	}
+	return true;
 }
 
-static void wait_for_completion() {
-	io_wait();
+static bool wait_for_completion() {
+	usize time = arch_get_ns_since_boot();
 	while (ps2_status_read() & STATUS_INPUT_FULL) {
-		io_wait();
+		if (arch_get_ns_since_boot() >= time + NS_IN_US * 5) {
+			return false;
+		}
 	}
+	return true;
 }
 
-#define DISABLE_SCANNING 0xF5
 #define IDENTIFY 0xF2
-#define ENABLE_SCANNING 0xF4
 #define ACK 0xFA
 #define RESEND 0xFE
 #define DEV_RESET 0xFF
 
-static void ps2_write_port2(u8 data) {
+bool ps2_data2_write(u8 data) {
 	ps2_cmd_write(CMD_WRITE_PORT2);
-	wait_for_completion();
+	if (!wait_for_completion()) {
+		return false;
+	}
 	ps2_data_write(data);
-	wait_for_completion();
+	if (!wait_for_completion()) {
+		return false;
+	}
+	return true;
+}
+
+static bool ps2_disable(bool second) {
+	ps2_cmd_write(second ? CMD_DISABLE_PORT2 : CMD_DISABLE_PORT1);
+	return wait_for_completion();
+}
+
+static bool ps2_enable(bool second) {
+	ps2_cmd_write(second ? CMD_ENABLE_PORT2 : CMD_ENABLE_PORT1);
+	return wait_for_completion();
+}
+
+static void ps2_flush_output() {
+	ps2_data_read();
+	ps2_data_read();
+}
+
+static bool ps2_read_conf(u8* conf) {
+	ps2_cmd_write(CMD_READ_CONF0);
+	if (!ps2_wait_for_output()) {
+		return false;
+	}
+	*conf = ps2_data_read();
+	return true;
+}
+
+static bool ps2_write_conf(u8 conf) {
+	ps2_cmd_write(CMD_WRITE_CONF0);
+	if (!wait_for_completion()) {
+		return false;
+	}
+	ps2_data_write(conf);
+	if (!wait_for_completion()) {
+		return false;
+	}
+	return true;
+}
+
+static bool ps2_test_controller() {
+	ps2_cmd_write(CMD_TEST_CONTROLLER);
+	if (!ps2_wait_for_output()) {
+		return false;
+	}
+	return ps2_data_read() == 0x55;
+}
+
+static bool ps2_test_port(bool second) {
+	ps2_cmd_write(second ? CMD_TEST_PORT2 : CMD_TEST_PORT1);
+	if (!ps2_wait_for_output()) {
+		return false;
+	}
+	return ps2_data_read() == 0;
+}
+
+static bool ps2_reset(bool second) {
+	if (second) {
+		return ps2_data2_write(DEV_RESET);
+	}
+	else {
+		ps2_data_write(DEV_RESET);
+		if (!wait_for_completion()) {
+			return false;
+		}
+		return true;
+	}
+}
+
+static void ps2_controller_fail(const char* msg) {
+	kprintf("[kernel][x86]: failed to initialize ps2 controller (%s)\n", msg);
+}
+
+#define CHECK(expr, msg) do { if (!(expr)) {ps2_controller_fail(msg); return;} } while (0)
+
+static void ps2_start_driver(bool second, bool first_read, const u8 bytes[2]) {
+	if (
+		!first_read ||
+		(bytes[0] == 0xAB &&
+		 (bytes[1] == 0x83 || bytes[1] == 0xC1 ||
+		  bytes[1] == 0x84 || bytes[1] == 0x85 ||
+		  bytes[1] == 0x86 || bytes[1] == 0x90 ||
+		  bytes[1] == 0x91 || bytes[1] == 0x92)) ||
+		(bytes[0] == 0xAC && bytes[1] == 0xA1)) {
+		ps2_kb_init(second);
+	}
 }
 
 void ps2_init() {
 	kprintf("[kernel][x86]: ps2 init\n");
-	// todo the keyboard doesn't work after all this code,
-	// but if ps2_kb_init is called here without executing any of the controller init code
-	// it works fine
-	ps2_kb_init(false);
-	return;
-	ps2_cmd_write(CMD_DISABLE_PORT1);
-	wait_for_completion();
-	ps2_cmd_write(CMD_DISABLE_PORT2);
-	wait_for_completion();
-	while (ps2_status_read() & STATUS_OUTPUT_FULL) {
-		ps2_data_read();
-	}
 
-	ps2_cmd_write(CMD_READ_CONF0);
-	wait_for_output();
-	u8 conf = ps2_data_read();
+	// Disable ports
+	CHECK(ps2_disable(false), "disabling first port timed out");
+	CHECK(ps2_disable(true), "disabling second port timed out");
 
+	// Flush output
+	ps2_flush_output();
+
+	// Disable interrupts for ports and disable translation
+	u8 conf;
+	CHECK(ps2_read_conf(&conf), "reading conf timed out");
 	conf &= ~CONF_INT_PORT1;
 	conf &= ~CONF_INT_PORT2;
 	conf &= ~CONF_PORT1_TRANSLATION;
+	CHECK(ps2_write_conf(conf), "writing conf timed out");
 
-	ps2_cmd_write(CMD_WRITE_CONF0);
-	wait_for_completion();
-	ps2_data_write(conf);
-	wait_for_completion();
-
-	bool dual_channel = conf & 1 << 5;
-
-	ps2_cmd_write(CMD_TEST_CONTROLLER);
-	wait_for_output();
-	u8 result = ps2_data_read();
-
-	ps2_cmd_write(CMD_WRITE_CONF0);
-	wait_for_completion();
-	ps2_data_write(conf);
-	wait_for_completion();
-
-	if (result != 0x55) {
-		kprintf("[kernel][x86]: ps2 controller self-test failed\n");
+	// Test controller
+	if (!ps2_test_controller()) {
+		kprintf("[kernel][x86]: ps2 controller self-test failed or timed out\n");
 		return;
-	}
-
-	if (dual_channel) {
-		ps2_cmd_write(CMD_ENABLE_PORT2);
-		wait_for_completion();
-		ps2_cmd_write(CMD_READ_CONF0);
-		wait_for_output();
-		if (ps2_data_read() & 1 << 5) {
-			dual_channel = false;
-		}
-		else {
-			ps2_cmd_write(CMD_DISABLE_PORT2);
-			wait_for_completion();
-		}
-	}
-
-	bool first_works = false;
-	bool second_works = false;
-
-	ps2_cmd_write(CMD_TEST_PORT1);
-	wait_for_output();
-	if (ps2_data_read() != 0) {
-		kprintf("[kernel][x86]: ps2 port0 test failed\n");
 	}
 	else {
-		first_works = true;
+		CHECK(ps2_write_conf(conf), "writing conf timed out");
 	}
 
-	if (dual_channel) {
-		ps2_cmd_write(CMD_TEST_PORT2);
-		wait_for_output();
-		if (ps2_data_read() != 0) {
-			kprintf("[kernel][x86]: ps2 port1 test failed\n");
-		}
-		else {
-			second_works = true;
-		}
+	bool double_channel = conf & 1 << 5;
+
+	// Determine if its double channel or not
+	if (double_channel) {
+		CHECK(ps2_enable(true), "enabling second port timed out");
+		u8 conf2;
+		CHECK(ps2_read_conf(&conf2), "reading conf timed out");
+		double_channel = !(conf2 & 1 << 5);
+		CHECK(ps2_disable(true), "disabling second port timed out");
 	}
 
-	if (!first_works && !second_works) {
-		kprintf("[kernel][x86]: no working ps2 ports found\n");
+	bool first_good = false;
+	bool second_good = false;
+
+	first_good = ps2_test_port(false);
+	if (double_channel) {
+		second_good = ps2_test_port(true);
+	}
+
+	if (!first_good && !second_good) {
+		kprintf("[kernel][x86]: no ps2 devices found\n");
 		return;
 	}
 
-	if (first_works) {
-		ps2_cmd_write(CMD_ENABLE_PORT1);
-		wait_for_completion();
-
-		resend1:
-		ps2_data_write(DEV_RESET);
-		usize start = arch_get_ns_since_boot();
-		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS) {
-				kprintf("[kernel][x86]: first ps2 port didn't respond to reset\n");
-				first_works = false;
-				break;
-			}
-		}
-
-		u8 res = ps2_data_read();
-		if (res == ACK) {
-			if (ps2_data_read() != 0xAA) {
-				kprintf("[kernel][x86]: first ps2 port self-test failed\n");
-				first_works = false;
-			}
-		}
-		else if (res == RESEND) {
-			goto resend1;
-		}
-		else if (res != 0xAA) {
-			kprintf("[kernel][x86]: first ps2 port self-test failed\n");
-			first_works = false;
-		}
-
-		ps2_data_read();
-
-		if (first_works) {
-			conf |= CONF_INT_PORT1;
-		}
+	if (first_good) {
+		conf |= CONF_INT_PORT1;
 	}
-	if (second_works) {
-		ps2_cmd_write(CMD_ENABLE_PORT2);
-		wait_for_completion();
-
-		resend2:
-		ps2_cmd_write(CMD_WRITE_PORT2);
-		wait_for_completion();
-
-		ps2_data_write(DEV_RESET);
-		usize start = arch_get_ns_since_boot();
-		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS * 5) {
-				kprintf("[kernel][x86]: second ps2 port didn't respond to reset\n");
-				second_works = false;
-				break;
-			}
-			io_wait();
-		}
-
-		u8 res = ps2_data_read();
-		if (res == ACK) {
-			if (ps2_data_read() != 0xAA) {
-				kprintf("[kernel][x86]: second ps2 port self-test failed\n");
-				second_works = false;
-			}
-		}
-		else if (res == RESEND) {
-			goto resend2;
-		}
-		else if (res != 0xAA) {
-			kprintf("[kernel][x86]: second ps2 port self-test failed\n");
-			second_works = false;
-		}
-
-		ps2_data_read();
-
-		if (second_works) {
-			conf |= CONF_INT_PORT2;
-		}
+	if (second_good) {
+		conf |= CONF_INT_PORT2;
 	}
 
-	ps2_cmd_write(CMD_WRITE_CONF0);
-	wait_for_completion();
-	ps2_data_write(conf);
-	wait_for_completion();
+	CHECK(ps2_write_conf(conf), "writing conf timed out");
 
-	if (first_works) {
-		ps2_data_write(DISABLE_SCANNING);
-		wait_for_output();
-		if (ps2_data_read() != ACK) {
-			kprintf("[kernel][x86]: failed to disable scanning for the first ps2 port\n");
-			goto test_second;
+	if (first_good) {
+		ps2_enable(false);
+
+		ps2_data_write(PS2_DISABLE_SCANNING);
+		if (!ps2_wait_for_output()) {
+			kprintf("[kernel][x86]: first ps2 port timed out\n");
+			goto identify_second;
+		}
+		if (ps2_data_read() != 0xFA) {
+			kprintf("[kernel][x86]: first ps2 port didn't ack disable scanning\n");
+			goto identify_second;
 		}
 
 		ps2_data_write(IDENTIFY);
-		wait_for_output();
-		if (ps2_data_read() != ACK) {
-			kprintf("[kernel][x86]: failed to identify the first ps2 device\n");
-			goto test_second;
+		if (!ps2_wait_for_output()) {
+			kprintf("[kernel][x86]: first ps2 port timed out\n");
+			goto identify_second;
+		}
+		if (ps2_data_read() != 0xFA) {
+			kprintf("[kernel][x86]: first ps2 port didn't ack identify\n");
+			goto identify_second;
 		}
 
-		usize start = arch_get_ns_since_boot();
-		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS * 5) {
-				break;
+		usize time = arch_get_ns_since_boot();
+		u8 bytes[2] = {};
+		bool first_read = false;
+		while (arch_get_ns_since_boot() < time + NS_IN_US * 5) {
+			if (ps2_status_read() & STATUS_OUTPUT_FULL) {
+				if (first_read) {
+					bytes[1] = ps2_data_read();
+					break;
+				}
+				else {
+					bytes[0] = ps2_data_read();
+					first_read = true;
+				}
 			}
-			io_wait();
-		}
-		bool has_byte1 = ps2_status_read() & STATUS_OUTPUT_FULL;
-
-		u8 bytes[2] = {ps2_data_read()};
-
-		io_wait();
-		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS * 5) {
-				break;
-			}
-			io_wait();
 		}
 
-		bytes[1] = ps2_data_read();
+		kprintf("[kernel][x86]: first ps2 device %x %x\n", bytes[0], bytes[1]);
 
-		ps2_data_write(ENABLE_SCANNING);
-		wait_for_completion();
-
-		if (!has_byte1 || (bytes[0] == 0xAB &&
-						   (bytes[1] == 0x83 || bytes[1] == 0xC1 || bytes[1] == 0x84 || bytes[1] == 0x85 ||
-							bytes[1] == 0x86 || bytes[1] == 0x90 || bytes[1] == 0x91 || bytes[1] == 0x92)) ||
-			(bytes[0] == 0xAC && bytes[1] == 0xA1)) {
-			ps2_kb_init(false);
-		}
+		ps2_start_driver(false, first_read, bytes);
 	}
 
-	test_second:
-	if (second_works) {
-		ps2_write_port2(DISABLE_SCANNING);
-		wait_for_output();
-		if (ps2_data_read() != ACK) {
-			kprintf("[kernel][x86]: failed to disable scanning for the second ps2 port\n");
-			goto end;
+identify_second:
+	if (second_good) {
+		ps2_enable(true);
+
+		if (!ps2_data2_write(PS2_DISABLE_SCANNING) || !ps2_wait_for_output()) {
+			kprintf("[kernel][x86]: second ps2 port timed out\n");
+			return;
+		}
+		if (ps2_data_read() != 0xFA) {
+			kprintf("[kernel][x86]: second ps2 port didn't ack disable scanning\n");
+			return;
 		}
 
-		ps2_write_port2(IDENTIFY);
-		wait_for_output();
-		if (ps2_data_read() != ACK) {
-			kprintf("[kernel][x86]: failed to identify the second ps2 device\n");
-			goto end;
+		if (!ps2_data2_write(IDENTIFY) || !ps2_wait_for_output()) {
+			kprintf("[kernel][x86]: first ps2 port timed out\n");
+			return;
+		}
+		if (ps2_data_read() != 0xFA) {
+			kprintf("[kernel][x86]: second ps2 port didn't ack identify\n");
+			return;
 		}
 
-		usize start = arch_get_ns_since_boot();
-		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS * 5) {
-				break;
+		usize time = arch_get_ns_since_boot();
+		u8 bytes[2] = {};
+		bool first_read = false;
+		while (arch_get_ns_since_boot() < time + NS_IN_US * 5) {
+			if (ps2_status_read() & STATUS_OUTPUT_FULL) {
+				if (first_read) {
+					bytes[1] = ps2_data_read();
+					break;
+				}
+				else {
+					bytes[0] = ps2_data_read();
+					first_read = true;
+				}
 			}
-			io_wait();
-		}
-		bool has_byte1 = ps2_status_read() & STATUS_OUTPUT_FULL;
-
-		u8 bytes[2] = {ps2_data_read()};
-
-		io_wait();
-		while (!(ps2_status_read() & STATUS_OUTPUT_FULL)) {
-			usize time = arch_get_ns_since_boot();
-			if (time > start + NS_IN_US * US_IN_MS * 5) {
-				break;
-			}
-			io_wait();
 		}
 
-		bytes[1] = ps2_data_read();
+		kprintf("[kernel][x86]: second ps2 device %x %x\n", bytes[0], bytes[1]);
 
-		ps2_write_port2(ENABLE_SCANNING);
-		wait_for_completion();
-
-		if (!has_byte1 || (bytes[0] == 0xAB &&
-						   (bytes[1] == 0x83 || bytes[1] == 0xC1 || bytes[1] == 0x84 || bytes[1] == 0x85 ||
-							bytes[1] == 0x86 || bytes[1] == 0x90 || bytes[1] == 0x91 || bytes[1] == 0x92)) ||
-			(bytes[0] == 0xAC && bytes[1] == 0xA1)) {
-			ps2_kb_init(true);
-		}
+		ps2_start_driver(true, first_read, bytes);
 	}
-
-	end:
-	(void) 0;
 }
