@@ -133,7 +133,7 @@ void arch_init_smp() {
 	}
 
 	spinlock_unlock(&TIMER_LOCK);
-	lapic_timer_start(1);
+	lapic_timer_start(100);
 
 	kprintf("[kernel][x86]: smp init done\n");
 }
