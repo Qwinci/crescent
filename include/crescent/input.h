@@ -232,7 +232,8 @@ typedef enum {
 	SCAN_MULTIMEDIA_SELECT,
 	SCAN_SLEEP,
 	SCAN_WAKE,
-	SCAN_RESERVED
+	SCAN_RESERVED,
+	SCAN_MAX
 } Scancode;
 
 #endif

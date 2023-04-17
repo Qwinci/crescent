@@ -271,7 +271,13 @@ NORETURN static void ps2_kb_translator() {
 			key = ps2_scancode_set2_no_prefix(byte0);
 		}
 
-		kprintf("key: %x (released: %u)\n", key, released);
+		if (ACTIVE_INPUT_TASK) {
+			Event event = {
+				.type = released ? EVENT_KEY_RELEASE : EVENT_KEY_PRESS,
+				.key = key
+			};
+			event_queue_push(&ACTIVE_INPUT_TASK->event_queue, event);
+		}
 	}
 }
 

@@ -7,6 +7,7 @@
 #include "sched/sched.h"
 #include "stdio.h"
 #include "string.h"
+#include "tty/tty.h"
 #include "utils/elf.h"
 
 void task() {
@@ -67,6 +68,8 @@ void task() {
 	void (*user_fn)() = (void (*)()) ((usize) user_mem + (ehdr->e_entry - base));
 
 	arch_set_user_task_fn(test_user, user_fn);
+
+	tty_init();
 
 	void* flags = enter_critical();
 	//sched_queue_task(test_user);

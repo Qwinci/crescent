@@ -1,6 +1,7 @@
 #pragma once
 #include "types.h"
 #include "utils/spinlock.h"
+#include "event_queue.h"
 
 typedef enum : u8 {
 	TASK_STATUS_RUNNING = 0,
@@ -33,6 +34,7 @@ typedef struct Task {
 	File* stdout;
 	File* stderr;
 	File* stdin;
+	EventQueue event_queue;
 	int exit_status;
 	bool detached;
 	TaskStatus status;
@@ -44,3 +46,5 @@ typedef struct Task {
 
 void task_add_page(Task* task, struct Page* page);
 void task_remove_page(Task* task, struct Page* page);
+
+extern Task* ACTIVE_INPUT_TASK;

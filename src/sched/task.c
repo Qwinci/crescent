@@ -21,3 +21,5 @@ void task_remove_page(Task* task, struct Page* page) {
 		page->next->prev = page->prev;
 	}
 }
+
+Task* ACTIVE_INPUT_TASK = NULL;
