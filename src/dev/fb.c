@@ -1,4 +1,6 @@
 #include "fb.h"
+#include "assert.h"
+#include "mem/allocator.h"
 
 void fb_set_pixel(Framebuffer* self, usize x, usize y, u32 color) {
 	if (self->fmt == FB_FMT_BGRA32) {
@@ -24,6 +26,20 @@ void fb_clear(Framebuffer* self, u32 color) {
 			fb_set_pixel(self, x, y, color);
 		}
 	}
+}
+
+void fb_alloc_same(const Framebuffer* from, Framebuffer* to) {
+	usize size = from->pitch * from->height;
+	void* base = kmalloc(size);
+	assert(base);
+	*to = (Framebuffer) {
+		.base = (u8*) base,
+		.width = from->width,
+		.height = from->height,
+		.pitch = from->pitch,
+		.bpp = from->bpp,
+		.fmt = from->fmt
+	};
 }
 
 Framebuffer* primary_fb = NULL;

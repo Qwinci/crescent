@@ -11,6 +11,12 @@
 [[noreturn]] static void idle_task_fn() {
 	while (true) {
 		arch_hlt();
+		void* flags = enter_critical();
+		Task* task = sched_get_next_task();
+		if (task) {
+			sched_with_next(task);
+		}
+		leave_critical(flags);
 	}
 }
 

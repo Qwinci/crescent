@@ -17,5 +17,6 @@ typedef struct Framebuffer {
 void fb_set_pixel(Framebuffer* self, usize x, usize y, u32 color);
 u32 fb_get_pixel(Framebuffer* self, usize x, usize y);
 void fb_clear(Framebuffer* self, u32 color);
+void fb_alloc_same(const Framebuffer* from, Framebuffer* to);
 
 extern Framebuffer* primary_fb;
