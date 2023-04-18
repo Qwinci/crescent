@@ -98,7 +98,7 @@ typedef enum {
 	SCAN_KEYPAD_9 = 0x61,
 	SCAN_KEYPAD_0 = 0x62,
 	SCAN_KEYPAD_DOT = 0x63,
-	SCAN_NON_US_BACKSLASH = 0x64,
+	SCAN_NON_US_BACKSLASH_WALL = 0x64,
 	SCAN_APP = 0x65,
 	SCAN_POWER = 0x66,
 	SCAN_KEYPAD_EQUALS = 0x67,
@@ -235,5 +235,13 @@ typedef enum {
 	SCAN_RESERVED,
 	SCAN_MAX
 } Scancode;
+
+typedef enum {
+	MOD_NONE,
+	MOD_CTRL = 1 << 0,
+	MOD_ALT = 1 << 1,
+	MOD_SHIFT = 1 << 2,
+	MOD_ALT_GR = 1 << 3,
+} Modifier;
 
 #endif

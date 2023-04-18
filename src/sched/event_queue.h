@@ -11,7 +11,10 @@ typedef enum : u32 {
 typedef struct {
 	EventType type;
 	union {
-		Scancode key;
+		struct {
+			Scancode key;
+			Modifier mods;
+		};
 	};
 } Event;
 

@@ -4,7 +4,7 @@
 #include "sched/task.h"
 
 static Task* tty_task = NULL;
-extern const char* layout_fi[SCAN_MAX];
+extern const char* layout_fi_scan_to_key(Scancode code, Modifier modifiers);
 
 NORETURN static void tty() {
 	while (true) {
@@ -15,12 +15,13 @@ NORETURN static void tty() {
 		}
 
 		if (event.type == EVENT_KEY_PRESS) {
-			const char* text = layout_fi[event.key];
+			const char* text = layout_fi_scan_to_key(event.key, event.mods);
 			if (text) {
 				kprintf("%s", text);
 			}
 			else {
-				kprintf("%x\n", event.key);
+				// todo
+				//kprintf("%x\n", event.key);
 			}
 		}
 	}

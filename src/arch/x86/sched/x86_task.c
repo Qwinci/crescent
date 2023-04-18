@@ -56,7 +56,7 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 		vmem = (VMem*) kmalloc(sizeof(VMem));
 		memset(vmem, 0, sizeof(VMem));
 		task->common.user_vmem = vmem;
-		vm_user_init(&task->common, 0xFF000, 0x20000);
+		vm_user_init(&task->common, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
 	}
 	else {
 		task->common.user_vmem = vmem;

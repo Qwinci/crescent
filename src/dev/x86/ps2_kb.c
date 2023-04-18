@@ -2,105 +2,13 @@
 #include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "arch/x86/dev/io_apic.h"
+#include "crescent/input.h"
+#include "layout/fi.h"
 #include "ps2.h"
 #include "sched/sched.h"
 #include "stdio.h"
-#include "crescent/input.h"
 
-static Scancode scancode_set2_no_prefix_table[] = {
-	[0x01] = SCAN_F9,
-	[0x03] = SCAN_F5,
-	[0x04] = SCAN_F3,
-	[0x05] = SCAN_F1,
-	[0x06] = SCAN_F2,
-	[0x07] = SCAN_F12,
-	[0x09] = SCAN_F10,
-	[0x0A] = SCAN_F8,
-	[0x0B] = SCAN_F6,
-	[0x0C] = SCAN_F4,
-	[0x0D] = SCAN_TAB,
-	[0x0E] = SCAN_GRAVE,
-	[0x11] = SCAN_LEFT_ALT,
-	[0x12] = SCAN_LEFT_SHIFT,
-	[0x14] = SCAN_LEFT_CONTROL,
-	[0x15] = SCAN_Q,
-	[0x16] = SCAN_1,
-	[0x1A] = SCAN_Z,
-	[0x1B] = SCAN_S,
-	[0x1C] = SCAN_A,
-	[0x1D] = SCAN_W,
-	[0x1E] = SCAN_2,
-	[0x21] = SCAN_C,
-	[0x22] = SCAN_X,
-	[0x23] = SCAN_D,
-	[0x24] = SCAN_E,
-	[0x25] = SCAN_4,
-	[0x26] = SCAN_3,
-	[0x29] = SCAN_SPACE,
-	[0x2A] = SCAN_V,
-	[0x2B] = SCAN_F,
-	[0x2C] = SCAN_T,
-	[0x2D] = SCAN_R,
-	[0x2E] = SCAN_5,
-	[0x31] = SCAN_N,
-	[0x32] = SCAN_B,
-	[0x33] = SCAN_H,
-	[0x34] = SCAN_G,
-	[0x35] = SCAN_Y,
-	[0x36] = SCAN_6,
-	[0x3A] = SCAN_M,
-	[0x3B] = SCAN_J,
-	[0x3C] = SCAN_U,
-	[0x3D] = SCAN_7,
-	[0x3E] = SCAN_8,
-	[0x41] = SCAN_COMMA,
-	[0x42] = SCAN_K,
-	[0x43] = SCAN_I,
-	[0x44] = SCAN_O,
-	[0x45] = SCAN_0,
-	[0x46] = SCAN_9,
-	[0x49] = SCAN_DOT,
-	[0x4A] = SCAN_SLASH,
-	[0x4B] = SCAN_L,
-	[0x4C] = SCAN_SEMICOLON,
-	[0x4D] = SCAN_P,
-	[0x4E] = SCAN_MINUS,
-	[0x52] = SCAN_APOSTROPHE,
-	[0x54] = SCAN_LBRACKET,
-	[0x55] = SCAN_EQUAL,
-	[0x58] = SCAN_CAPSLOCK,
-	[0x59] = SCAN_RIGHT_SHIFT,
-	[0x5A] = SCAN_ENTER,
-	[0x5B] = SCAN_RBRACKET,
-	[0x5D] = SCAN_BACKSLASH,
-	[0x66] = SCAN_BACKSPACE,
-	[0x69] = SCAN_KEYPAD_1,
-	[0x6B] = SCAN_KEYPAD_4,
-	[0x6C] = SCAN_KEYPAD_7,
-	[0x70] = SCAN_KEYPAD_0,
-	[0x71] = SCAN_KEYPAD_DOT,
-	[0x72] = SCAN_KEYPAD_2,
-	[0x73] = SCAN_KEYPAD_5,
-	[0x74] = SCAN_KEYPAD_6,
-	[0x75] = SCAN_KEYPAD_8,
-	[0x76] = SCAN_ESC,
-	[0x77] = SCAN_NUMLK,
-	[0x78] = SCAN_F11,
-	[0x79] = SCAN_KEYPAD_PLUS,
-	[0x7A] = SCAN_KEYPAD_3,
-	[0x7B] = SCAN_KEYPAD_MINUS,
-	[0x7C] = SCAN_KEYPAD_STAR,
-	[0x7D] = SCAN_KEYPAD_9,
-	[0x7E] = SCAN_SCRLK,
-	[0x83] = SCAN_F7
-};
-
-static Scancode ps2_scancode_set2_no_prefix(u8 byte) {
-	if (byte < sizeof(scancode_set2_no_prefix_table) / sizeof(*scancode_set2_no_prefix_table)) {
-		return scancode_set2_no_prefix_table[byte];
-	}
-	return SCAN_RESERVED;
-}
+static OneByteScancodeTranslatorFn translator_fn = NULL;
 
 static Scancode ps2_scancode_set2_e0(u8 byte) {
 	switch (byte) {
@@ -198,6 +106,7 @@ static usize ps2_key_queue_int_ptr = 0;
 static usize ps2_key_queue_translator_ptr = 0;
 static usize ps2_key_queue_size = 0;
 static Task* ps2_translator_task = NULL;
+static Modifier ps2_modifiers = MOD_NONE;
 
 static bool ps2_kb_handler(void*, void*) {
 	if (!(ps2_status_read() & PS2_STATUS_OUTPUT_FULL)) {
@@ -268,13 +177,39 @@ NORETURN static void ps2_kb_translator() {
 				released = true;
 				byte0 = queue_get_byte();
 			}
-			key = ps2_scancode_set2_no_prefix(byte0);
+			key = translator_fn(byte0);
+		}
+
+		if (key == SCAN_LEFT_SHIFT || key == SCAN_RIGHT_SHIFT) {
+			if (!released) {
+				ps2_modifiers |= MOD_SHIFT;
+			}
+			else {
+				ps2_modifiers &= ~MOD_SHIFT;
+			}
+		}
+		if (key == SCAN_RIGHT_ALT) {
+			if (!released) {
+				ps2_modifiers |= MOD_ALT_GR;
+			}
+			else {
+				ps2_modifiers &= ~MOD_ALT_GR;
+			}
+		}
+		if (key == SCAN_LEFT_ALT) {
+			if (!released) {
+				ps2_modifiers |= MOD_ALT;
+			}
+			else {
+				ps2_modifiers &= ~MOD_ALT;
+			}
 		}
 
 		if (ACTIVE_INPUT_TASK) {
 			Event event = {
 				.type = released ? EVENT_KEY_RELEASE : EVENT_KEY_PRESS,
-				.key = key
+				.key = key,
+				.mods = ps2_modifiers
 			};
 			event_queue_push(&ACTIVE_INPUT_TASK->event_queue, event);
 		}
@@ -284,6 +219,8 @@ NORETURN static void ps2_kb_translator() {
 extern u8 X86_BSP_ID;
 
 void ps2_kb_init(bool second) {
+	ps2_kb_layout_fi();
+
 	if (!second) {
 		ps2_data_write(PS2_ENABLE_SCANNING);
 		if (!ps2_wait_for_output() || ps2_data_read() != 0xFA) {
@@ -319,4 +256,8 @@ void ps2_kb_init(bool second) {
 	void* flags = enter_critical();
 	sched_queue_task(ps2_translator_task);
 	leave_critical(flags);
+}
+
+void ps2_kb_set_translation(OneByteScancodeTranslatorFn fn) {
+	translator_fn = fn;
 }
