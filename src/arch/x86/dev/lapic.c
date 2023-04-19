@@ -41,7 +41,6 @@ void ipi_handler(void*, void*) {
 	X86Cpu* cpu = x86_get_cur_cpu();
 	switch (g_msg) {
 		case LAPIC_MSG_HALT:
-			kprintf("halt on cpu %u\n", cpu->apic_id);
 			spinlock_lock(&cpu->common.lock);
 			spinlock_unlock(&cpu->common.lock);
 			break;
@@ -59,7 +58,7 @@ void lapic_ipi(u8 id, LapicMsg msg) {
 	g_msg = msg;
 
 	lapic_write(LAPIC_REG_INT_CMD_BASE + 0x10, (u32) id << 24);
-	u32 value = ipi_vec | 1 << 15;
+	u32 value = ipi_vec;
 	lapic_write(LAPIC_REG_INT_CMD_BASE, value);
 
 	while (lapic_read(LAPIC_REG_INT_CMD_BASE) & 1 << 12) {
@@ -77,7 +76,7 @@ void lapic_ipi_all(LapicMsg msg) {
 	}
 	g_msg = msg;
 
-	u32 value = ipi_vec | 1 << 15 | 3 << 18;
+	u32 value = ipi_vec | 3 << 18;
 	lapic_write(LAPIC_REG_INT_CMD_BASE, value);
 
 	while (lapic_read(LAPIC_REG_INT_CMD_BASE) & 1 << 12) {
