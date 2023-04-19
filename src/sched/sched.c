@@ -333,7 +333,7 @@ NORETURN void sched_load_balance() {
 						else {
 							level->ready_tasks = task->next;
 						}
-						kprintf("moved task '%s' from cpu %u to %u\n", task->name, max_cpu_i, min_cpu_i);
+						//kprintf("moved task '%s' from cpu %u to %u\n", task->name, max_cpu_i, min_cpu_i);
 						sched_queue_task_for_cpu(task, min_cpu);
 						++amount;
 					}

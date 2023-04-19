@@ -170,10 +170,51 @@ static void ps2_start_driver(bool second, bool first_read, const u8 bytes[2]) {
 	}
 }
 
+u8 ps2_read() {
+	while (!(in1(PS2_STATUS_PORT) & STATUS_OUTPUT_FULL));
+	return in1(PS2_DATA_PORT);
+}
+
+void ps2_write(u16 port, u8 value) {
+	while (in1(PS2_STATUS_PORT) & STATUS_INPUT_FULL);
+	out1(port, value);
+}
+
+u8 ps2_read_config() {
+	ps2_write(PS2_CMD_PORT, CMD_READ_CONF0);
+	return ps2_data_read();
+}
+
+void ps2_write_config(u8 value) {
+	ps2_write(PS2_CMD_PORT, CMD_WRITE_CONF0);
+	ps2_write(PS2_DATA_PORT, value);
+}
+
 void ps2_init() {
 	kprintf("[kernel][x86]: ps2 init\n");
 
-	// Disable ports
+	ps2_write(PS2_CMD_PORT, CMD_DISABLE_PORT1);
+	ps2_write(PS2_CMD_PORT, CMD_DISABLE_PORT2);
+
+	u8 config = ps2_read_config();
+	config |= CONF_INT_PORT1;
+	config &= ~CONF_PORT1_TRANSLATION;
+
+	if (config & CONF_PORT2_CLOCK) {
+		config |= CONF_INT_PORT2;
+	}
+
+	ps2_write_config(config);
+
+	ps2_write(PS2_CMD_PORT, CMD_ENABLE_PORT1);
+
+	if (config & CONF_PORT2_CLOCK) {
+		ps2_write(PS2_CMD_PORT, CMD_ENABLE_PORT2);
+	}
+
+	ps2_kb_init(false);
+
+	/*// Disable ports
 	CHECK(ps2_disable(false), "disabling first port timed out");
 	CHECK(ps2_disable(true), "disabling second port timed out");
 
@@ -315,5 +356,5 @@ identify_second:
 		kprintf("[kernel][x86]: second ps2 device %x %x\n", bytes[0], bytes[1]);
 
 		ps2_start_driver(true, first_read, bytes);
-	}
+	}*/
 }

@@ -109,9 +109,9 @@ static Task* ps2_translator_task = NULL;
 static Modifier ps2_modifiers = MOD_NONE;
 
 static bool ps2_kb_handler(void*, void*) {
-	if (!(ps2_status_read() & PS2_STATUS_OUTPUT_FULL)) {
+	/*if (!(ps2_status_read() & PS2_STATUS_OUTPUT_FULL)) {
 		return false;
-	}
+	}*/
 
 	if (ps2_key_queue_size == PS2_QUEUE_SIZE) {
 		kprintf("WARNING: ps2 key queue overflow\n");
@@ -221,7 +221,7 @@ extern u8 X86_BSP_ID;
 void ps2_kb_init(bool second) {
 	ps2_kb_layout_fi();
 
-	if (!second) {
+	/*if (!second) {
 		ps2_data_write(PS2_ENABLE_SCANNING);
 		if (!ps2_wait_for_output() || ps2_data_read() != 0xFA) {
 			kprintf("[kernel][x86]: enabling scanning for the first ps2 port timed out\n");
@@ -233,7 +233,7 @@ void ps2_kb_init(bool second) {
 			kprintf("[kernel][x86]: enabling scanning for the second ps2 port timed out\n");
 			return;
 		}
-	}
+	}*/
 
 	u8 i = arch_alloc_int(ps2_kb_handler, NULL);
 	if (!i) {

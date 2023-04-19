@@ -1,4 +1,5 @@
 #include "tty.h"
+#include "arch/misc.h"
 #include "assert.h"
 #include "sched/sched.h"
 #include "sched/task.h"
@@ -15,6 +16,10 @@ NORETURN static void tty() {
 		}
 
 		if (event.type == EVENT_KEY_PRESS) {
+			if (event.key == SCAN_F5) {
+				arch_reboot();
+			}
+
 			const char* text = layout_fi_scan_to_key(event.key, event.mods);
 			if (text) {
 				kprintf("%s", text);
