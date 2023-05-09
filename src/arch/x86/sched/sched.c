@@ -2,6 +2,7 @@
 #include "arch/misc.h"
 #include "arch/x86/cpu.h"
 #include "sched/sched_internals.h"
+#include "stdio.h"
 #include "x86_task.h"
 
 X86Task* x86_switch_task(X86Task* old_task, X86Task* new_task);

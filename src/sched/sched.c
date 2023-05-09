@@ -2,6 +2,7 @@
 #include "arch/cpu.h"
 #include "arch/misc.h"
 #include "dev/timer.h"
+#include "mem/utils.h"
 #include "mutex.h"
 #include "sched_internals.h"
 #include "stdio.h"
@@ -67,8 +68,8 @@ static Task* get_next_task_from_level(u8 level_num) {
 
 Task* sched_get_next_task() {
 	Task* task = NULL;
-	for (usize i = 0; i < SCHED_MAX_LEVEL; ++i) {
-		task = get_next_task_from_level(i);
+	for (usize i = SCHED_MAX_LEVEL; i > 1; --i) {
+		task = get_next_task_from_level(i - 1);
 		if (task) {
 			break;
 		}
@@ -130,6 +131,7 @@ void sched() {
 			}
 
 			mutex_unlock(&proc_mutex);
+			arch_destroy_task(task);
 		}
 		task = sched_get_next_task();
 		if (!task) {
@@ -278,7 +280,9 @@ NORETURN void sched_kill_cur() {
 		}
 	}
 	sched();
-	while (true);
+	while (true) {
+		arch_hlt();
+	}
 }
 
 void sched_kill_child(Task* task) {

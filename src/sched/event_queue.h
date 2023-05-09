@@ -1,5 +1,6 @@
 #pragma once
 #include "crescent/input.h"
+#include "mutex.h"
 #include "types.h"
 
 typedef enum : u32 {
@@ -25,6 +26,7 @@ typedef struct {
 	usize event_consumer_ptr;
 	EventType subscriptions;
 	struct Task* notify_target;
+	Mutex lock;
 } EventQueue;
 
 bool event_queue_get(EventQueue* self, Event* event);

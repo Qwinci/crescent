@@ -22,7 +22,7 @@ void sys_exit(int status) {
 
 Task* sys_create_thread(void (*fn)(), void* arg) {
 	Task* self = arch_get_cur_task();
-	Task* task = arch_create_user_task_with_map("", fn, arg, self, self->map, self->user_vmem);
+	Task* task = arch_create_user_task_with_map("user thread", fn, arg, self, self->map, self->user_vmem);
 	if (!task) {
 		return NULL;
 	}

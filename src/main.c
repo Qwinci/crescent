@@ -72,7 +72,7 @@ void task() {
 	tty_init();
 
 	void* flags = enter_critical();
-	//sched_queue_task(test_user);
+	sched_queue_task(test_user);
 
 	leave_critical(flags);
 

@@ -64,8 +64,8 @@ NORETURN void ex_pf(void* void_ctx, void*) {
 	spinlock_lock(&PRINT_LOCK);
 	kprintf_nolock("%fgpage fault caused by ", COLOR_RED);
 	if (user) kputs_nolock("userspace ", sizeof("userspace ") - 1);
-	if (write) kprintf_nolock("write to 0x%x\n", addr);
-	else kprintf_nolock("read from 0x%x\n", addr);
+	if (write) kprintf_nolock("write to 0x%x at ip 0x%p\n", addr, ctx->ip);
+	else kprintf_nolock("read from 0x%x at ip 0x%p\n", addr, ctx->ip);
 
 	const char* reason = NULL;
 	if (reserved_write) reason = "page entry contains reserved bits";

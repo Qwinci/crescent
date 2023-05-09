@@ -5,6 +5,7 @@
 #include "crescent/input.h"
 #include "layout/fi.h"
 #include "ps2.h"
+#include "sched/mutex.h"
 #include "sched/sched.h"
 #include "stdio.h"
 
@@ -107,40 +108,47 @@ static usize ps2_key_queue_translator_ptr = 0;
 static usize ps2_key_queue_size = 0;
 static Task* ps2_translator_task = NULL;
 static Modifier ps2_modifiers = MOD_NONE;
+static Mutex ps2_mutex = {};
 
 static bool ps2_kb_handler(void*, void*) {
 	/*if (!(ps2_status_read() & PS2_STATUS_OUTPUT_FULL)) {
 		return false;
 	}*/
 
+	mutex_lock(&ps2_mutex);
+
 	if (ps2_key_queue_size == PS2_QUEUE_SIZE) {
 		kprintf("WARNING: ps2 key queue overflow\n");
 		ps2_data_read();
+		mutex_unlock(&ps2_mutex);
 		return true;
 	}
 	ps2_key_queue_size++;
 	ps2_key_queue[ps2_key_queue_int_ptr] = ps2_data_read();
 	ps2_key_queue_int_ptr = (ps2_key_queue_int_ptr + 1) % PS2_QUEUE_SIZE;
 	sched_unblock(ps2_translator_task);
+	mutex_unlock(&ps2_mutex);
 	return true;
 }
 
 static u8 queue_get_byte() {
-	// todo spl
-	void* flags = enter_critical();
+	mutex_lock(&ps2_mutex);
+
 	u8 byte;
 	if (ps2_key_queue_size) {
 		byte = ps2_key_queue[ps2_key_queue_translator_ptr];
 		ps2_key_queue_translator_ptr = (ps2_key_queue_translator_ptr + 1) % PS2_QUEUE_SIZE;
 	}
 	else {
+		mutex_unlock(&ps2_mutex);
 		sched_block(TASK_STATUS_WAITING);
 		sched();
+		mutex_lock(&ps2_mutex);
 		byte = ps2_key_queue[ps2_key_queue_translator_ptr];
 		ps2_key_queue_translator_ptr = (ps2_key_queue_translator_ptr + 1) % PS2_QUEUE_SIZE;
 	}
 	--ps2_key_queue_size;
-	leave_critical(flags);
+	mutex_unlock(&ps2_mutex);
 	return byte;
 }
 
@@ -220,20 +228,6 @@ extern u8 X86_BSP_ID;
 
 void ps2_kb_init(bool second) {
 	ps2_kb_layout_fi();
-
-	/*if (!second) {
-		ps2_data_write(PS2_ENABLE_SCANNING);
-		if (!ps2_wait_for_output() || ps2_data_read() != 0xFA) {
-			kprintf("[kernel][x86]: enabling scanning for the first ps2 port timed out\n");
-			return;
-		}
-	}
-	else {
-		if (!ps2_data2_write(PS2_ENABLE_SCANNING) || ps2_data_read() != 0xFA) {
-			kprintf("[kernel][x86]: enabling scanning for the second ps2 port timed out\n");
-			return;
-		}
-	}*/
 
 	u8 i = arch_alloc_int(ps2_kb_handler, NULL);
 	if (!i) {

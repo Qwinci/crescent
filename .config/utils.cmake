@@ -1,4 +1,4 @@
-set(QEMU_FLAGS -m 2G -machine q35 -smp 8
+set(QEMU_FLAGS -m 2G -machine q35 -smp 1
         -d int -no-reboot -no-shutdown -cpu qemu64
         -drive file=nvm.img,if=none,id=nvm,format=raw
         -device nvme,serial=deadbeef,drive=nvm -M smm=off

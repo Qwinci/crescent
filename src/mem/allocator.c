@@ -36,7 +36,7 @@ static void freelist_insert_nonrecursive(usize index, void* ptr) {
 
 	u8* bitmap = (u8*) (ALIGNDOWN((usize) node, PAGE_SIZE));
 	usize offset = (usize) node - (usize) bitmap;
-	bitmap[offset / 8] &= ~(1 << (offset % 8));
+	bitmap[offset / 8] &= ~(1U << (offset % 8));
 
 	usize size = index_to_size(index);
 
@@ -80,7 +80,7 @@ static void* freelist_get_nonrecursive(usize index, Page** new_page) {
 	freelists[index] = node->next;
 	u8* bitmap = (u8*) (ALIGNDOWN((usize) node, PAGE_SIZE));
 	usize offset = (usize) node - (usize) bitmap;
-	bitmap[offset / 8] |= 1 << (offset % 8);
+	bitmap[offset / 8] |= 1U << (offset % 8);
 	return node;
 }
 

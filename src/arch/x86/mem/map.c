@@ -41,6 +41,7 @@ void* x86_create_user_map() {
 
 	X86PageMap* map = kmalloc(sizeof(X86PageMap));
 	assert(map);
+	map->ref_count = 0;
 	map->page = page;
 
 	return map;

@@ -10,8 +10,8 @@ static HandlerData handlers[256] = {};
 
 u32 arch_alloc_int(IntHandler handler, void* userdata) {
 	for (u16 i = 0; i < 256 - 32; ++i) {
-		if (!(used_ints[i / 32] & 1 << (i % 32))) {
-			used_ints[i / 32] |= 1 << (i % 32);
+		if (!(used_ints[i / 32] & 1U << (i % 32))) {
+			used_ints[i / 32] |= 1U << (i % 32);
 			handlers[i + 32].handler = handler;
 			handlers[i + 32].userdata = userdata;
 			return i + 32;
