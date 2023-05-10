@@ -90,7 +90,7 @@ void* kmalloc(usize size) {
 	if (!size) {
 		return NULL;
 	}
-	else if (size >= PAGE_SIZE) {
+	else if (size >= 2048) {
 		return vm_kernel_alloc_backed(ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE, PF_READ | PF_WRITE | PF_EXEC);
 	}
 	usize index = size_to_index(size);
@@ -108,7 +108,7 @@ void kfree(void* ptr, usize size) {
 	if (!ptr) {
 		return;
 	}
-	else if (size >= PAGE_SIZE) {
+	else if (size >= 2048) {
 		return vm_kernel_dealloc_backed(ptr, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
 	}
 	usize index = size_to_index(size);

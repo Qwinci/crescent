@@ -1,5 +1,4 @@
 #include "event_queue.h"
-#include "arch/misc.h"
 #include "assert.h"
 #include "mem/allocator.h"
 #include "sched.h"

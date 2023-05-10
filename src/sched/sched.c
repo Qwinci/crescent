@@ -2,7 +2,6 @@
 #include "arch/cpu.h"
 #include "arch/misc.h"
 #include "dev/timer.h"
-#include "mem/utils.h"
 #include "mutex.h"
 #include "sched_internals.h"
 #include "stdio.h"
@@ -24,7 +23,8 @@
 static Mutex proc_mutex = {};
 
 void sched_switch_from(Task* old_task, Task* self) {
-	Cpu* cpu = arch_get_cur_task()->cpu;
+	Task* t = arch_get_cur_task();
+	Cpu* cpu = t->cpu;
 	if (old_task->status == TASK_STATUS_RUNNING) {
 		if (old_task == cpu->idle_task) {
 			cpu->idle_time += arch_get_ns_since_boot() - cpu->idle_start;
@@ -100,6 +100,7 @@ void sched_with_next(Task* next) {
 
 void sched() {
 	void* flags = enter_critical();
+
 	Cpu* cpu = arch_get_cur_task()->cpu;
 
 	Task* task = sched_get_next_task();

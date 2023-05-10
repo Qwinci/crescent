@@ -121,6 +121,7 @@ void arch_set_user_task_fn(Task* task, void (*fn)()) {
 
 Task* arch_create_kernel_task(const char* name, void (*fn)(), void* arg) {
 	X86Task* task = kmalloc(sizeof(X86Task));
+	assert(task);
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
 
