@@ -20,8 +20,8 @@ typedef struct {
 } SchedLevel;
 
 Task* arch_create_kernel_task(const char* name, void (*fn)(), void* arg);
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent);
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, struct VMem* vmem);
+Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent, bool detach);
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, struct VMem* vmem, bool detach);
 void arch_set_user_task_fn(Task* task, void (*fn)());
 void arch_destroy_task(Task* task);
 
@@ -33,3 +33,4 @@ void sched_sleep(usize us);
 NORETURN void sched_exit(int status);
 NORETURN void sched_kill_cur();
 void sched_kill_child(Task* task);
+void sched_sigwait(Task* task);

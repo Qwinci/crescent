@@ -41,7 +41,7 @@ extern void x86_usermode_ret();
 
 extern void* x86_create_user_map();
 
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, VMem* vmem) {
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, VMem* vmem, bool detach) {
 	X86PageMap* m = (X86PageMap*) map;
 	m->ref_count += 1;
 
@@ -103,12 +103,13 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 	task->user = true;
 	task->common.priority = 0;
 	task->common.parent = parent;
+	task->common.detached = detach;
 
 	return &task->common;
 }
 
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent) {
-	return arch_create_user_task_with_map(name, fn, arg, parent, x86_create_user_map(), NULL);
+Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent, bool detach) {
+	return arch_create_user_task_with_map(name, fn, arg, parent, x86_create_user_map(), NULL, detach);
 }
 
 void arch_set_user_task_fn(Task* task, void (*fn)()) {

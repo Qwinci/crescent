@@ -35,7 +35,12 @@ void sched_switch_from(Task* old_task, Task* self) {
 	}
 	else if (old_task->status == TASK_STATUS_EXITED || old_task->status == TASK_STATUS_KILLED) {
 		cpu->thread_count -= 1;
-		arch_destroy_task(old_task);
+		if (old_task->detached) {
+			arch_destroy_task(old_task);
+		}
+		else {
+			sched_queue_task(old_task);
+		}
 	}
 
 	self->status = TASK_STATUS_RUNNING;
@@ -179,6 +184,18 @@ void sched_block(TaskStatus status) {
 	sched();
 }
 
+void sched_sigwait(Task* task) {
+	Task* self = arch_get_cur_task();
+	void* flags = enter_critical();
+
+	self->status = TASK_STATUS_WAITING;
+	self->next = task->signal_waiters;
+	task->signal_waiters = self;
+
+	leave_critical(flags);
+	sched();
+}
+
 bool sched_unblock(Task* task) {
 	if (task->status <= TASK_STATUS_READY) {
 		return false;
@@ -227,6 +244,14 @@ void sched_sleep(usize us) {
 NORETURN void sched_exit(int status) {
 	Task* self = arch_get_cur_task();
 
+	void* flags = enter_critical();
+
+	while (self->signal_waiters) {
+		Task* next = self->signal_waiters->next;
+		sched_unblock(self->signal_waiters);
+		self->signal_waiters = next;
+	}
+
 	self->status = TASK_STATUS_EXITED;
 	self->exit_status = status;
 
@@ -259,8 +284,11 @@ NORETURN void sched_exit(int status) {
 		}
 	}
 
-	sched();
-	while (true);
+	leave_critical(flags);
+	while (true) {
+		self->status = TASK_STATUS_EXITED;
+		sched();
+	}
 }
 
 NORETURN void sched_kill_cur() {

@@ -79,7 +79,6 @@ static void* freelist_get_nonrecursive(usize index, Page** new_page) {
 	Node* node = freelists[index];
 	freelists[index] = node->next;
 	u8* bitmap = (u8*) (ALIGNDOWN((usize) node, PAGE_SIZE));
-	//usize offset = (usize) node - (usize) bitmap;
 	usize offset = ((usize) node - (usize) bitmap) / size;
 	bitmap[offset / 8] |= 1U << (offset % 8);
 	return node;

@@ -10,13 +10,6 @@
 #include "tty/tty.h"
 #include "utils/elf.h"
 
-void task() {
-	while (true) {
-		kprintf("a\n");
-		sched_sleep(US_IN_MS * 1000);
-	}
-}
-
 [[noreturn]] void kmain() {
 	kprintf("[kernel]: entered main\n");
 
@@ -45,7 +38,7 @@ void task() {
 		}
 	}
 
-	Task* test_user = arch_create_user_task("basic", NULL, NULL, NULL);
+	Task* test_user = arch_create_user_task("basic", NULL, NULL, NULL, true);
 
 	void* mem;
 	void* user_mem = vm_user_alloc_backed(

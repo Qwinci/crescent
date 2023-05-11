@@ -34,6 +34,7 @@ typedef struct Task {
 	File* stdout;
 	File* stderr;
 	File* stdin;
+	struct Task* signal_waiters;
 	EventQueue event_queue;
 	int exit_status;
 	bool detached;
