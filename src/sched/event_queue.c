@@ -2,6 +2,7 @@
 #include "assert.h"
 #include "mem/allocator.h"
 #include "sched.h"
+#include "string.h"
 
 #define EVENT_QUEUE_MAX_SIZE 255
 
@@ -28,6 +29,7 @@ void event_queue_push(EventQueue* self, Event event) {
 	if (!self->events) {
 		self->events = kmalloc(EVENT_QUEUE_MAX_SIZE * sizeof(Event));
 		assert(self->events);
+		memset(self->events, 0, EVENT_QUEUE_MAX_SIZE * sizeof(Event));
 	}
 	if (self->events_len == EVENT_QUEUE_MAX_SIZE) {
 		mutex_unlock(&self->lock);

@@ -228,6 +228,10 @@ Page* pmalloc(usize count) {
 }
 
 void pfree(Page* ptr, usize count) {
+	if (!ptr || !count) {
+		return;
+	}
+
 	usize index = size_to_index(count);
 	if (count & (count - 1)) {
 		index += 1;

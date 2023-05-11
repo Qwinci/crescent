@@ -34,11 +34,11 @@ static void freelist_insert_nonrecursive(usize index, void* ptr) {
 	node->next = freelists[index];
 	freelists[index] = node;
 
-	u8* bitmap = (u8*) (ALIGNDOWN((usize) node, PAGE_SIZE));
-	usize offset = (usize) node - (usize) bitmap;
-	bitmap[offset / 8] &= ~(1U << (offset % 8));
-
 	usize size = index_to_size(index);
+
+	u8* bitmap = (u8*) (ALIGNDOWN((usize) node, PAGE_SIZE));
+	usize offset = ((usize) node - (usize) bitmap) / size;
+	bitmap[offset / 8] &= ~(1U << (offset % 8));
 
 	for (usize i = 0; i < PAGE_SIZE / size; ++i) {
 		if (bitmap[i / 8]) {
@@ -67,10 +67,10 @@ static void* freelist_get_nonrecursive(usize index, Page** new_page) {
 		usize bitmap_size = (count + 7) / 8;
 		memset(bitmap, 0, bitmap_size);
 
-		usize start = ALIGNUP(bitmap_size, 16);
+		usize start = ALIGNUP(bitmap_size, size);
 
-		for (usize i = start; i < count * size; i += size) {
-			Node* node = (Node*) offset(virt, void*, i);
+		for (usize i = start / size; i < count; ++i) {
+			Node* node = (Node*) offset(virt, void*, i * size);
 			node->next = freelists[index];
 			freelists[index] = node;
 		}
@@ -79,7 +79,8 @@ static void* freelist_get_nonrecursive(usize index, Page** new_page) {
 	Node* node = freelists[index];
 	freelists[index] = node->next;
 	u8* bitmap = (u8*) (ALIGNDOWN((usize) node, PAGE_SIZE));
-	usize offset = (usize) node - (usize) bitmap;
+	//usize offset = (usize) node - (usize) bitmap;
+	usize offset = ((usize) node - (usize) bitmap) / size;
 	bitmap[offset / 8] |= 1U << (offset % 8);
 	return node;
 }
