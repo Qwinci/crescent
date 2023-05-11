@@ -28,6 +28,7 @@ usize arch_get_hugepage_size();
 void* arch_create_map();
 void arch_destroy_map(void* map);
 void arch_map_page(void* map, usize virt, usize phys, PageFlags flags);
+void arch_protect_page(void* map, usize virt, PageFlags flags);
 void arch_unmap_page(void* map, usize virt, bool dealloc);
 void arch_use_map(void* map);
 usize arch_virt_to_phys(void* map, usize virt);

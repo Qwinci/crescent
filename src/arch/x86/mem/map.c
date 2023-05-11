@@ -80,6 +80,66 @@ void x86_refresh_page(usize addr) {
 	__asm__ volatile("invlpg [%0]" : : "r"(addr) : "memory");
 }
 
+void arch_protect_page(void* map, usize virt, PageFlags flags) {
+	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
+
+	u64 x86_flags = x86_pf_from_generic(flags);
+
+	usize orig_virt = virt;
+
+	virt >>= 12;
+	u64 pt_offset = virt & 0x1FF;
+	virt >>= 9;
+	u64 pd_offset = virt & 0x1FF;
+	virt >>= 9;
+	u64 pdp_offset = virt & 0x1FF;
+	virt >>= 9;
+	u64 pml4_offset = virt & 0x1FF;
+
+	u64 x86_generic_flags = X86_PF_P | X86_PF_RW | (flags & PF_USER ? X86_PF_U : 0);
+
+	u64* pdp;
+	if (pml4[pml4_offset] & X86_PF_P) {
+		pml4[pml4_offset] &= ~PAGE_FLAG_MASK;
+		pml4[pml4_offset] |= x86_generic_flags;
+		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
+	}
+	else {
+		return;
+	}
+
+	u64* pd;
+	if (pdp[pdp_offset] & X86_PF_P) {
+		pdp[pdp_offset] &= ~PAGE_FLAG_MASK;
+		pdp[pdp_offset] |= x86_generic_flags;
+		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
+	}
+	else {
+		return;
+	}
+
+	if ((flags & PF_HUGE) || (pd[pd_offset] & X86_PF_H)) {
+		pd[pd_offset] &= ~PAGE_FLAG_MASK;
+		pd[pd_offset] |= x86_flags | X86_PF_H;
+		x86_refresh_page(orig_virt & ~(X86_HUGEPAGE_SIZE - 1));
+		return;
+	}
+
+	u64* pt;
+	if (pd[pd_offset] & X86_PF_P) {
+		pd[pd_offset] &= ~PAGE_FLAG_MASK;
+		pd[pd_offset] |= x86_generic_flags;
+		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
+	}
+	else {
+		return;
+	}
+
+	pt[pt_offset] &= ~PAGE_FLAG_MASK;
+	pt[pt_offset] |= x86_flags;
+	x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
+}
+
 void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
 

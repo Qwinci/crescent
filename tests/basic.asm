@@ -1,3 +1,4 @@
+default rel
 global _start
 
 %define SYS_EXIT 0
@@ -47,6 +48,11 @@ _start:
 
 	add rsp, 16
 
+	mov edi, SYS_DPRINT
+	lea rax, [str]
+	mov rsi, str_len
+	syscall
+
 	pop rax
 	mov edi, SYS_WAIT_THREAD
 	syscall
@@ -55,3 +61,7 @@ _start:
 	mov edi, SYS_EXIT
 	;xor eax, eax
 	syscall
+
+section .rodata
+str: db "Hello world!", 0xA
+str_len: equ $-str

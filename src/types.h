@@ -29,5 +29,5 @@ typedef atomic_intptr_t atomic_isize;
 typedef _Atomic(float) atomic_f32;
 typedef _Atomic(double) atomic_f64;
 
-#define container_of(ptr, base, field) ((base*) ((usize) ptr - offsetof(base, field)))
-#define offset(ptr, type, off) ((type) ((usize) ptr + off))
+#define container_of(ptr, base, field) ((base*) ((usize) (ptr) - offsetof(base, field)))
+#define offset(ptr, type, off) ((type) ((usize) (ptr) + (off)))
