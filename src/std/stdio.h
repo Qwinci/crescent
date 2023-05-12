@@ -2,11 +2,13 @@
 #include "types.h"
 #include "utils/attribs.h"
 #include "utils/spinlock.h"
+#include <stdarg.h>
 
 extern Spinlock PRINT_LOCK;
 void kputs(const char* str, usize len);
 void kputs_nolock(const char* str, usize len);
 void kprintf(const char* fmt, ...);
+void kvprintf(const char* fmt, va_list valist);
 void kprintf_nolock(const char* fmt, ...);
 NORETURN void panic(const char* fmt, ...);
 
