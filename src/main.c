@@ -43,7 +43,6 @@
 
 	void* flags = enter_critical();
 	sched_queue_task(test_user);
-
 	leave_critical(flags);
 
 	sched_block(TASK_STATUS_WAITING);

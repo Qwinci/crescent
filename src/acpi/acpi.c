@@ -1,4 +1,4 @@
-#include "c_acpi.h"
+#include "acpi.h"
 #include "mem/utils.h"
 #include "stdio.h"
 #include "string.h"

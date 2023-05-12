@@ -1,6 +1,7 @@
 #include "fbcon.h"
 #include "con.h"
 #include "fb.h"
+#include "sched/sched.h"
 
 typedef struct {
 	u32 magic;
@@ -40,7 +41,12 @@ static int fbcon_write(Con* self, char c) {
 		self->line += 1;
 	}
 	if (self->line * fb->font->height >= fb->fb->height) {
-		return 0;
+		sched_sleep(US_IN_SEC * 6);
+		fb_clear(fb->fb, 0);
+		self->line = 0;
+		self->column = 0;
+		//return 0;
+		// todo
 	}
 
 	u32 bytes_per_line = (fb->font->width + 7) / 8;

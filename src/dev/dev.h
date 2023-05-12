@@ -1,4 +1,5 @@
 #pragma once
+#include "pci.h"
 
 enum {
 	PCI_MATCH_CLASS = 1 << 0,

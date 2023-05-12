@@ -46,6 +46,20 @@ static void freelist_insert_nonrecursive(usize index, void* ptr) {
 		}
 	}
 
+	usize count = PAGE_SIZE / size;
+	usize bitmap_size = (count + 7) / 8;
+
+	usize start = ALIGNUP(bitmap_size, size);
+
+	for (usize i = start / size; i < count; ++i) {
+		Node* n = offset(bitmap, Node*, i * size);
+		if (n->prev) {
+			n->prev->next = n->next;
+		}
+		if (n->next) {
+			n->next->prev = n->prev;
+		}
+	}
 	pfree(page_from_addr(to_phys(bitmap)), 1);
 }
 
@@ -108,7 +122,7 @@ void kfree(void* ptr, usize size) {
 	if (!ptr) {
 		return;
 	}
-	else if (size >= 2048) {
+	if (size >= 2048) {
 		return vm_kernel_dealloc_backed(ptr, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
 	}
 	usize index = size_to_index(size);

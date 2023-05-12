@@ -124,12 +124,14 @@ static Page* freelist_get_nonrecursive(usize index) {
 	if (page->next) {
 		page->next->prev = NULL;
 	}
+	assert(page->type == PAGE_FREE);
 	page->type = PAGE_USED;
 	return page;
 }
 
 void pmalloc_add_mem(void* base, usize size) {
-	kprintf("[kernel][mem]: adding mem 0x%p size %ukb\n", base, size / 1024);
+	// todo
+	//kprintf("[kernel][mem]: adding mem 0x%p size %ukb\n", base, size / 1024);
 
 	usize page_count = size / PAGE_SIZE;
 

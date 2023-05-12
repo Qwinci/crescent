@@ -1,8 +1,8 @@
 #include "pci_enum.h"
 #include "acpi/acpi.h"
+#include "dev.h"
 #include "mem/utils.h"
 #include "pci.h"
-#include "dev.h"
 
 extern Driver DRIVERS_START;
 extern Driver DRIVERS_END;
@@ -33,11 +33,11 @@ static void enum_func(void* base, u16 func) {
 
 	if (common_hdr->hdr_type != 0) {
 		// todo
-		kprintf("unsupported pci device: %x:%x\n", common_hdr->device_id, common_hdr->vendor_id);
+		//kprintf("unsupported pci device: %x:%x\n", common_hdr->device_id, common_hdr->vendor_id);
 		return;
 	}
 
-	kprintf("pci device %02x:%02x\n", common_hdr->device_id, common_hdr->vendor_id);
+	//kprintf("pci device %02x:%02x\n", common_hdr->device_id, common_hdr->vendor_id);
 
 	PciHdr0* hdr = (PciHdr0*) common_hdr;
 
@@ -104,8 +104,29 @@ static void enum_bus(void* base, u16 bus) {
 	}
 }
 
+static const Mcfg* g_mcfg = NULL;
+
+void* pci_get_space(u16 seg, u16 bus, u16 dev, u16 func) {
+	assert(g_mcfg);
+
+	u16 count = (g_mcfg->hdr.length - sizeof(Mcfg)) / sizeof(McfgEntry);
+
+	for (u16 i = 0; i < count; ++i) {
+		const McfgEntry* entry = &g_mcfg->entries[i];
+		if (entry->seg_group == seg) {
+			void* res = to_virt(entry->base);
+			res = offset(res, void*, (usize) (bus - entry->start_bus) << 20);
+			res = offset(res, void*, (usize) dev << 15);
+			res = offset(res, void*, (usize) func << 12);
+			return res;
+		}
+	}
+	return NULL;
+}
+
 void pci_init() {
 	const Mcfg* mcfg = (const Mcfg*) acpi_get_table("MCFG");
+	g_mcfg = mcfg;
 
 	u16 count = (mcfg->hdr.length - sizeof(Mcfg)) / sizeof(McfgEntry);
 
