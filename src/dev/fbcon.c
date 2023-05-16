@@ -41,11 +41,11 @@ static int fbcon_write(Con* self, char c) {
 		self->line += 1;
 	}
 	if (self->line * fb->font->height >= fb->fb->height) {
-		sched_sleep(US_IN_SEC * 6);
+		/*
 		fb_clear(fb->fb, 0);
 		self->line = 0;
-		self->column = 0;
-		//return 0;
+		self->column = 0;*/
+		return 0;
 		// todo
 	}
 

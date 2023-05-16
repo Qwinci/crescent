@@ -38,8 +38,8 @@ typedef struct {
 	};
 } Driver;
 
-#define PCI_DRIVER(Name, PciDriver) \
-__attribute__((section(".drivers"), used)) static Driver Name { \
+#define PCI_DRIVER(Name, PciDev) \
+__attribute__((section(".drivers"), used)) static Driver Name = { \
 	.type = DRIVER_PCI, \
 	.pci_driver = PciDev \
 }

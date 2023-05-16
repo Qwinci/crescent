@@ -3,6 +3,10 @@
 #include "mem/allocator.h"
 
 void fb_set_pixel(Framebuffer* self, usize x, usize y, u32 color) {
+	assert(self);
+	assert(self->base);
+	assert(x < self->width);
+	assert(y < self->height);
 	if (self->fmt == FB_FMT_BGRA32) {
 		*offset(self->base, u32*, y * self->pitch + x * self->bpp) = color;
 	}

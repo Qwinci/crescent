@@ -229,7 +229,7 @@ extern u8 X86_BSP_ID;
 void ps2_kb_init(bool second) {
 	ps2_kb_layout_fi();
 
-	u8 i = arch_alloc_int(ps2_kb_handler, NULL);
+	u8 i = arch_alloc_int(1, ps2_kb_handler, NULL);
 	if (!i) {
 		kprintf("[kernel][x86]: failed to allocate interrupt for ps2 keyboard\n");
 		return;

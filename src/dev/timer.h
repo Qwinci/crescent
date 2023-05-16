@@ -11,3 +11,10 @@ void mdelay(usize ms);
 void arch_init_timers();
 usize arch_get_ns_since_boot();
 void arch_create_timer(usize time, void (*fn)());
+
+/// Runs fn(arg) until the timeout expires or the function returns true
+/// @param fn Non-blocking function to run
+/// @param arg Argument for function
+/// @param us Timeout in us
+/// @return Whether timeout expired
+bool try_repeat_with_timeout(bool (*fn)(void* arg), void* arg, usize us);
