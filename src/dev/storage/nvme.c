@@ -1,4 +1,3 @@
-#include "arch/cpu.h"
 #include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "dev/dev.h"
@@ -26,6 +25,7 @@ static_assert(sizeof(NvmeRegs) == 56);
 #define CAP_MQES(cap) ((cap) & 0xFFFF)
 #define CAP_DSTRD(cap) ((cap) >> 32 & 0xF)
 #define CAP_CSS(cap) ((cap) >> 37 & 0xFF)
+#define CAP_MPSMIN(cap) ((cap) >> 48 & 0xF)
 
 #define CAP_CSS_NO_IO (1 << 7)
 #define CAP_CSS_IO (1 << 6)
@@ -57,6 +57,17 @@ typedef union {
 		u64 prp2;
 		u32 cdw10[6];
 	} common;
+
+	struct {
+		u8 opc;
+		u8 flags;
+		u16 cid;
+		u32 nsid;
+		u32 unused0[2];
+		u64 mptr;
+		u64 unused1[2];
+		u32 unused2[6];
+	} flush;
 
 	struct {
 		u8 opc;
@@ -218,6 +229,7 @@ typedef struct {
 	NvmeRegs* regs;
 	u8 stride;
 	u32 max_queue_entries;
+	usize max_transfer_size;
 	NvmeQueue admin_queue;
 } NvmeController;
 
@@ -250,8 +262,8 @@ void nvme_init_queue(NvmeController* self, NvmeQueue* queue, u16 qid, u16 num_en
 	queue->phase = 1;
 }
 
-void nvme_queue_submit(NvmeQueue* self, NvmeCmd* cmd) {
-	self->sub_queue[self->sub_queue_head++] = *cmd;
+void nvme_queue_submit(NvmeQueue* self, NvmeCmd cmd) {
+	self->sub_queue[self->sub_queue_head++] = cmd;
 
 	if (self->sub_queue_head == self->size) {
 		self->sub_queue_head = 0;
@@ -260,8 +272,8 @@ void nvme_queue_submit(NvmeQueue* self, NvmeCmd* cmd) {
 	*self->sub_queue_tail_doorbell = self->sub_queue_head;
 }
 
-void nvme_queue_submit_and_wait(NvmeQueue* self, NvmeCmd* cmd) {
-	cmd->common.cid = self->cid++;
+u16 nvme_queue_submit_and_wait(NvmeQueue* self, NvmeCmd cmd) {
+	cmd.common.cid = self->cid++;
 	nvme_queue_submit(self, cmd);
 	u16 status;
 	while (true) {
@@ -270,8 +282,7 @@ void nvme_queue_submit_and_wait(NvmeQueue* self, NvmeCmd* cmd) {
 			break;
 		}
 	}
-
-	assert((status >> 1) == 0 && "nvme command failed");
+	status >>= 1;
 
 	++self->comp_queue_head;
 	if (self->comp_queue_head == self->size) {
@@ -280,6 +291,7 @@ void nvme_queue_submit_and_wait(NvmeQueue* self, NvmeCmd* cmd) {
 	}
 
 	*self->comp_queue_head_doorbell = self->comp_queue_head;
+	return status;
 }
 
 typedef struct {
@@ -426,7 +438,7 @@ void nvme_identify(NvmeController* self, NvmeIdentifyController* ident) {
 	cmd.identify.nsid = 0;
 	cmd.identify.prp1 = to_phys(ident);
 	cmd.identify.cns = IDENT_CNS_CONTROLLER;
-	nvme_queue_submit_and_wait(&self->admin_queue, &cmd);
+	nvme_queue_submit_and_wait(&self->admin_queue, cmd);
 }
 
 void nvme_identify_ns(NvmeController* self, u32 nsid, NvmeIdentifyNamespace* ident) {
@@ -435,33 +447,164 @@ void nvme_identify_ns(NvmeController* self, u32 nsid, NvmeIdentifyNamespace* ide
 	cmd.identify.nsid = nsid;
 	cmd.identify.prp1 = to_phys(ident);
 	cmd.identify.cns = IDENT_CNS_NAMESPACE;
-	nvme_queue_submit_and_wait(&self->admin_queue, &cmd);
+	nvme_queue_submit_and_wait(&self->admin_queue, cmd);
 }
 
 typedef struct {
 	NvmeQueue queue;
+	usize max_transfer_pages;
+	usize lba_size;
+	usize lba_count;
+	u64* prps;
+	u32 id;
 } NvmeNamespace;
 
 void nvme_ns_create_queues(NvmeController* controller, NvmeNamespace* ns, u16 qid) {
-	nvme_init_queue(controller, &ns->queue, qid, PAGE_SIZE / sizeof(NvmeCmd));
+	usize queue_entries = PAGE_SIZE / sizeof(NvmeCmd);
+
+	nvme_init_queue(controller, &ns->queue, qid, queue_entries);
 
 	NvmeCmd create_comp_queue_cmd = {};
 	create_comp_queue_cmd.create_io_comp_queue.opc = OP_CREATE_IO_COMP_QUEUE;
 	create_comp_queue_cmd.create_io_comp_queue.prp1 = to_phys((void*) ns->queue.comp_queue);
 	create_comp_queue_cmd.create_io_comp_queue.qid = qid;
-	create_comp_queue_cmd.create_io_comp_queue.qsize = PAGE_SIZE / sizeof(NvmeCmd) - 1;
+	create_comp_queue_cmd.create_io_comp_queue.qsize = queue_entries - 1;
 	create_comp_queue_cmd.create_io_comp_queue.queue_flags = QUEUE_FLAG_PC;
 	create_comp_queue_cmd.create_io_comp_queue.iv = 0;
-	nvme_queue_submit_and_wait(&controller->admin_queue, &create_comp_queue_cmd);
+	nvme_queue_submit_and_wait(&controller->admin_queue, create_comp_queue_cmd);
 
 	NvmeCmd create_sub_queue_cmd = {};
 	create_sub_queue_cmd.create_io_sub_queue.opc = OP_CREATE_IO_SUB_QUEUE;
 	create_sub_queue_cmd.create_io_sub_queue.prp1 = to_phys(ns->queue.sub_queue);
 	create_sub_queue_cmd.create_io_sub_queue.qid = qid;
 	create_sub_queue_cmd.create_io_sub_queue.cqid = qid;
-	create_sub_queue_cmd.create_io_sub_queue.qsize = PAGE_SIZE / sizeof(NvmeCmd) - 1;
+	create_sub_queue_cmd.create_io_sub_queue.qsize = queue_entries - 1;
 	create_sub_queue_cmd.create_io_sub_queue.queue_flags = QUEUE_FLAG_PC | SUB_QUEUE_FLAG_QPRIO_MED;
-	nvme_queue_submit_and_wait(&controller->admin_queue, &create_sub_queue_cmd);
+	nvme_queue_submit_and_wait(&controller->admin_queue, create_sub_queue_cmd);
+}
+
+u16 nvme_ns_rw(NvmeNamespace* self, void* buf, usize start_lba, usize count, bool write) {
+	// todo larger reads/writes
+	assert(count * self->lba_size <= PAGE_SIZE);
+
+	NvmeCmd rw_cmd = {};
+	rw_cmd.rw.opc = write ? IO_OP_WRITE : IO_OP_READ;
+	rw_cmd.rw.nsid = self->id;
+	rw_cmd.rw.prp1 = to_phys(buf);
+	rw_cmd.rw.slba = start_lba;
+	rw_cmd.rw.nlb = count - 1;
+	return nvme_queue_submit_and_wait(&self->queue, rw_cmd);
+}
+
+typedef struct {
+	char signature[8];
+	u32 revision;
+	u32 header_size;
+	u32 crc32;
+	u32 reserved;
+	u64 current_lba;
+	u64 backup_lba;
+	u64 first_usable_lba;
+	u64 last_usable_lba;
+	u8 guid[16];
+	u64 partition_list_start_lba;
+	u32 num_of_partitions;
+	u32 partition_entry_size;
+	u32 crc32_partition_list;
+} GptHeader;
+
+typedef struct {
+	u8 type_guid[16];
+	u8 guid[16];
+	u64 start_lba;
+	u64 end_lba;
+	u64 attributes;
+	u16 name[];
+} GptEntry;
+
+typedef struct {
+	u8 status;
+	u8 first_abs_sector_chs[3];
+	u8 type;
+	u8 last_abs_sector_chs[3];
+	u32 first_abs_sector_lba;
+	u32 num_of_sectors;
+} MbrEntry;
+
+bool gpt_verify_mbr(const MbrEntry mbr[4]) {
+	MbrEntry empty = {};
+	if (memcmp(&mbr[1], &empty, sizeof(MbrEntry)) != 0 ||
+		memcmp(&mbr[2], &empty, sizeof(MbrEntry)) != 0 ||
+		memcmp(&mbr[3], &empty, sizeof(MbrEntry)) != 0) {
+		return false;
+	}
+	if (mbr[0].status != 0 ||
+		mbr[0].first_abs_sector_chs[0] != 0 ||
+		mbr[0].first_abs_sector_chs[1] != 2 ||
+		mbr[0].first_abs_sector_chs[2] != 0) {
+		return false;
+	}
+	if (mbr[0].type != 0xEE ||
+		mbr[0].first_abs_sector_lba != 1) {
+		return false;
+	}
+	return true;
+}
+
+void nvme_enum_partition(NvmeNamespace* ns, GptEntry gpt_entry) {
+	Page* page = pmalloc(1);
+	assert(page);
+	void* virt = to_virt(page->phys);
+
+	assert(!nvme_ns_rw(ns, virt, gpt_entry.start_lba, 1, false));
+
+	pfree(page, 1);
+}
+
+void nvme_enum_partitions(NvmeNamespace* ns) {
+	Page* page = pmalloc(1);
+	assert(page);
+	void* virt = to_virt(page->phys);
+
+	assert(!nvme_ns_rw(ns, virt, 0, 1, false));
+	const MbrEntry* mbr_entries = offset(virt, const MbrEntry*, 0x1BE);
+	if (gpt_verify_mbr(mbr_entries)) {
+		kprintf("[kernel][nvme]: disk contains protective mbr\n");
+		assert(!nvme_ns_rw(ns, virt, 1, 1, false));
+
+		GptHeader gpt = *(const GptHeader*) virt;
+		if (strncmp(gpt.signature, "EFI PART", 8) != 0) {
+			kprintf("[kernel][nvme]: disk doesn't contain gpt\n");
+			pfree(page, 1);
+			return;
+		}
+
+		// todo
+		//assert(!nvme_ns_rw(ns, virt, gpt.partition_list_start_lba, gpt.num_of_partitions * sizeof(GptEntry) / ns->lba_size, false));
+		assert(!nvme_ns_rw(ns, virt, gpt.partition_list_start_lba, ALIGNUP(8 * sizeof(GptEntry), ns->lba_size) / ns->lba_size, false));
+
+		for (u32 i = 0; i < 8; ++i) {
+			const GptEntry* entry = offset(virt, const GptEntry*, i * gpt.partition_entry_size);
+			u8 empty_guid[16] = {};
+			if (memcmp(entry->guid, empty_guid, 16) == 0) {
+				continue;
+			}
+			usize name_len = gpt.partition_entry_size - sizeof(GptEntry);
+			kprintf("[kernel][nvme]: gpt entry '");
+			for (usize j = 0; j < name_len; ++j) {
+				u16 codepoint = entry->name[j];
+				if (codepoint == 0) {
+					break;
+				}
+				// todo properly convert and print
+				kprintf("%c", (char) codepoint);
+			}
+			kprintf("'\n");
+			nvme_enum_partition(ns, *entry);
+		}
+	}
+
+	pfree(page, 1);
 }
 
 void nvme_init_namespace(NvmeController* self, u32 nsid) {
@@ -477,30 +620,23 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 	}
 	usize lba_size = 1 << ident_ns->lbafs[fmt_index].lbads;
 	usize lba_count = ident_ns->nsze;
+	usize max_transfer_lbas = self->max_transfer_size / lba_size;
+	usize max_transfer_pages = (max_transfer_lbas * lba_size) / PAGE_SIZE;
 
 	NvmeNamespace* ns = (NvmeNamespace*) kmalloc(sizeof(NvmeNamespace));
 	assert(ns);
+	ns->id = nsid;
+	ns->max_transfer_pages = max_transfer_pages;
+	ns->lba_size = lba_size;
+	ns->lba_count = lba_count;
 
 	nvme_ns_create_queues(self, ns, nsid);
 	kprintf("[kernel][nvme]: successfully created io queues for ns %u\n", nsid);
 
 	kprintf("[kernel][nvme]: ns %u has %u blocks of size %u (total %uGB)\n", nsid, lba_count, lba_size, lba_count * lba_size / 1024 / 1024 / 1024);
-
-	u8* test_data = kmalloc(lba_size);
-	assert(test_data);
-
-	NvmeCmd read_cmd = {};
-	read_cmd.rw.opc = IO_OP_READ;
-	read_cmd.rw.nsid = nsid;
-	read_cmd.rw.prp1 = to_phys(test_data);
-	// starting lba
-	read_cmd.rw.slba = 0;
-	// Number of lbas - 1
-	read_cmd.rw.nlb = 0;
-	nvme_queue_submit_and_wait(&ns->queue, &read_cmd);
-
-	kfree(test_data, lba_size);
 	kfree(ident_ns, sizeof(NvmeIdentifyNamespace));
+
+	nvme_enum_partitions(ns);
 }
 
 static void nvme_init(PciHdr0* hdr) {
@@ -540,12 +676,23 @@ static void nvme_init(PciHdr0* hdr) {
 	memset(ident_controller, 0, sizeof(NvmeIdentifyController));
 	nvme_identify(self, ident_controller);
 	kprintf("[kernel][nvme]: controller ident success\n");
+	kprintf("[kernel][nvme]: controller model: %.40s\n", ident_controller->mn);
+
+	usize min_page_size = 1 << (12 + CAP_MPSMIN(regs->cap));
+	assert(min_page_size == PAGE_SIZE);
+
+	if (ident_controller->mdts) {
+		self->max_transfer_size = (1 << ident_controller->mdts) * min_page_size;
+	}
+	else {
+		self->max_transfer_size = 1024 * PAGE_SIZE;
+	}
 
 	NvmeCmd set_queue_count_cmd = {};
 	set_queue_count_cmd.features.opc = OP_SET_FEATURES;
 	set_queue_count_cmd.features.fid = FEAT_NUM_QUEUES;
 	set_queue_count_cmd.features.cdw11[0] = (4 - 1) | ((4 - 1) << 16);
-	nvme_queue_submit_and_wait(&self->admin_queue, &set_queue_count_cmd);
+	nvme_queue_submit_and_wait(&self->admin_queue, set_queue_count_cmd);
 	kprintf("[kernel][nvme]: set io queue count to 4\n");
 
 	// todo more than 1024 active namespaces
@@ -559,7 +706,7 @@ static void nvme_init(PciHdr0* hdr) {
 	active_ns_cmd.identify.nsid = 0;
 	active_ns_cmd.identify.cns = IDENT_CNS_ACTIVE_NS;
 	active_ns_cmd.identify.prp1 = to_phys(active_ns_list);
-	nvme_queue_submit_and_wait(&self->admin_queue, &active_ns_cmd);
+	nvme_queue_submit_and_wait(&self->admin_queue, active_ns_cmd);
 
 	for (u32 i = 0; i < MIN(ident_controller->nn, 1024); ++i) {
 		if (!active_ns_list[i]) {

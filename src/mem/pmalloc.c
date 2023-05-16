@@ -26,6 +26,8 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 	page->prev = NULL;
 	page->list_index = index;
 
+	usize final_i = index;
+
 	usize new_i = index;
 	while (new_i < FREELIST_COUNT) {
 		usize count = index_to_size(new_i);
@@ -51,16 +53,10 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 			}
 
 			Page* first_page = page < buddy_page ? page : buddy_page;
-
-			first_page->prev = NULL;
-			first_page->next = page_freelists[new_i + 1];
 			first_page->list_index = new_i + 1;
-			if (page_freelists[new_i + 1]) {
-				page_freelists[new_i + 1]->prev = first_page;
-			}
-			page_freelists[new_i + 1] = first_page;
 
 			page = first_page;
+			final_i = new_i + 1;
 		}
 		else {
 			break;
@@ -69,14 +65,12 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 		new_i += 1;
 	}
 
-	if (new_i == index) {
-		page->prev = NULL;
-		page->next = page_freelists[index];
-		if (page_freelists[index]) {
-			page_freelists[index]->prev = page;
-		}
-		page_freelists[index] = page;
+	page->prev = NULL;
+	page->next = page_freelists[final_i];
+	if (page_freelists[final_i]) {
+		page_freelists[final_i]->prev = page;
 	}
+	page_freelists[final_i] = page;
 }
 
 static Page* freelist_get_nonrecursive(usize index) {
