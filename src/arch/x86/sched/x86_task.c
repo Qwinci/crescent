@@ -47,16 +47,20 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 
 	X86Task* task = kmalloc(sizeof(X86Task));
 	if (!task) {
+		kprintf("[kernel][x86]: failed to allocate user task (out of memory)\n");
 		return NULL;
 	}
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
 	task->common.map = map;
+	bool new_vmem = false;
 	if (!vmem) {
 		vmem = (VMem*) kmalloc(sizeof(VMem));
+		assert(vmem);
 		memset(vmem, 0, sizeof(VMem));
 		task->common.user_vmem = vmem;
 		vm_user_init(&task->common, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
+		new_vmem = true;
 	}
 	else {
 		task->common.user_vmem = vmem;
@@ -64,8 +68,13 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
 	if (!kernel_stack) {
-		vm_user_free(&task->common);
+		kprintf("[kernel][x86]: failed to allocate kernel stack for user task (out of memory)\n");
+		if (new_vmem) {
+			vm_user_free(&task->common);
+			kfree(vmem, sizeof(VMem));
+		}
 		arch_destroy_map(task->common.map);
+		kfree(task, sizeof(X86Task));
 		return NULL;
 	}
 	memset(kernel_stack, 0, KERNEL_STACK_SIZE);
@@ -74,9 +83,14 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 	u8* stack;
 	u8* user_stack = (u8*) vm_user_alloc_backed(&task->common, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);
 	if (!user_stack) {
+		kprintf("[kernel][x86]: failed to allocate user stack (out of memory)\n");
 		kfree(kernel_stack, KERNEL_STACK_SIZE);
-		vm_user_free(&task->common);
+		if (new_vmem) {
+			vm_user_free(&task->common);
+			kfree(vmem, sizeof(VMem));
+		}
 		arch_destroy_map(task->common.map);
+		kfree(task, sizeof(X86Task));
 		return NULL;
 	}
 	u8* stack_base = stack;
@@ -109,7 +123,12 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 }
 
 Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent, bool detach) {
-	return arch_create_user_task_with_map(name, fn, arg, parent, x86_create_user_map(), NULL, detach);
+	void* map = x86_create_user_map();
+	if (!map) {
+		kprintf("[kernel][x86]: failed to create user map (out of memory)\n");
+		return NULL;
+	}
+	return arch_create_user_task_with_map(name, fn, arg, parent, map, NULL, detach);
 }
 
 void arch_set_user_task_fn(Task* task, void (*fn)()) {

@@ -11,7 +11,7 @@
 PRegion* pregions = NULL;
 PRegion* pregions_end = NULL;
 
-static Page* freelists[FREELIST_COUNT] = {};
+Page* page_freelists[FREELIST_COUNT] = {};
 
 static usize index_to_size(usize index) {
 	return 1 << index;
@@ -24,6 +24,7 @@ static usize size_to_index(usize size) {
 static void freelist_insert_nonrecursive(usize index, Page* page) {
 	page->type = PAGE_FREE;
 	page->prev = NULL;
+	page->list_index = index;
 
 	usize new_i = index;
 	while (new_i < FREELIST_COUNT) {
@@ -38,12 +39,12 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 		}
 
 		Page* buddy_page = &page->region->pages[buddy_index];
-		if (buddy_page->type == PAGE_FREE) {
+		if (buddy_page->type == PAGE_FREE && buddy_page->list_index == page->list_index) {
 			if (buddy_page->prev) {
 				buddy_page->prev->next = buddy_page->next;
 			}
 			else {
-				freelists[new_i] = buddy_page->next;
+				page_freelists[new_i] = buddy_page->next;
 			}
 			if (buddy_page->next) {
 				buddy_page->next->prev = buddy_page->prev;
@@ -52,11 +53,12 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 			Page* first_page = page < buddy_page ? page : buddy_page;
 
 			first_page->prev = NULL;
-			first_page->next = freelists[new_i + 1];
-			if (freelists[new_i + 1]) {
-				freelists[new_i + 1]->prev = first_page;
+			first_page->next = page_freelists[new_i + 1];
+			first_page->list_index = new_i + 1;
+			if (page_freelists[new_i + 1]) {
+				page_freelists[new_i + 1]->prev = first_page;
 			}
-			freelists[new_i + 1] = first_page;
+			page_freelists[new_i + 1] = first_page;
 
 			page = first_page;
 		}
@@ -69,33 +71,34 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 
 	if (new_i == index) {
 		page->prev = NULL;
-		page->next = freelists[index];
-		if (freelists[index]) {
-			freelists[index]->prev = page;
+		page->next = page_freelists[index];
+		if (page_freelists[index]) {
+			page_freelists[index]->prev = page;
 		}
-		freelists[index] = page;
+		page_freelists[index] = page;
 	}
 }
 
 static Page* freelist_get_nonrecursive(usize index) {
-	if (!freelists[index]) {
+	if (!page_freelists[index]) {
 		if (index + 1 == FREELIST_COUNT) {
 			return NULL;
 		}
 
 		usize new_i = index + 1;
 		while (new_i < FREELIST_COUNT) {
-			if (!freelists[new_i]) {
+			if (!page_freelists[new_i]) {
 				new_i += 1;
 				continue;
 			}
 
-			Page* page = freelists[new_i];
-			freelists[new_i] = page->next;
+			Page* page = page_freelists[new_i];
+			page_freelists[new_i] = page->next;
 			if (page->next) {
 				page->next->prev = NULL;
 			}
 			page->type = PAGE_USED;
+			page->list_index = index;
 
 			PRegion* region = page->region;
 
@@ -106,11 +109,12 @@ static Page* freelist_get_nonrecursive(usize index) {
 				Page* second = &region->pages[page_num + size / 2];
 
 				second->prev = NULL;
-				second->next = freelists[i - 1];
-				if (freelists[i - 1]) {
-					freelists[i - 1]->prev = second;
+				second->next = page_freelists[i - 1];
+				second->list_index = i - 1;
+				if (page_freelists[i - 1]) {
+					page_freelists[i - 1]->prev = second;
 				}
-				freelists[i - 1] = second;
+				page_freelists[i - 1] = second;
 			}
 
 			return page;
@@ -119,8 +123,8 @@ static Page* freelist_get_nonrecursive(usize index) {
 		return NULL;
 	}
 
-	Page* page = freelists[index];
-	freelists[index] = page->next;
+	Page* page = page_freelists[index];
+	page_freelists[index] = page->next;
 	if (page->next) {
 		page->next->prev = NULL;
 	}
@@ -165,9 +169,12 @@ void pmalloc_add_mem(void* base, usize size) {
 	}
 
 	for (usize i = 0; i < used_pages; ++i) {
+		region->pages[i].prev = NULL;
+		region->pages[i].next = NULL;
 		region->pages[i].phys = (usize) base + i * PAGE_SIZE;
 		region->pages[i].region = region;
 		region->pages[i].type = PAGE_USED;
+		region->pages[i].list_index = 0;
 	}
 
 	usize free_pages = page_count - used_pages;
@@ -182,10 +189,8 @@ void pmalloc_add_mem(void* base, usize size) {
 		region->pages[i].phys = (usize) base + i * PAGE_SIZE;
 		region->pages[i].region = region;
 		region->pages[i].type = PAGE_FREE;
+		region->pages[i].list_index = 0;
 	}
-
-	region->pages[used_pages - 1].next = NULL;
-	region->pages[0].prev = NULL;
 
 	usize i = used_pages;
 	while (i < page_count) {
@@ -197,11 +202,12 @@ void pmalloc_add_mem(void* base, usize size) {
 
 		Page* page = &region->pages[i];
 		page->prev = NULL;
-		page->next = freelists[index];
+		page->next = page_freelists[index];
+		page->list_index = index;
 		if (page->next) {
 			page->next->prev = page;
 		}
-		freelists[index] = page;
+		page_freelists[index] = page;
 
 		i += count;
 		free_pages -= count;

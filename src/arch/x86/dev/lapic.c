@@ -52,7 +52,7 @@ void ipi_handler(void*, void*) {
 void lapic_ipi(u8 id, LapicMsg msg) {
 	spinlock_lock(&msg_lock);
 	if (!ipi_vec) {
-		ipi_vec = arch_alloc_int((IntHandler) ipi_handler, NULL);
+		ipi_vec = arch_alloc_int(1, (IntHandler) ipi_handler, NULL);
 		assert(ipi_vec);
 	}
 	g_msg = msg;
@@ -71,7 +71,7 @@ void lapic_ipi(u8 id, LapicMsg msg) {
 void lapic_ipi_all(LapicMsg msg) {
 	spinlock_lock(&msg_lock);
 	if (!ipi_vec) {
-		ipi_vec = arch_alloc_int((IntHandler) ipi_handler, NULL);
+		ipi_vec = arch_alloc_int(1, (IntHandler) ipi_handler, NULL);
 		assert(ipi_vec);
 	}
 	g_msg = msg;

@@ -88,14 +88,14 @@ static void lapic_timer_calibrate(X86Cpu* cpu) {
 	lapic_write(LAPIC_REG_DIV_CONF, 3);
 
 	if (!timer_vec) {
-		timer_vec = arch_alloc_int(tmp_handler, NULL);
+		timer_vec = arch_alloc_int(1, tmp_handler, NULL);
 		assert(timer_vec && "failed to allocate timer interrupt");
 	}
 
 	lapic_write(LAPIC_REG_LVT_TIMER, timer_vec | LAPIC_TIMER_ONESHOT);
 	lapic_write(LAPIC_REG_INIT_COUNT, 0xFFFFFFFF);
 
-	udelay(10 * 1000);
+	udelay(10 * US_IN_MS);
 
 	lapic_write(LAPIC_REG_LVT_TIMER, LAPIC_INT_MASKED);
 	usize ticks_in_1s = (0xFFFFFFFF - lapic_read(LAPIC_REG_CURR_COUNT)) * 16 * 100;

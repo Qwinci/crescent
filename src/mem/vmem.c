@@ -276,6 +276,7 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 		void* min,
 		void* max,
 		VMFlags flags) {
+	assert(self);
 	size = ALIGNUP(size, self->quantum);
 
 	ASSERT(phase == 0 && "phase is not implemented");

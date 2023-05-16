@@ -13,8 +13,9 @@ typedef struct Page {
 		PAGE_FREE,
 		PAGE_USED
 	} type;
+	u8 list_index;
 	union {
-		char pad[7];
+		char pad[6];
 	};
 } Page;
 

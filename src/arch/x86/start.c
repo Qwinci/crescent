@@ -5,6 +5,7 @@
 #include "arch/x86/interrupts/gdt.h"
 #include "interrupts/idt.h"
 #include "limine/limine.h"
+#include "stdio.h"
 #include <stddef.h>
 
 extern void kmain();
@@ -40,5 +41,5 @@ static volatile struct limine_rsdp_request RSDP_REQUEST = {
 	}
 
 	kmain();
-	while (true);
+	panic("kstart: entered unreachable code\n");
 }

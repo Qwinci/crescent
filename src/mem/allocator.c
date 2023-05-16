@@ -33,6 +33,9 @@ static void freelist_insert_nonrecursive(usize index, void* ptr) {
 
 	node->next = freelists[index];
 	freelists[index] = node;
+	if (node->next) {
+		node->next->prev = node;
+	}
 
 	usize size = index_to_size(index);
 
@@ -56,10 +59,14 @@ static void freelist_insert_nonrecursive(usize index, void* ptr) {
 		if (n->prev) {
 			n->prev->next = n->next;
 		}
+		else {
+			freelists[index] = n->next;
+		}
 		if (n->next) {
 			n->next->prev = n->prev;
 		}
 	}
+
 	pfree(page_from_addr(to_phys(bitmap)), 1);
 }
 
@@ -85,7 +92,11 @@ static void* freelist_get_nonrecursive(usize index, Page** new_page) {
 
 		for (usize i = start / size; i < count; ++i) {
 			Node* node = (Node*) offset(virt, void*, i * size);
+			node->prev = NULL;
 			node->next = freelists[index];
+			if (node->next) {
+				node->next->prev = node;
+			}
 			freelists[index] = node;
 		}
 	}
@@ -104,6 +115,13 @@ void* kmalloc(usize size) {
 	if (!size) {
 		return NULL;
 	}
+	else if (size == PAGE_SIZE) {
+		Page* page = pmalloc(1);
+		if (!page) {
+			return NULL;
+		}
+		return to_virt(page->phys);
+	}
 	else if (size >= 2048) {
 		return vm_kernel_alloc_backed(ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE, PF_READ | PF_WRITE | PF_EXEC);
 	}
@@ -119,12 +137,17 @@ void* kmalloc(usize size) {
 }
 
 void kfree(void* ptr, usize size) {
-	if (!ptr) {
+	if (!ptr || !size) {
+		return;
+	}
+	else if (size == PAGE_SIZE) {
+		pfree(page_from_addr(to_phys(ptr)), 1);
 		return;
 	}
 	if (size >= 2048) {
 		return vm_kernel_dealloc_backed(ptr, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
 	}
+
 	usize index = size_to_index(size);
 	if (size & (size - 1)) {
 		index += 1;

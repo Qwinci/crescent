@@ -2,6 +2,7 @@
 #include "acpi/acpi.h"
 #include "arch/map.h"
 #include "arch/misc.h"
+#include "assert.h"
 #include "mem/utils.h"
 
 typedef struct [[gnu::packed]] {
@@ -38,8 +39,9 @@ bool hpet_init() {
 		return false;
 	}
 
+	assert(hdr->base.addr_space_id == ACPI_ADDR_SPACE_SYS_MEM);
 	base = (usize) to_virt(hdr->base.address);
-	arch_map_page(KERNEL_MAP, base, hdr->base.address, PF_READ | PF_WRITE | PF_NC);
+	arch_map_page(KERNEL_MAP, base, hdr->base.address, PF_READ | PF_WRITE | PF_NC | PF_SPLIT);
 
 	u64 cap = reg_read64(REG_CAP);
 	if ((cap & CAP_COUNTER_SIZE) == 0) {

@@ -34,13 +34,18 @@ usize arch_get_hugepage_size() {
 
 void* x86_create_user_map() {
 	Page* page = pmalloc(1);
-	assert(page);
+	if (!page) {
+		return NULL;
+	}
 	u64* virt = (u64*) to_virt(page->phys);
 	memset(virt, 0, 256 * 8);
 	memcpy(virt + 256, to_virt(((X86PageMap*) KERNEL_MAP)->page->phys + 256 * 8), 256 * 8);
 
 	X86PageMap* map = kmalloc(sizeof(X86PageMap));
-	assert(map);
+	if (!map) {
+		pfree(page, 1);
+		return NULL;
+	}
 	map->ref_count = 0;
 	map->page = page;
 
@@ -51,6 +56,7 @@ void* arch_create_map() {
 	Page* page = pmalloc(1);
 	assert(page);
 	u64* virt = (u64*) to_virt(page->phys);
+	memset(virt, 0, PAGE_SIZE);
 	for (usize i = 256; i < 512; ++i) {
 		Page* frame_phys = pmalloc(1);
 		assert(frame_phys);
@@ -160,8 +166,6 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 
 	u64* pdp;
 	if (pml4[pml4_offset] & X86_PF_P) {
-		pml4[pml4_offset] &= ~PAGE_FLAG_MASK;
-		pml4[pml4_offset] |= x86_generic_flags;
 		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
 	}
 	else {
@@ -175,8 +179,6 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 
 	u64* pd;
 	if (pdp[pdp_offset] & X86_PF_P) {
-		pdp[pdp_offset] &= ~PAGE_FLAG_MASK;
-		pdp[pdp_offset] |= x86_generic_flags;
 		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
 	}
 	else {
@@ -217,8 +219,6 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 
 	u64* pt;
 	if (pd[pd_offset] & X86_PF_P) {
-		pd[pd_offset] &= ~PAGE_FLAG_MASK;
-		pd[pd_offset] |= x86_generic_flags;
 		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
 	}
 	else {

@@ -8,9 +8,9 @@ typedef struct {
 	void* userdata;
 } HandlerData;
 
-u32 arch_alloc_int(IntHandler handler, void* userdata);
+u32 arch_alloc_int(usize count, IntHandler handler, void* userdata);
 HandlerData arch_set_handler(u32 i, IntHandler handler, void* userdata);
-void arch_dealloc_int(u32 i);
+void arch_dealloc_int(usize count, u32 i);
 
 typedef enum : u64 {
 	INT_PRIO_2 = 2,

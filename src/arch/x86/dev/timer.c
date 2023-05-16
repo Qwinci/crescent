@@ -54,7 +54,3 @@ usize arch_get_ns_since_boot() {
 	}
 	return 0;
 }
-
-void arch_create_timer(usize time, void (*fn)()) {
-
-}
