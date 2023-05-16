@@ -126,6 +126,7 @@ void* pci_get_space(u16 seg, u16 bus, u16 dev, u16 func) {
 
 void pci_init() {
 	const Mcfg* mcfg = (const Mcfg*) acpi_get_table("MCFG");
+	assert(mcfg);
 	g_mcfg = mcfg;
 
 	u16 count = (mcfg->hdr.length - sizeof(Mcfg)) / sizeof(McfgEntry);

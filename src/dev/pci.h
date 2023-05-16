@@ -41,7 +41,7 @@ static_assert(sizeof(PciCommonHdr) == 16);
 
 typedef struct {
 	PciCommonHdr common;
-	u32 bars[6]; // 24
+	volatile u32 bars[6]; // 24
 	u32 cardbus_cis_ptr; // 4
 	u16 subsystem_vendor_id; // 2
 	u16 subsystem_id; // 2
@@ -54,3 +54,65 @@ typedef struct {
 	u8 max_latency; // 1
 } PciHdr0;
 static_assert(sizeof(PciHdr0) == sizeof(PciCommonHdr) + 48);
+
+typedef struct Cpu Cpu;
+
+typedef enum : u8 {
+	PCI_CAP_POWER_MANAGEMENT = 1,
+	PCI_CAP_AGP = 2,
+	PCI_CAP_VPD = 3,
+	PCI_CAP_SLOT_IDENT = 4,
+	PCI_CAP_MSI = 5,
+	PCI_CAP_HOT_SWAP = 6,
+	PCI_CAP_PCI_X = 7,
+	PCI_CAP_HYPER_TRANSPORT = 8,
+	PCI_CAP_VENDOR = 9,
+	PCI_CAP_DEBUG = 10,
+	PCI_CAP_CENTRAL_RESOURCE_CONTROL = 11,
+	PCI_CAP_HOT_PLUG = 12,
+	PCI_CAP_BRIDGE_SUBSYSTEM_VENDOR_ID = 13,
+	PCI_CAP_AGP_8X = 14,
+	PCI_CAP_SECURE_DEVICE = 15,
+	PCI_CAP_PCI_EXPRESS = 16,
+	PCI_CAP_MSIX = 17
+} PciCap;
+
+typedef struct {
+	u32 msg_addr_low;
+	u32 msg_addr_high;
+	u32 msg_data;
+	u32 vector_ctrl;
+} PciMsiXEntry;
+
+typedef struct {
+	u8 id;
+	u8 next;
+	u16 msg_control;
+	u32 table_off_bir;
+	u32 pba_off_bir;
+} PciMsiXCap;
+
+typedef struct {
+	u8 id;
+	u8 next;
+	u16 msg_control;
+	u32 msg_low;
+	u32 msg_high;
+	u16 msg_data;
+	u16 reserved;
+	volatile u32 mask;
+	volatile u32 pending;
+} PciMsiCap;
+
+void pci_msi_set(PciMsiCap* self, bool enable, u8 vec, Cpu* cpu);
+void pci_msix_set_entry(PciMsiXEntry* self, bool mask, u8 vec, Cpu* cpu);
+
+void pci_set_irq(PciHdr0* hdr, u8 num, u8 vec, Cpu* cpu);
+void pci_enable_irqs(PciHdr0* hdr);
+void pci_disable_irqs(PciHdr0* hdr);
+
+void* pci_get_cap(PciHdr0* hdr, PciCap cap, usize index);
+bool pci_is_io_space(PciHdr0* hdr, u8 bar);
+u32 pci_get_io_bar(PciHdr0* hdr, u8 bar);
+usize pci_map_bar(PciHdr0* hdr, u8 bar);
+usize pci_get_bar_size(PciHdr0* hdr, u8 bar);

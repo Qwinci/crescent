@@ -8,10 +8,23 @@ static u32 used_ints[256 / 32 - 1] = {};
 
 static HandlerData handlers[256] = {};
 
-u32 arch_alloc_int(IntHandler handler, void* userdata) {
+u32 arch_alloc_int(usize count, IntHandler handler, void* userdata) {
 	for (u16 i = 0; i < 256 - 32; ++i) {
 		if (!(used_ints[i / 32] & 1U << (i % 32))) {
-			used_ints[i / 32] |= 1U << (i % 32);
+			bool continue_outer = false;
+			usize free_count = 1;
+			for (u16 j = i + 1; j < 256 - 32 && free_count < count; ++j, ++free_count) {
+				if (used_ints[j / 32] & 1U << (j % 32)) {
+					continue_outer = true;
+					break;
+				}
+			}
+			if (continue_outer) {
+				continue;
+			}
+			for (usize j = 0; j < count; ++j) {
+				used_ints[(i + j) / 32] |= 1U << ((i + j) % 32);
+			}
 			handlers[i + 32].handler = handler;
 			handlers[i + 32].userdata = userdata;
 			return i + 32;
@@ -30,10 +43,12 @@ HandlerData arch_set_handler(u32 i, IntHandler handler, void* userdata) {
 	return old;
 }
 
-void arch_dealloc_int(u32 i) {
-	used_ints[(i - 32) / 32] &= ~(1 << ((i - 32) % 32));
-	handlers[i].handler = NULL;
-	handlers[i].userdata = NULL;
+void arch_dealloc_int(usize count, u32 i) {
+	for (usize j = 0; j < count; ++j) {
+		used_ints[(i + j - 32) / 32] &= ~(1 << ((i + j - 32) % 32));
+		handlers[i + j].handler = NULL;
+		handlers[i + j].userdata = NULL;
+	}
 }
 
 typedef struct Frame {
