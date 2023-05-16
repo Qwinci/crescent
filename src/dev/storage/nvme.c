@@ -274,6 +274,9 @@ void nvme_queue_submit(NvmeQueue* self, NvmeCmd cmd) {
 
 u16 nvme_queue_submit_and_wait(NvmeQueue* self, NvmeCmd cmd) {
 	cmd.common.cid = self->cid++;
+	if (self->cid == self->size) {
+		self->cid = 0;
+	}
 	nvme_queue_submit(self, cmd);
 	u16 status;
 	while (true) {
@@ -455,7 +458,8 @@ typedef struct {
 	usize max_transfer_pages;
 	usize lba_size;
 	usize lba_count;
-	u64* prps;
+	usize prp_list_count;
+	u64** prp_list_pages;
 	u32 id;
 } NvmeNamespace;
 
@@ -463,6 +467,22 @@ void nvme_ns_create_queues(NvmeController* controller, NvmeNamespace* ns, u16 qi
 	usize queue_entries = PAGE_SIZE / sizeof(NvmeCmd);
 
 	nvme_init_queue(controller, &ns->queue, qid, queue_entries);
+
+	usize max_prp_list_count = ALIGNUP(ns->max_transfer_pages, PAGE_SIZE / 8) / (PAGE_SIZE / 8);
+
+	ns->prp_list_count = max_prp_list_count;
+	ns->prp_list_pages = kmalloc(max_prp_list_count * ns->queue.size * sizeof(u64*));
+	assert(ns->prp_list_pages);
+
+	for (usize cmd = 0; cmd < ns->queue.size; ++cmd) {
+		for (usize i = 0; i < max_prp_list_count; ++i) {
+			Page* page = pmalloc(1);
+			assert(page);
+			u64* virt = (u64*) to_virt(page->phys);
+			memset(virt, 0, PAGE_SIZE);
+			ns->prp_list_pages[cmd + i] = virt;
+		}
+	}
 
 	NvmeCmd create_comp_queue_cmd = {};
 	create_comp_queue_cmd.create_io_comp_queue.opc = OP_CREATE_IO_COMP_QUEUE;
@@ -484,15 +504,60 @@ void nvme_ns_create_queues(NvmeController* controller, NvmeNamespace* ns, u16 qi
 }
 
 u16 nvme_ns_rw(NvmeNamespace* self, void* buf, usize start_lba, usize count, bool write) {
-	// todo larger reads/writes
-	assert(count * self->lba_size <= PAGE_SIZE);
+	usize start_phys = to_phys_generic(buf);
+
+	bool use_prp2 = false;
+	bool use_prp_list = false;
+	usize first_prp_list_phys = 0;
+
+	usize total_size = count * self->lba_size;
+
+	usize page_boundaries = (((usize) start_phys & (PAGE_SIZE - 1)) ? 1 : 0) + total_size / PAGE_SIZE;
+
+	if (page_boundaries > 0 && page_boundaries < 3) {
+		use_prp2 = true;
+	}
+	else if (page_boundaries > 2) {
+		usize prp_index = 0;
+		usize prp_list_index = 0;
+		u64* prp_list = self->prp_list_pages[self->prp_list_count * self->queue.cid + prp_list_index++];
+		first_prp_list_phys = to_phys(prp_list);
+
+		prp_list[prp_index++] = start_phys;
+		usize orig_start_phys = start_phys;
+		start_phys = ALIGNDOWN(start_phys + PAGE_SIZE, PAGE_SIZE);
+		for (usize prp_start = start_phys; prp_start < orig_start_phys + total_size; prp_start += PAGE_SIZE) {
+			prp_list[prp_index++] = prp_start;
+			if (prp_index == PAGE_SIZE / 8 - 1) {
+				u64* next_prp_list = self->prp_list_pages[self->prp_list_count * self->queue.cid + prp_list_index++];
+
+				prp_list[prp_index] = to_phys(next_prp_list);
+
+				prp_index = 0;
+				prp_list = next_prp_list;
+			}
+		}
+
+		use_prp_list = true;
+	}
 
 	NvmeCmd rw_cmd = {};
 	rw_cmd.rw.opc = write ? IO_OP_WRITE : IO_OP_READ;
 	rw_cmd.rw.nsid = self->id;
-	rw_cmd.rw.prp1 = to_phys(buf);
 	rw_cmd.rw.slba = start_lba;
 	rw_cmd.rw.nlb = count - 1;
+
+	if (use_prp2) {
+		rw_cmd.rw.prp1 = to_phys_generic(buf);
+		rw_cmd.rw.prp2 = ALIGNDOWN(to_phys_generic(buf), PAGE_SIZE) + PAGE_SIZE;
+	}
+	else if (use_prp_list) {
+		rw_cmd.rw.prp2 = first_prp_list_phys;
+	}
+	else {
+		rw_cmd.rw.prp1 = to_phys_generic(buf);
+	}
+
 	return nvme_queue_submit_and_wait(&self->queue, rw_cmd);
 }
 
@@ -635,6 +700,11 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 
 	kprintf("[kernel][nvme]: ns %u has %u blocks of size %u (total %uGB)\n", nsid, lba_count, lba_size, lba_count * lba_size / 1024 / 1024 / 1024);
 	kfree(ident_ns, sizeof(NvmeIdentifyNamespace));
+
+	usize max_transfer = ns->max_transfer_pages * PAGE_SIZE;
+	void* buffer = kmalloc(max_transfer);
+	assert(buffer);
+	assert(!nvme_ns_rw(ns, offset(buffer, void*, 0), 0, (max_transfer) / ns->lba_size, false));
 
 	nvme_enum_partitions(ns);
 }

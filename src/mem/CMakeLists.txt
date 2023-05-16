@@ -3,4 +3,5 @@ target_sources(crescent PRIVATE
         page.c
         vmem.c
         vm.c
-        allocator.c)
+        allocator.c
+        utils.c)

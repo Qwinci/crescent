@@ -39,3 +39,4 @@ void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags);
 void arch_user_unmap_page(Task* task, usize virt, bool dealloc);
 
 extern void* KERNEL_MAP;
+extern void* CUR_MAP;

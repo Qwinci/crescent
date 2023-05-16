@@ -317,6 +317,7 @@ dealloc_huge:
 usize arch_virt_to_phys(void* map, usize virt) {
 	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
 
+	u64 p_offset = virt & 0xFFF;
 	virt >>= 12;
 	u64 pt_offset = virt & 0x1FF;
 	virt >>= 9;
@@ -354,11 +355,13 @@ usize arch_virt_to_phys(void* map, usize virt) {
 		return 0;
 	}
 
-	return pt[pt_offset] & PAGE_ADDR_MASK;
+	return (pt[pt_offset] & PAGE_ADDR_MASK) + p_offset;
 }
 
 void arch_use_map(void* map) {
 	__asm__ volatile("mov cr3, %0" : : "r"(((X86PageMap*) map)->page->phys) : "memory");
+	CUR_MAP = map;
 }
 
 void* KERNEL_MAP = NULL;
+void* CUR_MAP = NULL;

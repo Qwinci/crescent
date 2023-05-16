@@ -11,5 +11,7 @@ static inline usize to_phys(void* virt) {
 	return (usize) virt - HHDM_OFFSET;
 }
 
+usize to_phys_generic(void* virt);
+
 #define ALIGNUP(value, align) (((value) + ((align) - 1)) & ~((align) - 1))
 #define ALIGNDOWN(value, align) ((value) & ~((align) - 1))

@@ -5,6 +5,7 @@
 #include "mem/vm.h"
 
 usize HHDM_OFFSET = 0;
+usize HHDM_END = 0;
 
 static volatile struct limine_memmap_request MMAP_REQUEST = {
 	.id = LIMINE_MEMMAP_REQUEST
@@ -40,6 +41,8 @@ void x86_init_mem() {
 	usize max_phys = max_phys_entry->base + max_phys_entry->length;
 
 	usize aligned_max_phys = ALIGNUP(max_phys, SIZE_2MB);
+
+	HHDM_END = HHDM_OFFSET + aligned_max_phys;
 
 	vm_kernel_init(HHDM_OFFSET + aligned_max_phys, 0xFFFFFFFF80000000 - (HHDM_OFFSET + aligned_max_phys));
 
