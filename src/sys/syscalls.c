@@ -21,8 +21,12 @@ __attribute__((used)) void* syscall_handlers[] = {
 };
 
 #define E_DETACHED (-1)
+#define E_ARG (-2)
 
 int sys_wait_thread(Task* thread) {
+	if (!thread) {
+		return E_ARG;
+	}
 	if (thread->detached) {
 		return E_DETACHED;
 	}

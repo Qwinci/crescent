@@ -406,7 +406,7 @@ static void create_kernel_tasks(bool bsp) {
 	usize inc = (SCHED_SLICE_MAX_US - SCHED_SLICE_MIN_US) / SCHED_MAX_LEVEL;
 
 	for (usize i = 0; i < SCHED_MAX_LEVEL; ++i) {
-		cpu->sched_levels[i].slice_us = (SCHED_MAX_LEVEL - 1) * inc;
+		cpu->sched_levels[i].slice_us = (SCHED_MAX_LEVEL - i) * inc;
 	}
 }
 

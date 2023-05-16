@@ -21,6 +21,7 @@
 	ElfInfo info = elf_get_info(user_file.base);
 
 	Task* test_user = arch_create_user_task("basic", NULL, NULL, NULL, true);
+	assert(test_user);
 
 	void* mem;
 	void* user_mem = vm_user_alloc_backed(
