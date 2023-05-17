@@ -1,5 +1,6 @@
 #include "gpt.h"
 #include "assert.h"
+#include "dev/storage/fs/fat.h"
 #include "mbr.h"
 #include "mem/allocator.h"
 #include "mem/utils.h"
@@ -76,6 +77,8 @@ bool gpt_enum_partitions(Storage* storage) {
 		return false;
 	}
 
+	kfree(mbr, storage->blk_size);
+
 	usize gpt_list_blocks = ALIGNUP(gpt->num_of_partitions * gpt->partition_entry_size, storage->blk_size) / storage->blk_size;
 	GptEntry* partition_entries = kmalloc(ALIGNUP(gpt->num_of_partitions * gpt->partition_entry_size, storage->blk_size));
 	assert(partition_entries);
@@ -99,7 +102,7 @@ bool gpt_enum_partitions(Storage* storage) {
 		}
 
 		usize name_len = gpt->partition_entry_size - sizeof(GptEntry);
-		kprintf("[kernel][nvme]: gpt entry '");
+		kprintf("[kernel][fs][gpt]: gpt entry '");
 		for (usize j = 0; j < name_len; ++j) {
 			u16 codepoint = entry->name[j];
 			if (codepoint == 0) {
@@ -109,7 +112,16 @@ bool gpt_enum_partitions(Storage* storage) {
 			kprintf("%c", (char) codepoint);
 		}
 		kprintf("'\n");
+
+		if (entry->start_lba >= storage->blk_count || entry->start_lba >= entry->end_lba) {
+			kprintf("[kernel][fs][gpt]: gpt entry is invalid\n");
+			continue;
+		}
+
+		fat_enum_partition(storage, entry->start_lba, entry->end_lba);
 	}
+
+	kfree(partition_entries, ALIGNUP(gpt->num_of_partitions * gpt->partition_entry_size, storage->blk_size));
 
 	return true;
 }

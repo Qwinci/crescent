@@ -267,6 +267,7 @@ void nvme_init_queue(NvmeController* self, NvmeQueue* queue, u16 qid, u16 num_en
 	queue->qid = qid;
 	queue->size = num_entries;
 	queue->phase = 1;
+	queue->cid = 0;
 }
 
 void nvme_queue_submit(NvmeQueue* self, NvmeCmd cmd) {
@@ -508,6 +509,7 @@ void nvme_ns_create_queues(NvmeController* controller, NvmeNamespace* ns, u16 qi
 	ns->prp_list_count = max_prp_list_count;
 	ns->prp_list_pages = kmalloc(max_prp_list_count * ns->queue.size * sizeof(u64*));
 	assert(ns->prp_list_pages);
+	memset(ns->prp_list_pages, 0, max_prp_list_count * ns->queue.size * sizeof(u64*));
 
 	for (usize cmd = 0; cmd < ns->queue.size; ++cmd) {
 		for (usize i = 0; i < max_prp_list_count; ++i) {
@@ -515,7 +517,7 @@ void nvme_ns_create_queues(NvmeController* controller, NvmeNamespace* ns, u16 qi
 			assert(page);
 			u64* virt = (u64*) to_virt(page->phys);
 			memset(virt, 0, PAGE_SIZE);
-			ns->prp_list_pages[cmd + i] = virt;
+			ns->prp_list_pages[cmd * max_prp_list_count + i] = virt;
 		}
 	}
 
@@ -542,20 +544,36 @@ u16 nvme_ns_rw(NvmeNamespace* self, void* buf, usize start_lba, usize count, boo
 
 bool nvme_write(Storage* storage_self, void* buf, usize start_blk, usize count) {
 	NvmeNamespace* self = container_of(storage_self, NvmeNamespace, storage);
-	if (count > self->max_transfer_pages * PAGE_SIZE / self->lba_size) {
+	if (start_blk >= self->lba_count) {
 		return false;
 	}
-	u16 status = nvme_ns_rw(self, buf, start_blk, count, true);
-	return status == 0;
+
+	for (usize i = 0; i < count; i += self->storage.max_transfer_blk) {
+		usize write_count = MIN(count - i, self->storage.max_transfer_blk);
+		u16 status = nvme_ns_rw(self, offset(buf, void*, i * self->lba_size), start_blk + i, write_count, true);
+		if (status) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool nvme_read(Storage* storage_self, void* buf, usize start_blk, usize count) {
 	NvmeNamespace* self = container_of(storage_self, NvmeNamespace, storage);
-	if (count > self->max_transfer_pages * PAGE_SIZE / self->lba_size) {
+	if (start_blk >= self->lba_count) {
 		return false;
 	}
-	u16 status = nvme_ns_rw(self, buf, start_blk, count, false);
-	return status == 0;
+
+	for (usize i = 0; i < count; i += self->storage.max_transfer_blk) {
+		usize read_count = MIN(count - i, self->storage.max_transfer_blk);
+		u16 status = nvme_ns_rw(self, offset(buf, void*, i * self->lba_size), start_blk + i, read_count, false);
+		if (status) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 u16 nvme_ns_rw(NvmeNamespace* self, void* buf, usize start_lba, usize count, bool write) {
@@ -633,6 +651,7 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 
 	NvmeNamespace* ns = (NvmeNamespace*) kmalloc(sizeof(NvmeNamespace));
 	assert(ns);
+	memset(ns, 0, sizeof(NvmeNamespace));
 	ns->id = nsid;
 	ns->max_transfer_pages = max_transfer_pages;
 	ns->lba_size = lba_size;
@@ -651,9 +670,10 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 
 	// todo
 	usize max_transfer = ns->max_transfer_pages * PAGE_SIZE;
-	void* buffer = kmalloc(max_transfer);
+	void* buffer = kmalloc(max_transfer + 1);
 	assert(buffer);
-	assert(!nvme_ns_rw(ns, offset(buffer, void*, 1), 0, (max_transfer - 1) / ns->lba_size, false));
+	assert(!nvme_ns_rw(ns, offset(buffer, void*, 4), 0, max_transfer / ns->lba_size, false));
+	kfree(buffer, max_transfer + 1);
 	storage_register(&ns->storage);
 	storage_enum_partitions(&ns->storage);
 }
@@ -725,6 +745,7 @@ static void nvme_init(PciHdr0* hdr) {
 	else {
 		self->max_transfer_size = 1024 * PAGE_SIZE;
 	}
+	kprintf("[kernel][nvme]: max transfer size: %u\n", self->max_transfer_size);
 
 	NvmeCmd set_queue_count_cmd = {};
 	set_queue_count_cmd.features.opc = OP_SET_FEATURES;
