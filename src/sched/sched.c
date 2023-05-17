@@ -241,6 +241,37 @@ void sched_sleep(usize us) {
 	leave_critical(flags);
 }
 
+void sched_kill_children(Task* self) {
+	Task* parent = self;
+	Task* task = self->children;
+	bool run = true;
+	while (run) {
+		kprintf("killing child task '%s'\n", *task->name ? task->name : "<no name>");
+		sched_kill_child(task);
+		if (task->children) {
+			task = task->children;
+		}
+		else if (task->child_next) {
+			task = task->child_next;
+		}
+		else {
+			while (true) {
+				if (task->parent == parent) {
+					run = false;
+					break;
+				}
+				else if (task->parent->child_next) {
+					task = task->parent->child_next;
+					break;
+				}
+				else {
+					task = task->parent;
+				}
+			}
+		}
+	}
+}
+
 NORETURN void sched_exit(int status) {
 	Task* self = arch_get_cur_task();
 
@@ -270,18 +301,9 @@ NORETURN void sched_exit(int status) {
 
 		mutex_unlock(&proc_mutex);
 	}
+
 	if (self->children) {
-		Task* task = self->children;
-		while (task->children) {
-			task = task->children;
-		}
-		while (task) {
-			for (Task* child = task; child; child = child->child_next) {
-				kprintf("killing child task '%s'\n", *child->name ? child->name : "<no name>");
-				sched_kill_child(child);
-			}
-			task = task->parent;
-		}
+		sched_kill_children(self);
 	}
 
 	leave_critical(flags);
@@ -296,17 +318,7 @@ NORETURN void sched_kill_cur() {
 	self->status = TASK_STATUS_KILLED;
 
 	if (self->children) {
-		Task* task = self->children;
-		while (task->children) {
-			task = task->children;
-		}
-		while (task) {
-			for (Task* child = task; child; child = child->child_next) {
-				kprintf("killing child task '%s'\n", *child->name ? child->name : "<no name>");
-				sched_kill_child(child);
-			}
-			task = task->parent;
-		}
+		sched_kill_children(self);
 	}
 	sched();
 	while (true) {

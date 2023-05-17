@@ -701,6 +701,7 @@ static void nvme_init(PciHdr0* hdr) {
 	if (pci_is_io_space(hdr, 0)) {
 		return;
 	}
+	hdr->common.command |= PCI_CMD_MEM_SPACE | PCI_CMD_BUS_MASTER | PCI_CMD_INT_DISABLE;
 	void* base = to_virt(pci_map_bar(hdr, 0));
 	NvmeRegs* regs = (NvmeRegs*) base;
 
