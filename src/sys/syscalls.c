@@ -1,5 +1,6 @@
 #include "arch/cpu.h"
 #include "arch/misc.h"
+#include "mem/utils.h"
 #include "sched/sched.h"
 #include "stdio.h"
 #include "types.h"
@@ -24,7 +25,7 @@ __attribute__((used)) void* syscall_handlers[] = {
 #define E_ARG (-2)
 
 int sys_wait_thread(Task* thread) {
-	if (!thread) {
+	if (!thread || (usize) thread < HHDM_OFFSET) {
 		return E_ARG;
 	}
 	if (thread->detached) {
