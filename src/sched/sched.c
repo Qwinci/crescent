@@ -244,8 +244,7 @@ void sched_sleep(usize us) {
 void sched_kill_children(Task* self) {
 	Task* parent = self;
 	Task* task = self->children;
-	bool run = true;
-	while (run) {
+	while (true) {
 		kprintf("killing child task '%s'\n", *task->name ? task->name : "<no name>");
 		sched_kill_child(task);
 		if (task->children) {
@@ -257,8 +256,7 @@ void sched_kill_children(Task* self) {
 		else {
 			while (true) {
 				if (task->parent == parent) {
-					run = false;
-					break;
+					return;
 				}
 				else if (task->parent->child_next) {
 					task = task->parent->child_next;
@@ -328,7 +326,6 @@ NORETURN void sched_kill_cur() {
 
 void sched_kill_child(Task* task) {
 	mutex_lock(&proc_mutex);
-	task->parent = NULL;
 	task->status = TASK_STATUS_KILLED;
 	mutex_unlock(&proc_mutex);
 }
