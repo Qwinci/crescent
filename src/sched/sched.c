@@ -1,5 +1,6 @@
 #include "sched.h"
 #include "arch/cpu.h"
+#include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "dev/timer.h"
 #include "mutex.h"
@@ -11,12 +12,12 @@
 [[noreturn]] static void idle_task_fn() {
 	while (true) {
 		arch_hlt();
-		void* flags = enter_critical();
+		Ipl old = arch_ipl_set(IPL_CRITICAL);
 		Task* task = sched_get_next_task();
 		if (task) {
 			sched_with_next(task);
 		}
-		leave_critical(flags);
+		arch_ipl_set(old);
 	}
 }
 
@@ -83,7 +84,7 @@ Task* sched_get_next_task() {
 }
 
 void sched_with_next(Task* next) {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	Cpu* cpu = arch_get_cur_task()->cpu;
 
 	if (!next) {
@@ -92,7 +93,7 @@ void sched_with_next(Task* next) {
 			cpu->idle_start = arch_get_ns_since_boot();
 		}
 		else {
-			leave_critical(flags);
+			arch_ipl_set(old);
 			return;
 		}
 	}
@@ -100,11 +101,11 @@ void sched_with_next(Task* next) {
 	Task* self = cpu->current_task;
 	cpu->current_task = next;
 	arch_switch_task(self, cpu->current_task);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }
 
 void sched() {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 	Cpu* cpu = arch_get_cur_task()->cpu;
 
@@ -154,7 +155,7 @@ void sched() {
 	Task* self = cpu->current_task;
 	cpu->current_task = task;
 	arch_switch_task(self, cpu->current_task);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }
 
 void sched_queue_task_for_cpu(Task* task, Cpu* cpu) {
@@ -178,21 +179,21 @@ void sched_queue_task(Task* task) {
 }
 
 void sched_block(TaskStatus status) {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	arch_get_cur_task()->status = status;
-	leave_critical(flags);
+	arch_ipl_set(old);
 	sched();
 }
 
 void sched_sigwait(Task* task) {
 	Task* self = arch_get_cur_task();
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 	self->status = TASK_STATUS_WAITING;
 	self->next = task->signal_waiters;
 	task->signal_waiters = self;
 
-	leave_critical(flags);
+	arch_ipl_set(old);
 	sched();
 }
 
@@ -204,17 +205,17 @@ bool sched_unblock(Task* task) {
 	if (task->level < SCHED_MAX_LEVEL - 1) {
 		task->level += 1;
 	}
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	Task* current_task = arch_get_cur_task();
 	u16 priority = current_task->level + current_task->priority;
 	u16 task_priority = task->level + task->priority;
 	sched_queue_task(task);
-	leave_critical(flags);
+	arch_ipl_set(old);
 	return priority < task_priority;
 }
 
 void sched_sleep(usize us) {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 	Task* self = arch_get_cur_task();
 
@@ -238,7 +239,7 @@ void sched_sleep(usize us) {
 	}
 
 	sched_block(TASK_STATUS_SLEEPING);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }
 
 void sched_kill_children(Task* self) {
@@ -273,7 +274,7 @@ void sched_kill_children(Task* self) {
 NORETURN void sched_exit(int status) {
 	Task* self = arch_get_cur_task();
 
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 	while (self->signal_waiters) {
 		Task* next = self->signal_waiters->next;
@@ -304,7 +305,7 @@ NORETURN void sched_exit(int status) {
 		sched_kill_children(self);
 	}
 
-	leave_critical(flags);
+	arch_ipl_set(old);
 	while (true) {
 		self->status = TASK_STATUS_EXITED;
 		sched();
@@ -350,7 +351,7 @@ NORETURN void sched_load_balance() {
 			}
 		}
 
-		void* flags = enter_critical();
+		Ipl old = arch_ipl_set(IPL_CRITICAL);
 		usize diff = max_thread_count - min_thread_count;
 		if (min_cpu_i != max_cpu_i && diff > 1) {
 			Cpu* min_cpu = arch_get_cpu(min_cpu_i);
@@ -390,7 +391,7 @@ NORETURN void sched_load_balance() {
 			spinlock_unlock(&max_cpu->lock);
 		}
 
-		leave_critical(flags);
+		arch_ipl_set(old);
 		sched_sleep(US_IN_SEC);
 	}
 }
@@ -420,9 +421,9 @@ static void create_kernel_tasks(bool bsp) {
 }
 
 void sched_init(bool bsp) {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 	create_kernel_tasks(bsp);
 
-	leave_critical(flags);
+	arch_ipl_set(old);
 }

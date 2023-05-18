@@ -37,7 +37,7 @@ static LapicMsg g_msg;
 static Spinlock msg_lock = {};
 static u8 ipi_vec = 0;
 
-void ipi_handler(void*, void*) {
+IrqStatus ipi_handler(void*, void*) {
 	X86Cpu* cpu = x86_get_cur_cpu();
 	switch (g_msg) {
 		case LAPIC_MSG_HALT:
@@ -47,13 +47,20 @@ void ipi_handler(void*, void*) {
 		case LAPIC_MSG_PANIC:
 			panic("received panic msg on cpu %u\n", cpu->apic_id);
 	}
+	return IRQ_ACK;
 }
+
+static IrqHandler IPI_HANDLER = {
+	.fn = ipi_handler,
+	.userdata = NULL
+};
 
 void lapic_ipi(u8 id, LapicMsg msg) {
 	spinlock_lock(&msg_lock);
 	if (!ipi_vec) {
-		ipi_vec = arch_alloc_int(1, (IntHandler) ipi_handler, NULL);
+		ipi_vec = arch_irq_alloc_generic(IPL_INTER_CPU, 1, IRQ_INSTALL_FLAG_NONE);
 		assert(ipi_vec);
+		assert(arch_irq_install(ipi_vec, &IPI_HANDLER, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 	}
 	g_msg = msg;
 
@@ -71,8 +78,9 @@ void lapic_ipi(u8 id, LapicMsg msg) {
 void lapic_ipi_all(LapicMsg msg) {
 	spinlock_lock(&msg_lock);
 	if (!ipi_vec) {
-		ipi_vec = arch_alloc_int(1, (IntHandler) ipi_handler, NULL);
+		ipi_vec = arch_irq_alloc_generic(IPL_INTER_CPU, 1, IRQ_INSTALL_FLAG_NONE);
 		assert(ipi_vec);
+		assert(arch_irq_install(ipi_vec, &IPI_HANDLER, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 	}
 	g_msg = msg;
 

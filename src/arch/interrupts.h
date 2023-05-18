@@ -1,30 +1,48 @@
 #pragma once
 #include "types.h"
 
-typedef bool (*IntHandler)(void* ctx, void* userdata);
+typedef enum {
+	IRQ_ACK,
+	IRQ_NACK
+} IrqStatus;
 
-typedef struct {
-	IntHandler handler;
+typedef IrqStatus (*IrqHandlerFn)(void* ctx, void* userdata);
+
+typedef struct IrqHandler {
+	IrqHandlerFn fn;
 	void* userdata;
-} HandlerData;
 
-u32 arch_alloc_int(usize count, IntHandler handler, void* userdata);
-HandlerData arch_set_handler(u32 i, IntHandler handler, void* userdata);
-void arch_dealloc_int(usize count, u32 i);
+	bool can_be_shared;
+	struct IrqHandler* prev;
+	struct IrqHandler* next;
+} IrqHandler;
 
-typedef enum : u64 {
-	INT_PRIO_2 = 2,
-	INT_PRIO_3 = 3,
-	INT_PRIO_4 = 4,
-	INT_PRIO_5 = 5,
-	INT_PRIO_6 = 6,
-	INT_PRIO_7 = 7,
-	INT_PRIO_8 = 8,
-	INT_PRIO_9 = 9,
-	INT_PRIO_10 = 10,
-	INT_PRIO_11 = 11,
-	INT_PRIO_12 = 12,
-	INT_PRIO_13 = 13,
-	INT_PRIO_14 = 14,
-	INT_PRIO_15 = 15
+typedef enum : u32 {
+	IPL_NORMAL,
+	IPL_DEV,
+	IPL_TIMER,
+	IPL_INTER_CPU,
+	IPL_CRITICAL
 } Ipl;
+
+typedef enum {
+	IRQ_INSTALL_STATUS_SUCCESS,
+	IRQ_INSTALL_STATUS_ALREADY_EXISTS
+} IrqInstallStatus;
+
+typedef enum {
+	IRQ_REMOVE_STATUS_SUCCESS,
+	IRQ_REMOVE_STATUS_NOT_EXIST
+} IrqRemoveStatus;
+
+typedef enum {
+	IRQ_INSTALL_FLAG_NONE = 0,
+	IRQ_INSTALL_SHARED = 1 << 0
+} IrqInstallFlags;
+
+IrqInstallStatus arch_irq_install(u32 irq, IrqHandler* persistent_handler, IrqInstallFlags flags);
+IrqRemoveStatus arch_irq_remove(u32 irq, IrqHandler* persistent_handler);
+u32 arch_irq_alloc_generic(Ipl ipl, u32 count, IrqInstallFlags flags);
+void arch_irq_dealloc_generic(u32 irq, u32 count, IrqInstallFlags flags);
+
+Ipl arch_ipl_set(Ipl ipl);

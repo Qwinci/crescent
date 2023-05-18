@@ -1,3 +1,4 @@
+#include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "arch/x86/dev/lapic.h"
 #include "cpu.h"
@@ -11,30 +12,10 @@ void arch_spinloop_hint() {
 	__builtin_ia32_pause();
 }
 
-static bool x86_disable_interrupts_with_prev() {
-	u16 flags;
-	__asm__ volatile("pushfw; pop %0; cli" : "=r"(flags));
-	return flags & 1 << 9;
-}
-
-static void x86_enable_interrupts() {
-	__asm__ volatile("sti");
-}
-
-void* enter_critical() {
-	return (void*) x86_disable_interrupts_with_prev();
-}
-
-void leave_critical(void* flags) {
-	if (flags) {
-		x86_enable_interrupts();
-	}
-}
-
 void arch_hlt_cpu(usize index) {
 	X86Cpu* cpu = container_of(arch_get_cpu(index), X86Cpu, common);
 
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	lapic_ipi(cpu->apic_id, LAPIC_MSG_HALT);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }

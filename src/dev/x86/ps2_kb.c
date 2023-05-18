@@ -1,6 +1,5 @@
 #include "ps2_kb.h"
 #include "arch/interrupts.h"
-#include "arch/misc.h"
 #include "arch/x86/dev/io_apic.h"
 #include "crescent/input.h"
 #include "layout/fi.h"
@@ -108,31 +107,33 @@ static usize ps2_key_queue_translator_ptr = 0;
 static usize ps2_key_queue_size = 0;
 static Task* ps2_translator_task = NULL;
 static Modifier ps2_modifiers = MOD_NONE;
-static Mutex ps2_mutex = {};
+static Spinlock ps2_spinlock = {};
 
-static bool ps2_kb_handler(void*, void*) {
-	/*if (!(ps2_status_read() & PS2_STATUS_OUTPUT_FULL)) {
-		return false;
-	}*/
+static IrqStatus ps2_kb_handler(void*, void*) {
+	if (!(ps2_status_read() & PS2_STATUS_OUTPUT_FULL)) {
+		return IRQ_NACK;
+	}
 
-	mutex_lock(&ps2_mutex);
+	spinlock_lock(&ps2_spinlock);
 
 	if (ps2_key_queue_size == PS2_QUEUE_SIZE) {
 		kprintf("WARNING: ps2 key queue overflow\n");
 		ps2_data_read();
-		mutex_unlock(&ps2_mutex);
-		return true;
 	}
-	ps2_key_queue_size++;
-	ps2_key_queue[ps2_key_queue_int_ptr] = ps2_data_read();
-	ps2_key_queue_int_ptr = (ps2_key_queue_int_ptr + 1) % PS2_QUEUE_SIZE;
-	sched_unblock(ps2_translator_task);
-	mutex_unlock(&ps2_mutex);
-	return true;
+	else {
+		ps2_key_queue_size++;
+		ps2_key_queue[ps2_key_queue_int_ptr] = ps2_data_read();
+		ps2_key_queue_int_ptr = (ps2_key_queue_int_ptr + 1) % PS2_QUEUE_SIZE;
+		sched_unblock(ps2_translator_task);
+	}
+	spinlock_unlock(&ps2_spinlock);
+
+	return IRQ_ACK;
 }
 
 static u8 queue_get_byte() {
-	mutex_lock(&ps2_mutex);
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
+	spinlock_lock(&ps2_spinlock);
 
 	u8 byte;
 	if (ps2_key_queue_size) {
@@ -140,15 +141,18 @@ static u8 queue_get_byte() {
 		ps2_key_queue_translator_ptr = (ps2_key_queue_translator_ptr + 1) % PS2_QUEUE_SIZE;
 	}
 	else {
-		mutex_unlock(&ps2_mutex);
+		spinlock_unlock(&ps2_spinlock);
+		arch_ipl_set(old);
 		sched_block(TASK_STATUS_WAITING);
 		sched();
-		mutex_lock(&ps2_mutex);
+		old = arch_ipl_set(IPL_CRITICAL);
+		spinlock_lock(&ps2_spinlock);
 		byte = ps2_key_queue[ps2_key_queue_translator_ptr];
 		ps2_key_queue_translator_ptr = (ps2_key_queue_translator_ptr + 1) % PS2_QUEUE_SIZE;
 	}
 	--ps2_key_queue_size;
-	mutex_unlock(&ps2_mutex);
+	spinlock_unlock(&ps2_spinlock);
+	arch_ipl_set(old);
 	return byte;
 }
 
@@ -225,13 +229,22 @@ NORETURN static void ps2_kb_translator() {
 }
 
 extern u8 X86_BSP_ID;
+static IrqHandler ps2_kb_irq_handler = {
+	.fn = ps2_kb_handler,
+	.userdata = NULL
+};
 
 void ps2_kb_init(bool second) {
 	ps2_kb_layout_fi();
 
-	u8 i = arch_alloc_int(1, ps2_kb_handler, NULL);
+	u32 i = arch_irq_alloc_generic(IPL_DEV, 1, IRQ_INSTALL_SHARED);
 	if (!i) {
 		kprintf("[kernel][x86]: failed to allocate interrupt for ps2 keyboard\n");
+		return;
+	}
+	if (arch_irq_install(i, &ps2_kb_irq_handler, IRQ_INSTALL_SHARED) != IRQ_INSTALL_STATUS_SUCCESS) {
+		kprintf("[kernel][x86]: failed to install irq handler for ps2 keyboard\n");
+		arch_irq_dealloc_generic(i, 1, IRQ_INSTALL_SHARED);
 		return;
 	}
 	IoApicRedirEntry entry = {
@@ -247,9 +260,9 @@ void ps2_kb_init(bool second) {
 
 	ps2_translator_task = arch_create_kernel_task("ps2 translator", ps2_kb_translator, NULL);
 	ps2_translator_task->pin_level = true;
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(ps2_translator_task);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }
 
 void ps2_kb_set_translation(OneByteScancodeTranslatorFn fn) {

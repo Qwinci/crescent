@@ -3,5 +3,4 @@ target_sources(crescent PRIVATE
         sched.c
         sched.asm
         usermode.asm
-        usermode.c
-        ipl.c)
+        usermode.c)

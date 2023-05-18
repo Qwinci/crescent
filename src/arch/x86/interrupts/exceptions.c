@@ -3,9 +3,10 @@
 #include "interrupts.h"
 #include "stdio.h"
 #include "arch/x86/dev/lapic.h"
+#include "arch/interrupts.h"
 
 #define GENERIC_EX(ex_name, msg) \
-NORETURN void ex_##ex_name(void* void_ctx, void*) {\
+NORETURN IrqStatus ex_##ex_name(void* void_ctx, void*) {\
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx; \
 	spinlock_lock(&PRINT_LOCK); \
 	kprintf_nolock("%fg%s\n%s", COLOR_RED, msg, "backtrace:\n"); \

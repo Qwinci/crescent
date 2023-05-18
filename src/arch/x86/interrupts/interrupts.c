@@ -1,53 +1,88 @@
 #include "arch/interrupts.h"
 #include "arch/x86/dev/lapic.h"
+#include "interrupts.h"
+#include "ipl.h"
 #include "stdio.h"
 #include "utils/elf.h"
-#include "interrupts.h"
+#include "limine/limine.h"
+#include "string.h"
 
-static u32 used_ints[256 / 32 - 1] = {};
+static u32 used_ints[256 / 32] = {};
+static u32 used_shareable_ints[256 / 32] = {};
 
-static HandlerData handlers[256] = {};
+static IrqHandler* handlers[256] = {};
 
-u32 arch_alloc_int(usize count, IntHandler handler, void* userdata) {
-	for (u16 i = 0; i < 256 - 32; ++i) {
-		if (!(used_ints[i / 32] & 1U << (i % 32))) {
-			bool continue_outer = false;
-			usize free_count = 1;
-			for (u16 j = i + 1; j < 256 - 32 && free_count < count; ++j, ++free_count) {
-				if (used_ints[j / 32] & 1U << (j % 32)) {
-					continue_outer = true;
-					break;
+IrqInstallStatus arch_irq_install(u32 irq, IrqHandler* persistent_handler, IrqInstallFlags flags) {
+	persistent_handler->can_be_shared = flags & IRQ_INSTALL_SHARED;
+	persistent_handler->prev = NULL;
+	if (handlers[irq]) {
+		if (handlers[irq] == persistent_handler || !handlers[irq]->can_be_shared || !(flags & IRQ_INSTALL_SHARED)) {
+			return IRQ_INSTALL_STATUS_ALREADY_EXISTS;
+		}
+		persistent_handler->next = handlers[irq];
+		handlers[irq]->prev = persistent_handler;
+		handlers[irq] = persistent_handler;
+	}
+	else {
+		persistent_handler->next = NULL;
+		handlers[irq] = persistent_handler;
+	}
+	return IRQ_INSTALL_STATUS_SUCCESS;
+}
+
+IrqRemoveStatus arch_irq_remove(u32 irq, IrqHandler* persistent_handler) {
+	if (!handlers[irq] || (handlers[irq] != persistent_handler && !persistent_handler->prev)) {
+		return IRQ_REMOVE_STATUS_NOT_EXIST;
+	}
+	if (persistent_handler->prev) {
+		persistent_handler->prev->next = persistent_handler->next;
+	}
+	else {
+		handlers[irq] = persistent_handler->next;
+	}
+	if (persistent_handler->next) {
+		persistent_handler->next->prev = persistent_handler->prev;
+	}
+	return IRQ_REMOVE_STATUS_SUCCESS;
+}
+
+u32 arch_irq_alloc_generic(Ipl ipl, u32 count, IrqInstallFlags flags) {
+	bool can_be_shared = flags & IRQ_INSTALL_SHARED;
+	X86Ipl x86_ipl = X86_IPL_MAP[ipl];
+	for (u32 i = x86_ipl * 16; i < 256 - (count - 1); ++i) {
+		bool found = true;
+		for (u32 j = i; j < i + count; ++j) {
+			if (handlers[j] || (used_ints[j / 32] & 1U << (j % 32)) || (!can_be_shared && used_shareable_ints[j / 32] & 1U << (j % 32))) {
+				found = false;
+				break;
+			}
+		}
+		if (found) {
+			if (can_be_shared) {
+				for (u32 j = i; j < i + count; ++j) {
+					used_shareable_ints[j / 32] |= 1U << (j % 32);
 				}
 			}
-			if (continue_outer) {
-				continue;
+			else {
+				for (u32 j = i; j < i + count; ++j) {
+					used_ints[j / 32] |= 1U << (j % 32);
+				}
 			}
-			for (usize j = 0; j < count; ++j) {
-				used_ints[(i + j) / 32] |= 1U << ((i + j) % 32);
-			}
-			handlers[i + 32].handler = handler;
-			handlers[i + 32].userdata = userdata;
-			return i + 32;
+			return i;
 		}
 	}
-	return 0;
 }
 
-HandlerData arch_set_handler(u32 i, IntHandler handler, void* userdata) {
-	if (i >= 32) {
-		used_ints[(i - 32) / 32] |= 1 << ((i - 32) % 32);
+void arch_irq_dealloc_generic(u32 irq, u32 count, IrqInstallFlags flags) {
+	if (flags & IRQ_INSTALL_SHARED) {
+		for (u32 i = irq; i < irq + count; ++i) {
+			used_shareable_ints[i / 32] &= ~(1U << (i % 32));
+		}
 	}
-	HandlerData old = handlers[i];
-	handlers[i].handler = handler;
-	handlers[i].userdata = userdata;
-	return old;
-}
-
-void arch_dealloc_int(usize count, u32 i) {
-	for (usize j = 0; j < count; ++j) {
-		used_ints[(i + j - 32) / 32] &= ~(1 << ((i + j - 32) % 32));
-		handlers[i + j].handler = NULL;
-		handlers[i + j].userdata = NULL;
+	else {
+		for (u32 i = irq; i < irq + count; ++i) {
+			used_ints[i / 32] &= ~(1U << (i % 32));
+		}
 	}
 }
 
@@ -55,9 +90,6 @@ typedef struct Frame {
 	struct Frame* rbp;
 	u64 rip;
 } Frame;
-
-#include "limine/limine.h"
-#include "string.h"
 
 static volatile struct limine_kernel_file_request KERNEL_FILE_REQUEST = {
 	.id = LIMINE_KERNEL_FILE_REQUEST
@@ -136,12 +168,14 @@ void x86_int_handler(InterruptCtx* ctx) {
 
 	lapic_eoi();
 
-	HandlerData* data = &handlers[ctx->vec];
-
-	if (data->handler) {
-		data->handler(ctx, data->userdata);
+	bool handled = false;
+	for (IrqHandler* handler = handlers[ctx->vec]; handler; handler = handler->next) {
+		if (handler->fn(ctx, handler->userdata) == IRQ_ACK) {
+			handled = true;
+			break;
+		}
 	}
-	else {
+	if (!handled) {
 		kprintf("[kernel][x86]: unhandled interrupt 0x%x\n", ctx->vec);
 
 		backtrace_display(true);

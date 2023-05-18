@@ -1,4 +1,5 @@
 #include "arch/cpu.h"
+#include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "mem/utils.h"
 #include "sched/sched.h"
@@ -60,8 +61,8 @@ Task* sys_create_thread(void (*fn)(), void* arg, bool detach) {
 	}
 	task->child_next = self->children;
 	self->children = task;
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(task);
-	leave_critical(flags);
+	arch_ipl_set(old);
 	return task;
 }

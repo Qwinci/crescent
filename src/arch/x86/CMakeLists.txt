@@ -12,6 +12,7 @@ target_sources(crescent PRIVATE
         interrupts/gdt.c
         interrupts/gdt.asm
         interrupts/exceptions.c
+        interrupts/ipl.c
         smp.c
         cpu.c
         cpuid.c

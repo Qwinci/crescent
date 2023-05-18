@@ -1,3 +1,4 @@
+#include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "arch/x86/mod.h"
 #include "assert.h"
@@ -42,9 +43,9 @@
 
 	tty_init();
 
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(test_user);
-	leave_critical(flags);
+	arch_ipl_set(old);
 
 	sched_block(TASK_STATUS_WAITING);
 	while (true) {

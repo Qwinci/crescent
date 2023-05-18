@@ -1,4 +1,5 @@
 #include "stdio.h"
+#include "arch/interrupts.h"
 #include "arch/misc.h"
 #include "dev/con.h"
 #include "inttypes.h"
@@ -31,13 +32,13 @@ void kputs_nolock(const char* str, usize len) {
 }
 
 void kputs(const char* str, usize len) {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	spinlock_lock(&PRINT_LOCK);
 
 	kputs_nolock(str, len);
 
 	spinlock_unlock(&PRINT_LOCK);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }
 
 static const char hex_digits[] = "0123456789ABCDEF";
@@ -219,11 +220,11 @@ void kvprintf_nolock(const char* fmt, va_list valist) {
 }
 
 void kvprintf(const char* fmt, va_list valist) {
-	void* flags = enter_critical();
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	spinlock_lock(&PRINT_LOCK);
 	kvprintf_nolock(fmt, valist);
 	spinlock_unlock(&PRINT_LOCK);
-	leave_critical(flags);
+	arch_ipl_set(old);
 }
 
 void kprintf(const char* fmt, ...) {
@@ -241,7 +242,7 @@ void kprintf_nolock(const char* fmt, ...) {
 }
 
 NORETURN void panic(const char* fmt, ...) {
-	enter_critical();
+	arch_ipl_set(IPL_CRITICAL);
 	va_list valist;
 	va_start(valist, fmt);
 	kernel_con->fg = 0xFF0000;

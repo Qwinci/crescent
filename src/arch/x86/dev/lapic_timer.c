@@ -17,7 +17,7 @@ usize lapic_timer_get_ns() {
 	return x86_get_cur_cpu()->lapic_timer.us * NS_IN_US;
 }
 
-static bool lapic_timer_int(void*, void*) {
+static IrqStatus lapic_timer_int(void*, void*) {
 	X86Cpu* cpu = x86_get_cur_cpu();
 
 	cpu->lapic_timer.us += cpu->lapic_timer.period_us;
@@ -65,11 +65,11 @@ static bool lapic_timer_int(void*, void*) {
 		lapic_timer_start(US_IN_SEC / next_us);
 	}
 
-	return true;
+	return IRQ_ACK;
 }
 
-static bool tmp_handler(void*, void*) {
-	return true;
+static IrqStatus tmp_handler_fn(void*, void*) {
+	return IRQ_ACK;
 }
 
 void lapic_timer_start(usize freq) {
@@ -83,13 +83,24 @@ void lapic_timer_start(usize freq) {
 	lapic_write(LAPIC_REG_LVT_TIMER, timer_vec | LAPIC_TIMER_ONESHOT);
 }
 
+static IrqHandler LAPIC_TIMER_HANDLER = {
+	.fn = lapic_timer_int,
+	.userdata = NULL
+};
+
 static void lapic_timer_calibrate(X86Cpu* cpu) {
 	// 16
 	lapic_write(LAPIC_REG_DIV_CONF, 3);
 
+	IrqHandler tmp_handler = {
+		.fn = tmp_handler_fn,
+		.userdata = NULL
+	};
+
 	if (!timer_vec) {
-		timer_vec = arch_alloc_int(1, tmp_handler, NULL);
+		timer_vec = arch_irq_alloc_generic(IPL_TIMER, 1, IRQ_INSTALL_FLAG_NONE);
 		assert(timer_vec && "failed to allocate timer interrupt");
+		assert(arch_irq_install(timer_vec, &tmp_handler, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 	}
 
 	lapic_write(LAPIC_REG_LVT_TIMER, timer_vec | LAPIC_TIMER_ONESHOT);
@@ -104,7 +115,8 @@ static void lapic_timer_calibrate(X86Cpu* cpu) {
 
 	lapic_write(LAPIC_REG_DIV_CONF, 3);
 
-	arch_set_handler(timer_vec, lapic_timer_int, NULL);
+	assert(arch_irq_remove(timer_vec, &tmp_handler) == IRQ_REMOVE_STATUS_SUCCESS);
+	assert(arch_irq_install(timer_vec, &LAPIC_TIMER_HANDLER, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 }
 
 void lapic_timer_init() {
