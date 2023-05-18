@@ -129,6 +129,7 @@ void arch_init_smp() {
 		arch_spinloop_hint();
 	}
 
+	lapic_timer_init_final();
 	lapic_timer_start(100);
 
 	kprintf("[kernel][x86]: smp init done\n");

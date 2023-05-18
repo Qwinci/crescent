@@ -100,8 +100,8 @@ static void lapic_timer_calibrate(X86Cpu* cpu) {
 	if (!timer_vec) {
 		timer_vec = arch_irq_alloc_generic(IPL_TIMER, 1, IRQ_INSTALL_FLAG_NONE);
 		assert(timer_vec && "failed to allocate timer interrupt");
-		assert(arch_irq_install(timer_vec, &tmp_handler, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 	}
+	assert(arch_irq_install(timer_vec, &tmp_handler, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 
 	lapic_write(LAPIC_REG_LVT_TIMER, timer_vec | LAPIC_TIMER_ONESHOT);
 	lapic_write(LAPIC_REG_INIT_COUNT, 0xFFFFFFFF);
@@ -116,11 +116,14 @@ static void lapic_timer_calibrate(X86Cpu* cpu) {
 	lapic_write(LAPIC_REG_DIV_CONF, 3);
 
 	assert(arch_irq_remove(timer_vec, &tmp_handler) == IRQ_REMOVE_STATUS_SUCCESS);
-	assert(arch_irq_install(timer_vec, &LAPIC_TIMER_HANDLER, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 }
 
 void lapic_timer_init() {
 	X86Cpu* cpu = x86_get_cur_cpu();
 
 	lapic_timer_calibrate(cpu);
+}
+
+void lapic_timer_init_final() {
+	assert(arch_irq_install(timer_vec, &LAPIC_TIMER_HANDLER, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
 }

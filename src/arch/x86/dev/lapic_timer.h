@@ -9,5 +9,6 @@ typedef struct {
 } LapicTimer;
 
 void lapic_timer_init();
+void lapic_timer_init_final();
 void lapic_timer_start(usize freq);
 usize lapic_timer_get_ns();
