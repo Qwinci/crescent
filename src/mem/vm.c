@@ -68,19 +68,24 @@ void vm_kernel_dealloc_backed(void* ptr, usize count) {
 	vm_kernel_dealloc(ptr, count);
 }
 
+typedef struct TaskVMem {
+    VMem vmem;
+    struct Task* task;
+} TaskVMem;
+
 void vm_user_init(Task* task, usize base, usize size) {
-	vmem_new(task->user_vmem, "user vmem", (void*) base, size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
+	vmem_new(&task->user_vmem->vmem, "user vmem", (void*) base, size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
 }
 
 void vm_user_free(Task* task) {
-	vmem_destroy(task->user_vmem, false);
+	vmem_destroy(&task->user_vmem->vmem, false);
 }
 
 void* vm_user_alloc(Task* task, usize count) {
-	return vmem_alloc(task->user_vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+	return vmem_alloc(&task->user_vmem->vmem, count * PAGE_SIZE, VM_INSTANTFIT);
 }
 void vm_user_dealloc(Task* task, void* ptr, usize count) {
-	vmem_free(task->user_vmem, ptr, count * PAGE_SIZE);
+	vmem_free(&task->user_vmem->vmem, ptr, count * PAGE_SIZE);
 }
 
 void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, void** kernel_mapping) {

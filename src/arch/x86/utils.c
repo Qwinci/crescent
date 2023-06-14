@@ -19,3 +19,9 @@ void arch_hlt_cpu(usize index) {
 	lapic_ipi(cpu->apic_id, LAPIC_MSG_HALT);
 	arch_ipl_set(old);
 }
+
+void arch_invalidate_mapping(Task* task) {
+	X86Cpu* cpu = container_of(task->cpu, X86Cpu, common);
+
+	lapic_invalidate_mapping(cpu->apic_id, task->map);
+}

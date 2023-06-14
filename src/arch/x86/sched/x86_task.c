@@ -41,7 +41,12 @@ extern void x86_usermode_ret();
 
 extern void* x86_create_user_map();
 
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, VMem* vmem, bool detach) {
+typedef struct TaskVMem {
+    VMem vmem;
+    struct Task* task;
+} TaskVMem;
+
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, TaskVMem* vmem, bool detach) {
 	X86PageMap* m = (X86PageMap*) map;
 	m->ref_count += 1;
 
@@ -55,9 +60,9 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 	task->common.map = map;
 	bool new_vmem = false;
 	if (!vmem) {
-		vmem = (VMem*) kmalloc(sizeof(VMem));
+		vmem = (TaskVMem*) kmalloc(sizeof(TaskVMem));
 		assert(vmem);
-		memset(vmem, 0, sizeof(VMem));
+		memset(vmem, 0, sizeof(TaskVMem));
 		task->common.user_vmem = vmem;
 		vm_user_init(&task->common, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
 		new_vmem = true;
@@ -65,6 +70,9 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 	else {
 		task->common.user_vmem = vmem;
 	}
+
+    task->common.same_map_next = vmem->task;
+    vmem->task = &task->common;
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
 	if (!kernel_stack) {

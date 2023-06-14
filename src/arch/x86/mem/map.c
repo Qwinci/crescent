@@ -360,8 +360,6 @@ usize arch_virt_to_phys(void* map, usize virt) {
 
 void arch_use_map(void* map) {
 	__asm__ volatile("mov cr3, %0" : : "r"(((X86PageMap*) map)->page->phys) : "memory");
-	CUR_MAP = map;
 }
 
 void* KERNEL_MAP = NULL;
-void* CUR_MAP = NULL;

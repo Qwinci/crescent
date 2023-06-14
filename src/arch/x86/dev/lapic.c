@@ -7,6 +7,7 @@
 #include "mem/utils.h"
 #include "stdio.h"
 #include "types.h"
+#include "arch/x86/mem/map.h"
 
 static usize LAPIC_BASE = 0;
 
@@ -36,6 +37,8 @@ void lapic_eoi() {
 static LapicMsg g_msg;
 static Spinlock msg_lock = {};
 static u8 ipi_vec = 0;
+static X86PageMap* g_map;
+static atomic_bool map_use_ack = false;
 
 IrqStatus ipi_handler(void*, void*) {
 	X86Cpu* cpu = x86_get_cur_cpu();
@@ -43,6 +46,13 @@ IrqStatus ipi_handler(void*, void*) {
 		case LAPIC_MSG_HALT:
 			spinlock_lock(&cpu->common.lock);
 			spinlock_unlock(&cpu->common.lock);
+			break;
+		case LAPIC_MSG_INVALIDATE:
+			if (cpu->common.cur_map == g_map) {
+				// todo pcid
+				arch_use_map(g_map);
+			}
+			map_use_ack = true;
 			break;
 		case LAPIC_MSG_PANIC:
 			panic("received panic msg on cpu %u\n", cpu->apic_id);
@@ -71,6 +81,34 @@ void lapic_ipi(u8 id, LapicMsg msg) {
 	while (lapic_read(LAPIC_REG_INT_CMD_BASE) & 1 << 12) {
 		arch_spinloop_hint();
 	}
+
+	spinlock_unlock(&msg_lock);
+}
+
+void lapic_invalidate_mapping(u8 id, void* map) {
+	X86PageMap* x86_map = (X86PageMap*) map;
+
+	spinlock_lock(&msg_lock);
+	g_map = x86_map;
+	if (!ipi_vec) {
+		ipi_vec = arch_irq_alloc_generic(IPL_INTER_CPU, 1, IRQ_INSTALL_FLAG_NONE);
+		assert(ipi_vec);
+		assert(arch_irq_install(ipi_vec, &IPI_HANDLER, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
+	}
+	g_msg = LAPIC_MSG_INVALIDATE;
+
+	lapic_write(LAPIC_REG_INT_CMD_BASE + 0x10, (u32) id << 24);
+	u32 value = ipi_vec;
+	lapic_write(LAPIC_REG_INT_CMD_BASE, value);
+
+	while (lapic_read(LAPIC_REG_INT_CMD_BASE) & 1 << 12) {
+		arch_spinloop_hint();
+	}
+
+	while (!atomic_load_explicit(&map_use_ack, memory_order_relaxed)) {
+		arch_spinloop_hint();
+	}
+	atomic_store_explicit(&map_use_ack, false, memory_order_relaxed);
 
 	spinlock_unlock(&msg_lock);
 }

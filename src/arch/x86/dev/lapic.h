@@ -31,7 +31,8 @@ typedef enum : u32 {
 
 typedef enum {
 	LAPIC_MSG_HALT,
-	LAPIC_MSG_PANIC
+	LAPIC_MSG_PANIC,
+	LAPIC_MSG_INVALIDATE
 } LapicMsg;
 
 void lapic_init();
@@ -41,3 +42,4 @@ void lapic_write(LapicReg reg, u32 value);
 void lapic_eoi();
 void lapic_ipi(u8 id, LapicMsg msg);
 void lapic_ipi_all(LapicMsg msg);
+void lapic_invalidate_mapping(u8 id, void* map);

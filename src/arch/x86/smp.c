@@ -62,6 +62,7 @@ static X86Task* create_this_task(Cpu* cpu) {
 	cpu->common.current_task = &this_task->common;
 	cpu->common.thread_count += 1;
 	cpu->lapic_timer.period_us = US_IN_SEC;
+	cpu->common.cur_map = KERNEL_MAP;
 	x86_set_cpu_local(this_task);
 
 	__asm__ volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
@@ -97,6 +98,7 @@ void arch_init_smp() {
 	CPUS[0].common.current_task = &this_task->common;
 	CPUS[0].common.thread_count += 1;
 	CPUS[0].lapic_timer.period_us = US_IN_SEC;
+	CPUS[0].common.cur_map = KERNEL_MAP;
 	CPU_COUNT = 1;
 	x86_load_gdt(&CPUS[0].tss);
 	x86_set_cpu_local(this_task);

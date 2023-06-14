@@ -1,2 +1,3 @@
 target_sources(crescent PRIVATE
-        spinlock.c)
+        spinlock.c
+        ubsan.c)

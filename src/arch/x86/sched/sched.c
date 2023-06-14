@@ -23,6 +23,7 @@ void arch_switch_task(Task* self, Task* new_task) {
 
 	if (x86_self->common.map != x86_new->common.map) {
 		arch_use_map(x86_new->common.map);
+		x86_new->common.cpu->cur_map = x86_new->common.map;
 	}
 	x86_set_cpu_local(x86_new);
 
@@ -31,6 +32,7 @@ void arch_switch_task(Task* self, Task* new_task) {
 	x86_set_cpu_local(x86_self);
 	if (prev->common.map != x86_self->common.map) {
 		arch_use_map(x86_self->common.map);
+		x86_self->common.cpu->cur_map = x86_new->common.map;
 	}
 
 	sched_switch_from(&prev->common, &x86_self->common);

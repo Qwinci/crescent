@@ -15,12 +15,14 @@ typedef enum : u8 {
 
 typedef struct Cpu Cpu;
 
-typedef struct VMem VMem;
+typedef struct TaskVMem TaskVMem;
+
 typedef struct File File;
 
 typedef struct Task {
 	char name[128];
 	struct Task* next;
+    struct Task* same_map_next;
 	usize sleep_end;
 	Cpu* cpu;
 	struct Page* allocated_pages;
@@ -30,7 +32,7 @@ typedef struct Task {
 	struct Task* child_next;
 	struct Task* children;
 	Spinlock lock;
-	struct VMem* user_vmem;
+	struct TaskVMem* user_vmem;
 	File* stdout;
 	File* stderr;
 	File* stdin;

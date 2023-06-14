@@ -26,7 +26,7 @@ target_compile_options(crescent PRIVATE
         -mgeneral-regs-only -mno-red-zone -mcmodel=kernel
         -masm=intel -fno-stack-protector -fno-exceptions -fno-rtti
         -fno-omit-frame-pointer -Wno-interrupt-service-routine
-        -fPIC -nostdlibinc>)
+        -fPIC -nostdlibinc -fsanitize=undefined -fsanitize-minimal-runtime -Werror -Wno-error=unused>)
 target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld)
 
 find_program(XORRISO xorriso REQUIRED)

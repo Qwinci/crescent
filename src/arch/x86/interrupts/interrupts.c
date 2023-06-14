@@ -71,6 +71,7 @@ u32 arch_irq_alloc_generic(Ipl ipl, u32 count, IrqInstallFlags flags) {
 			return i;
 		}
 	}
+    return 0;
 }
 
 void arch_irq_dealloc_generic(u32 irq, u32 count, IrqInstallFlags flags) {

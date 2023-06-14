@@ -37,6 +37,6 @@ typedef struct Task Task;
 
 void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags);
 void arch_user_unmap_page(Task* task, usize virt, bool dealloc);
+void arch_invalidate_mapping(Task* task);
 
 extern void* KERNEL_MAP;
-extern void* CUR_MAP;
