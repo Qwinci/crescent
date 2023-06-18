@@ -2,6 +2,7 @@
 #include "types.h"
 #include "utils/spinlock.h"
 #include "event_queue.h"
+#include "utils/handle.h"
 
 typedef enum : u8 {
 	TASK_STATUS_RUNNING = 0,
@@ -31,7 +32,9 @@ typedef struct Task {
 	struct Task* child_prev;
 	struct Task* child_next;
 	struct Task* children;
-	Spinlock lock;
+	HandleList thread_handles;
+	HandleId id;
+	Mutex lock;
 	struct TaskVMem* user_vmem;
 	File* stdout;
 	File* stderr;

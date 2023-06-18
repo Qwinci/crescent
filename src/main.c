@@ -18,6 +18,7 @@
 	pci_init();
 
 	Module user_file = x86_module_get("basic");
+	//Module user_file = x86_module_get("user_tty");
 
 	ElfInfo info = elf_get_info(user_file.base);
 
@@ -27,22 +28,24 @@
 	void* mem;
 	void* user_mem = vm_user_alloc_backed(
 		test_user,
-		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE,
+		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE + 100,
 		PF_READ | PF_WRITE | PF_EXEC | PF_USER, &mem);
 	assert(user_mem);
-	memset(mem, 0, ALIGNUP(info.mem_size, PAGE_SIZE));
+	memset(mem, 0, ALIGNUP(info.mem_size, PAGE_SIZE) + 100 * PAGE_SIZE);
 
 	LoadedElf loaded = elf_load(info, mem, user_mem);
 	elf_protect(info, mem, test_user->map, true);
 
-	vm_user_dealloc_kernel(mem, ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE);
+	vm_user_dealloc_kernel(mem, ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE + 100);
 
 	void (*user_fn)() = (void (*)()) loaded.entry;
 
 	arch_set_user_task_fn(test_user, user_fn);
 
-	tty_init();
+	//tty_init();
 
+	ACTIVE_INPUT_TASK = test_user;
+	test_user->event_queue.notify_target = test_user;
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(test_user);
 	arch_ipl_set(old);

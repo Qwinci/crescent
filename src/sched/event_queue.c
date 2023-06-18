@@ -4,7 +4,7 @@
 #include "sched.h"
 #include "string.h"
 
-#define EVENT_QUEUE_MAX_SIZE 255
+#define EVENT_QUEUE_MAX_SIZE 256
 
 bool event_queue_get(EventQueue* self, Event* event) {
 	mutex_lock(&self->lock);

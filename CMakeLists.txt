@@ -10,6 +10,7 @@ set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg
         basic
+        user_tty
         )
 
 add_executable(crescent src/main.c)
@@ -18,15 +19,17 @@ target_include_directories(crescent PRIVATE src thirdparty include)
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/.config")
 
 add_executable(basic tests/basic.c tests/basic.asm)
+add_executable(user_tty tests/user_tty.c)
+target_include_directories(user_tty PRIVATE include)
 
-add_dependencies(crescent basic)
+add_dependencies(crescent basic user_tty)
 
 target_compile_options(crescent PRIVATE
         $<$<COMPILE_LANGUAGE:C>: -Wall
         -mgeneral-regs-only -mno-red-zone -mcmodel=kernel
         -masm=intel -fno-stack-protector -fno-exceptions -fno-rtti
         -fno-omit-frame-pointer -Wno-interrupt-service-routine
-        -fPIC -nostdlibinc -fsanitize=undefined -fsanitize-minimal-runtime -Werror -Wno-error=unused>)
+        -fPIC -nostdlibinc -Wno-error=unused>)
 target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld)
 
 find_program(XORRISO xorriso REQUIRED)

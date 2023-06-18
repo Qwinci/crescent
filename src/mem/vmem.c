@@ -2,6 +2,7 @@
 #include "assert.h"
 #include "pmalloc.h"
 #include "utils.h"
+#include "utils/math.h"
 #include <stdint.h>
 
 #define PAGE_SIZE 0x1000
@@ -26,15 +27,6 @@ static void* alloc_page_wrapper() {
 
 #define LIST_INDEX_FOR_SIZE(size) (VMEM_FREELIST_COUNT - __builtin_clzll(size) - 1)
 #define ALIGNUP(value, align) (((value) + ((align) - 1)) & ~((align) - 1))
-
-static inline uint64_t murmur64(uint64_t key) {
-	key ^= key >> 33;
-	key *= 0xff51afd7ed558ccdULL;
-	key ^= key >> 33;
-	key *= 0xc4ceb9fe1a85ec53ULL;
-	key ^= key >> 33;
-	return key;
-}
 
 static VMemSeg* seg_alloc(VMem* self) {
 	if (self->free_segs) {

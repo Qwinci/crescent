@@ -30,7 +30,7 @@ void sched_queue_task(Task* task);
 void sched_block(TaskStatus status);
 bool sched_unblock(Task* task);
 void sched_sleep(usize us);
-NORETURN void sched_exit(int status);
+NORETURN void sched_exit(int status, TaskStatus type);
 NORETURN void sched_kill_cur();
 void sched_kill_child(Task* task);
 void sched_sigwait(Task* task);

@@ -219,9 +219,12 @@ NORETURN static void ps2_kb_translator() {
 
 		if (ACTIVE_INPUT_TASK) {
 			Event event = {
-				.type = released ? EVENT_KEY_RELEASE : EVENT_KEY_PRESS,
-				.key = key,
-				.mods = ps2_modifiers
+				.type = EVENT_KEY,
+				.key = {
+					.key = key,
+					.mods = ps2_modifiers,
+					.pressed = !released
+				},
 			};
 			event_queue_push(&ACTIVE_INPUT_TASK->event_queue, event);
 		}

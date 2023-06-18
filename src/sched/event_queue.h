@@ -3,22 +3,6 @@
 #include "mutex.h"
 #include "types.h"
 
-typedef enum : u32 {
-	EVENT_NONE = 0,
-	EVENT_KEY_PRESS = 1 << 0,
-	EVENT_KEY_RELEASE = 1 << 1,
-} EventType;
-
-typedef struct {
-	EventType type;
-	union {
-		struct {
-			Scancode key;
-			Modifier mods;
-		};
-	};
-} Event;
-
 typedef struct {
 	Event* events;
 	usize events_len;

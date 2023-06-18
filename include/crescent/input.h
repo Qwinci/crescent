@@ -1,7 +1,7 @@
 #ifndef CRESCENT_INPUT_H
 #define CRESCENT_INPUT_H
 
-typedef enum {
+typedef enum Scancode {
 	SCAN_A = 0x04,
 	SCAN_B = 0x05,
 	SCAN_C = 0x06,
@@ -236,12 +236,27 @@ typedef enum {
 	SCAN_MAX
 } Scancode;
 
-typedef enum {
+typedef enum Modifier {
 	MOD_NONE,
 	MOD_CTRL = 1 << 0,
 	MOD_ALT = 1 << 1,
 	MOD_SHIFT = 1 << 2,
 	MOD_ALT_GR = 1 << 3,
 } Modifier;
+
+typedef enum EventType {
+	EVENT_KEY = 1 << 1,
+} EventType;
+
+typedef struct Event {
+	EventType type;
+	union {
+		struct {
+			Scancode key;
+			Modifier mods;
+			bool pressed;
+		} key;
+	};
+} Event;
 
 #endif

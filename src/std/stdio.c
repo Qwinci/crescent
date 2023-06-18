@@ -156,13 +156,16 @@ void kvprintf_nolock(const char* fmt, va_list valist) {
 			kputs_nolock(&c, 1);
 		}
 		else if (*fmt == 'd' || *fmt == 'i') {
-			isize value = va_arg(valist, isize);
+			isize value = va_arg(valist, int);
+			bool sign = false;
 			if (value < 0) {
 				value *= -1;
-				*--ptr = '-';
-				++len;
+				sign = true;
 			}
 			ptr = fmt_u((usize) value, ptr);
+			if (sign) {
+				*--ptr = '-';
+			}
 			len += (buffer + sizeof(buffer) - 2) - ptr;
 		}
 		else if (*fmt == 'u') {

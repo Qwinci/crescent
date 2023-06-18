@@ -15,12 +15,12 @@ NORETURN static void tty() {
 			event_queue_get(&tty_task->event_queue, &event);
 		}
 
-		if (event.type == EVENT_KEY_PRESS) {
-			if (event.key == SCAN_F5) {
+		if (event.type == EVENT_KEY && event.key.pressed) {
+			if (event.key.key == SCAN_F5) {
 				arch_reboot();
 			}
 
-			const char* text = layout_fi_scan_to_key(event.key, event.mods);
+			const char* text = layout_fi_scan_to_key(event.key.key, event.key.mods);
 			if (text) {
 				kprintf("%s", text);
 			}
