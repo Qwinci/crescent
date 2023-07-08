@@ -1,0 +1,6 @@
+set(CONFIG_TARGET "x86_64" CACHE STRING "Target system")
+set_property(CACHE CONFIG_TARGET PROPERTY STRINGS x86_64)
+option(CONFIG_HHDM "Use higher half direct map (only recommended for 64bit)" ON)
+if(CONFIG_HHDM)
+	target_compile_definitions(crescent PRIVATE CONFIG_HHDM)
+endif()
