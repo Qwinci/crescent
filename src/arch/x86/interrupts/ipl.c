@@ -19,12 +19,12 @@ static Ipl X86_IPL_X86_MAP[] = {
 
 static X86Ipl x86_ipl_get() {
 	u64 ipl;
-	__asm__("mov %0, cr8" : "=r"(ipl));
+	__asm__("mov %%cr8, %0" : "=r"(ipl));
 	return (X86Ipl) ipl;
 }
 
 static void x86_ipl_set(X86Ipl ipl) {
-	__asm__ volatile("mov cr8, %0" : : "r"(ipl));
+	__asm__ volatile("mov %0, %%cr8" : : "r"(ipl));
 }
 
 Ipl arch_ipl_set(Ipl ipl) {

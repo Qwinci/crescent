@@ -11,9 +11,7 @@
 #include "mem/vmem.h"
 #include "arch/map.h"
 
-[[noreturn]]
-
-static void idle_task_fn() {
+[[noreturn]] static void idle_task_fn() {
 	while (true) {
 		arch_hlt();
 		Ipl old = arch_ipl_set(IPL_CRITICAL);
@@ -24,8 +22,6 @@ static void idle_task_fn() {
 		arch_ipl_set(old);
 	}
 }
-
-static Mutex proc_mutex = {};
 
 void sched_switch_from(Task* old_task, Task* self) {
 	Task* t = arch_get_cur_task();
@@ -124,8 +120,6 @@ void sched() {
 	while (task->status == TASK_STATUS_KILLED) {
 		kprintf("task '%s' was killed\n", task->name);
 		if (task->parent) {
-			mutex_lock(&proc_mutex);
-
 			if (task->child_prev) {
 				task->child_prev->child_next = task->child_next;
 			}
@@ -136,7 +130,6 @@ void sched() {
 				task->child_next->child_prev = task->child_prev;
 			}
 
-			mutex_unlock(&proc_mutex);
 			arch_destroy_task(task);
 		}
 		task = sched_get_next_task();
@@ -286,8 +279,6 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 	self->exit_status = status;
 
 	if (self->parent) {
-		mutex_lock(&proc_mutex);
-
 		if (self->child_prev) {
 			self->child_prev->child_next = self->child_next;
 		}
@@ -297,8 +288,6 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 		if (self->child_next) {
 			self->child_next->child_prev = self->child_prev;
 		}
-
-		mutex_unlock(&proc_mutex);
 	}
 
 	if (self->children) {
@@ -317,12 +306,8 @@ NORETURN void sched_kill_cur() {
 }
 
 void sched_kill_child(Task* task) {
-	mutex_lock(&proc_mutex);
 	task->status = TASK_STATUS_KILLED;
-	mutex_unlock(&proc_mutex);
 }
-
-static Mutex LOAD_BALANCE_MUTEX = {};
 
 NORETURN void sched_load_balance() {
 	while (true) {
@@ -345,17 +330,17 @@ NORETURN void sched_load_balance() {
 		}
 
 		Ipl old = arch_ipl_set(IPL_CRITICAL);
-		mutex_lock(&LOAD_BALANCE_MUTEX);
 		usize diff = max_thread_count - min_thread_count;
 		if (min_cpu_i != max_cpu_i && diff > 1) {
 			Cpu* min_cpu = arch_get_cpu(min_cpu_i);
 			Cpu* max_cpu = arch_get_cpu(max_cpu_i);
 
-			spinlock_lock(&min_cpu->lock);
-			spinlock_lock(&max_cpu->lock);
+			spinlock_lock(&min_cpu->hold_lock);
+			spinlock_lock(&max_cpu->hold_lock);
 
 			arch_hlt_cpu(min_cpu_i);
 			arch_hlt_cpu(max_cpu_i);
+			mutex_lock(&min_cpu->tasks_lock);
 
 			usize amount = 0;
 			for (usize i = SCHED_MAX_LEVEL; i > 0 && diff > 1; --i) {
@@ -381,11 +366,12 @@ NORETURN void sched_load_balance() {
 			max_cpu->thread_count -= amount;
 			min_cpu->thread_count += amount;
 
-			spinlock_unlock(&min_cpu->lock);
-			spinlock_unlock(&max_cpu->lock);
+			mutex_unlock(&min_cpu->tasks_lock);
+
+			spinlock_unlock(&min_cpu->hold_lock);
+			spinlock_unlock(&max_cpu->hold_lock);
 		}
 
-		mutex_unlock(&LOAD_BALANCE_MUTEX);
 		arch_ipl_set(old);
 		sched_sleep(US_IN_SEC);
 	}
@@ -431,13 +417,11 @@ void sched_init(bool bsp) {
 void sched_invalidate_map(Task* self) {
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
-	mutex_lock(&LOAD_BALANCE_MUTEX);
 	for (Task* task = self->user_vmem->task; task; task = task->same_map_next) {
 		if (task->status == TASK_STATUS_RUNNING) {
 			arch_invalidate_mapping(task);
 		}
 	}
-	mutex_unlock(&LOAD_BALANCE_MUTEX);
 
 	// todo pcid
 	arch_use_map(self->map);

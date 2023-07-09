@@ -33,7 +33,7 @@ u8 X86_BSP_ID = 0;
 	x86_load_idt();
 	arch_use_map(KERNEL_MAP);
 
-	__asm__ volatile("mov rsp, %0; xor rbp, rbp; call %P2" : : "r"(info->extra_argument), "D"(info), "i"(x86_ap_entry) : "rsp", "rbp");
+	__asm__ volatile("mov %0, %%rsp; xor %%ebp, %%ebp; call %P2" : : "r"(info->extra_argument), "D"(info), "i"(x86_ap_entry));
 	panic("x86_ap_entry_asm unreachable code\n");
 }
 
@@ -65,7 +65,7 @@ static X86Task* create_this_task(Cpu* cpu) {
 	cpu->common.cur_map = KERNEL_MAP;
 	x86_set_cpu_local(this_task);
 
-	__asm__ volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
+	__asm__ volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
 
 	lapic_init();
 	lapic_timer_init();
@@ -102,7 +102,7 @@ void arch_init_smp() {
 	CPU_COUNT = 1;
 	x86_load_gdt(&CPUS[0].tss);
 	x86_set_cpu_local(this_task);
-	__asm__ volatile("mov ax, 6 * 8; ltr ax" : : : "ax");
+	__asm__ volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
 
 	arch_init_timers();
 	lapic_first_init();

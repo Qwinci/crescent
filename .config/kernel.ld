@@ -16,6 +16,12 @@ SECTIONS {
 	    KEEP(*(.drivers))
 	    DRIVERS_END = .;
 	}
+	.tests : {
+	    TEST_START = .;
+	    KEEP(*(.tests))
+	    TEST_END = .;
+	}
+
 	. = ALIGN(CONSTANT(MAXPAGESIZE));
 	PROVIDE(RODATA_END = .);
 

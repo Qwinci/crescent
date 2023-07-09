@@ -19,6 +19,7 @@ target_sources(crescent PRIVATE
         mem/user_map.c
         acpi/fadt.c
         acpi/madt.c
+		start.asm
         )
 
 add_subdirectory(dev)

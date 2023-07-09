@@ -1,29 +1,28 @@
-; X86Task* x86_switch_task(X86Task* old_task, X86Task* new_task);
-global x86_switch_task:function (x86_switch_task.end - x86_switch_task)
+// X86Task* x86_switch_task(X86Task* old_task, X86Task* new_task);
+.global x86_switch_task
+.type x86_switch_task, @function
 
-struc X86Task
-	.self: resq 1
-	.rsp: resq 1
-endstruc
+.set X86Task, 0
+.set X86Task.self, X86Task
+.set X86Task.rsp, X86Task.self + 8
 
 x86_switch_task:
-	push rbx
-	push rbp
-	push r12
-	push r13
-	push r14
-	push r15
+	push %rbx
+	push %rbp
+	push %r12
+	push %r13
+	push %r14
+	push %r15
 
-	mov qword [rdi + X86Task.rsp], rsp
-	mov rsp, [rsi + X86Task.rsp]
+    mov %rsp, X86Task.rsp(%rdi)
+    mov X86Task.rsp(%rsi), %rsp
 
-	mov rax, rdi
+	mov %rdi, %rax
 
-	pop r15
-	pop r14
-	pop r13
-	pop r12
-	pop rbp
-	pop rbx
+	pop %r15
+	pop %r14
+	pop %r13
+	pop %r12
+	pop %rbp
+	pop %rbx
 	ret
-.end:

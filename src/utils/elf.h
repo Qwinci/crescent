@@ -54,6 +54,14 @@ typedef struct {
 } Elf64EHdr;
 
 #define PT_LOAD 0x1
+#define PT_DYNAMIC 0x2
+#define PT_INTERP 0x3
+
+#define DT_NULL 0
+#define DT_NEEDED 0x1
+#define DT_RELA 0x7
+#define DT_RELASZ 0x8
+#define DT_RELAENT 0x9
 
 typedef struct {
 	u32 p_type;

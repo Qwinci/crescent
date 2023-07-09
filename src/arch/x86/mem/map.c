@@ -83,7 +83,7 @@ void arch_destroy_map(void* map) {
 }
 
 void x86_refresh_page(usize addr) {
-	__asm__ volatile("invlpg [%0]" : : "r"(addr) : "memory");
+	__asm__ volatile("invlpg (%0)" : : "r"(addr) : "memory");
 }
 
 void arch_protect_page(void* map, usize virt, PageFlags flags) {
@@ -359,7 +359,7 @@ usize arch_virt_to_phys(void* map, usize virt) {
 }
 
 void arch_use_map(void* map) {
-	__asm__ volatile("mov cr3, %0" : : "r"(((X86PageMap*) map)->page->phys) : "memory");
+	__asm__ volatile("mov %0, %%cr3" : : "r"(((X86PageMap*) map)->page->phys) : "memory");
 }
 
 void* KERNEL_MAP = NULL;

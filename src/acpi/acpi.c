@@ -41,15 +41,8 @@ static struct {
 	bool use_xsdt;
 } dt;
 
-static void* g_rsdp;
-
-void* acpi_get_rsdp() {
-	return g_rsdp;
-}
-
 void acpi_init(void* rsdp_ptr) {
 	const Rsdp* rsdp = (const Rsdp*) rsdp_ptr;
-	g_rsdp = rsdp_ptr;
 	kprintf("[kernel][acpi]: rsdp revision %u, checksum valid: %d\n", rsdp->revision, acpi_checksum(rsdp, 20));
 	if (rsdp->revision == 0) {
 		dt.rsdt = (const Rsdt*) to_virt(rsdp->rsdt_addr);

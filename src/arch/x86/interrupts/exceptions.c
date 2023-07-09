@@ -60,7 +60,7 @@ NORETURN void ex_pf(void* void_ctx, void*) {
 	bool sgx = ctx->error & 1 << 15;
 
 	u64 addr;
-	__asm__ volatile("mov %0, cr2" : "=r"(addr));
+	__asm__ volatile("mov %%cr2, %0" : "=r"(addr));
 
 	spinlock_lock(&PRINT_LOCK);
 	kprintf_nolock("%fgpage fault caused by ", COLOR_RED);

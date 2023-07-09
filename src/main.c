@@ -10,15 +10,21 @@
 #include "sched/sched.h"
 #include "stdio.h"
 #include "string.h"
-#include "tty/tty.h"
+#ifdef CONFIG_TEST
+#include "utils/test.h"
+#endif
 
 [[noreturn]] void kmain() {
 	kprintf("[kernel]: entered main\n");
 
+#ifdef CONFIG_TEST
+	run_tests();
+#endif
+
 	pci_init();
 
-	Module user_file = x86_module_get("basic");
-	//Module user_file = x86_module_get("user_tty");
+	//Module user_file = x86_module_get("basic");
+	Module user_file = x86_module_get("user_tty");
 
 	ElfInfo info = elf_get_info(user_file.base);
 

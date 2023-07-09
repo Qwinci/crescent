@@ -20,3 +20,5 @@ NORETURN void panic(const char* fmt, ...);
 #define COLOR_ORANGE 0xFFA500
 #define COLOR_YELLOW 0xFFFF00
 #define COLOR_BLUE 0x0000FF
+#define COLOR_RESET COLOR_GREEN
+#define COLOR_WHITE 0xFFFFFF

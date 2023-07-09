@@ -17,12 +17,12 @@ u64 x86_get_msr(Msr msr) {
 
 Task* arch_get_cur_task() {
 	X86Task* task;
-	__asm__("mov %0, gs:0" : "=r"(task));
+	__asm__("mov %%gs:0, %0" : "=r"(task));
 	return &task->common;
 }
 
 X86Cpu* x86_get_cur_cpu() {
 	X86Task* task;
-	__asm__("mov %0, gs:0" : "=r"(task));
+	__asm__("mov %%gs:0, %0" : "=r"(task));
 	return container_of(task->common.cpu, X86Cpu, common);
 }

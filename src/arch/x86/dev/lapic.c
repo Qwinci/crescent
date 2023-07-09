@@ -44,8 +44,8 @@ IrqStatus ipi_handler(void*, void*) {
 	X86Cpu* cpu = x86_get_cur_cpu();
 	switch (g_msg) {
 		case LAPIC_MSG_HALT:
-			spinlock_lock(&cpu->common.lock);
-			spinlock_unlock(&cpu->common.lock);
+			spinlock_lock(&cpu->common.hold_lock);
+			spinlock_unlock(&cpu->common.hold_lock);
 			break;
 		case LAPIC_MSG_INVALIDATE:
 			if (cpu->common.cur_map == g_map) {

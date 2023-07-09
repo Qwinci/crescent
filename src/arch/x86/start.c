@@ -14,12 +14,6 @@ extern void x86_init_con();
 extern void x86_init_mem();
 extern void debug_init();
 
-u8 stack[0x2000] = {};
-
-[[noreturn, gnu::naked, gnu::used]] void start() {
-	__asm__ volatile("lea rsp, [rip + %0]; xor rbp, rbp; jmp kstart" : : "i"(stack + 0x2000));
-}
-
 static volatile struct limine_rsdp_request RSDP_REQUEST = {
 	.id = LIMINE_RSDP_REQUEST
 };

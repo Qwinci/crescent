@@ -10,13 +10,13 @@ set(QEMU_FLAGS -m 8G -machine q35 -smp 8
 if(NOT EXISTS ${PROJECT_BINARY_DIR}/limine)
     execute_process(
             COMMAND ${GIT} clone https://github.com/limine-bootloader/limine.git
-            -b v4.x-branch-binary --depth=1 ${PROJECT_BINARY_DIR}/limine
+            -b v5.x-branch-binary --depth=1 ${PROJECT_BINARY_DIR}/limine
     )
     execute_process(COMMAND ${MKDIR} -p ${PROJECT_BINARY_DIR}/iso_root)
     execute_process(COMMAND ${CP}
-            ${PROJECT_BINARY_DIR}/limine/limine.sys
-            ${PROJECT_BINARY_DIR}/limine/limine-cd.bin
-            ${PROJECT_BINARY_DIR}/limine/limine-cd-efi.bin
+            ${PROJECT_BINARY_DIR}/limine/limine-bios.sys
+            ${PROJECT_BINARY_DIR}/limine/limine-bios-cd.bin
+            ${PROJECT_BINARY_DIR}/limine/limine-uefi-cd.bin
             ${PROJECT_BINARY_DIR}/iso_root)
 endif()
 

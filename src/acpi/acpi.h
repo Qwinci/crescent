@@ -45,4 +45,3 @@ typedef struct [[gnu::packed]] {
 void acpi_init(void* rsdp);
 bool acpi_checksum(const void* table, usize size);
 const SdtHeader* acpi_get_table(const char* table);
-void* acpi_get_rsdp();

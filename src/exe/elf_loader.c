@@ -63,6 +63,22 @@ ElfInfo elf_get_info(const void* data) {
 	return res;
 }
 
+void elf_process_relocs(ElfInfo info, ElfSection rela_sect, void* load_base, void* run_base) {
+	for (usize i = 0; i < rela_sect.size / sizeof(Elf64Rela); ++i) {
+		Elf64Rela rela = *offset(rela_sect.base, const Elf64Rela*, i * sizeof(Elf64Rela));
+		u64 type = ELF64_R_TYPE(rela.r_info);
+
+		usize off = rela.r_offset - info.base;
+
+		if (type == R_AMD64_RELATIVE) {
+			*offset(load_base, u64*, off) = (usize) run_base + rela.r_addend;
+		}
+		else {
+			panic("unsupported elf relocation type %u\n", type);
+		}
+	}
+}
+
 LoadedElf elf_load(ElfInfo info, void* load_base, void* run_base) {
 	assert(load_base);
 	memset(load_base, 0, info.mem_size);
@@ -85,21 +101,8 @@ LoadedElf elf_load(ElfInfo info, void* load_base, void* run_base) {
 	res.entry = offset(run_base, void*, e_hdr->e_entry - info.base);
 
 	if (run_base != (void*) info.base) {
-		ElfSection rela_sect = elf_get_section(info, ".rela");
-
-		for (usize i = 0; i < rela_sect.size / sizeof(Elf64Rela); ++i) {
-			Elf64Rela rela = *offset(rela_sect.base, const Elf64Rela*, i * sizeof(Elf64Rela));
-			u64 type = ELF64_R_TYPE(rela.r_info);
-
-			usize off = rela.r_offset - info.base;
-
-			if (type == R_AMD64_RELATIVE) {
-				*offset(load_base, u64*, off) = (usize) run_base + rela.r_addend;
-			}
-			else {
-				panic("unsupported elf relocation type %u\n", type);
-			}
-		}
+		elf_process_relocs(info, elf_get_section(info, ".rela"), load_base, run_base);
+		elf_process_relocs(info, elf_get_section(info, ".rela.dyn"), load_base, run_base);
 	}
 
 	return res;

@@ -1,67 +1,65 @@
-default rel
-global _start
-
-%define SYS_EXIT 0
-%define SYS_CREATE_THREAD 1
-%define SYS_DPRINT 2
-%define SYS_SLEEP 3
-%define SYS_WAIT_THREAD 4
+.global _start
+.set SYS_EXIT, 0
+.set SYS_CREATE_THREAD, 1
+.set SYS_DPRINT, 2
+.set SYS_SLEEP, 3
+.set SYS_WAIT_THREAD, 4
 
 thread:
-	mov edi, SYS_EXIT
-	mov eax, 1
+    mov $SYS_EXIT, %edi
+	mov $1, %eax
 	syscall
 _start:
-	; num arg0 arg1 arg2 arg3 arg4 arg5
-	; rdi rax  rsi  rdx  r10  r8   r9
+	// num arg0 arg1 arg2 arg3 arg4 arg5
+	// rdi rax  rsi  rdx  r10  r8   r9
 
-	; create a thread
-	mov edi, SYS_CREATE_THREAD
-	lea rax, [rel thread]
-	xor esi, esi
-	xor edx, edx
+	// create a thread
+	mov $SYS_CREATE_THREAD, %edi
+	leaq thread(%rip), %rax
+	xor %esi, %esi
+	xor %edx, %edx
 	syscall
 
-	push rax
+	push %rax
 
-	sub rsp, 16
-	mov byte [rsp + 0], 'h'
-	mov byte [rsp + 1], 'e'
-	mov byte [rsp + 2], 'l'
-	mov byte [rsp + 3], 'l'
-	mov byte [rsp + 4], 'o'
-	mov byte [rsp + 5], ' '
-	mov byte [rsp + 6], 'f'
-	mov byte [rsp + 7], 'r'
-	mov byte [rsp + 8], 'o'
-	mov byte [rsp + 9], 'm'
-	mov byte [rsp + 10], ' '
-	mov byte [rsp + 11], 'u'
-	mov byte [rsp + 12], 's'
-	mov byte [rsp + 13], 'e'
-	mov byte [rsp + 14], 'r'
-	mov byte [rsp + 15], 0xA
-	mov edi, SYS_DPRINT
-	mov rax, rsp
-	mov rsi, 16
+    sub %rsp, 16
+	movb $'h', 0(%rsp)
+	movb $'e', 1(%rsp)
+	movb $'l', 2(%rsp)
+	movb $'l', 3(%rsp)
+	movb $'o', 4(%rsp)
+	movb $' ', 5(%rsp)
+	movb $'f', 6(%rsp)
+	movb $'r', 7(%rsp)
+	movb $'o', 8(%rsp)
+	movb $'m', 9(%rsp)
+	movb $' ', 10(%rsp)
+	movb $'u', 11(%rsp)
+	movb $'s', 12(%rsp)
+	movb $'e', 13(%rsp)
+	movb $'r', 14(%rsp)
+	movb $0xA, 15(%rsp)
+	mov $SYS_DPRINT, %edi
+	mov %rsp, %rax
+	mov $16, %esi
 	syscall
 
-	add rsp, 16
+    add $16, %rsp
 
-	mov edi, SYS_DPRINT
-	lea rax, [str]
-	mov rsi, str_len
+    mov $SYS_DPRINT, %edi
+    leaq str(%rip), %rax
+    mov $str_len, %rsi
 	syscall
 
-	pop rax
-	mov edi, SYS_WAIT_THREAD
+	pop %rax
+	mov $SYS_WAIT_THREAD, %edi
 	syscall
 
-	; exit
-	mov edi, SYS_EXIT
-	;xor eax, eax
+	// exit
+	mov $SYS_EXIT, %edi
+	// xor eax, eax
 	syscall
 
-section .rodata
-str: db "Hello world!", 0xA
-str_len: equ $-str
+.section .rodata
+str: .ascii "Hello world!\n"
+.set str_len, . - str

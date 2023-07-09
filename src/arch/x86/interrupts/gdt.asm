@@ -1,14 +1,15 @@
-global x86_load_gdt_asm
+.global x86_load_gdt_asm
+.type x86_load_gdt_asm, @function
 
 x86_load_gdt_asm:
-	lgdt [rdi]
-	mov ax, 0x10
-	mov ds, ax
-	mov ss, ax
-	mov es, ax
-	mov fs, ax
-	mov gs, ax
-	pop rdi
-	push dword 0x8
-	push rdi
-	retfq
+    lgdt (%rdi)
+    mov $0x10, %ax
+	mov %ax, %ds
+	mov %ax, %ss
+	mov %ax, %es
+	mov %ax, %fs
+	mov %ax, %gs
+	pop %rdi
+	push $0x8
+	push %rdi
+	lretq

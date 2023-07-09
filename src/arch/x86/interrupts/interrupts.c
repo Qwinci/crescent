@@ -149,7 +149,7 @@ const char* resolve_ip(usize ip) {
 
 void backtrace_display(bool lock) {
 	Frame* frame;
-	__asm__ volatile("mov %0, rbp" : "=rm"(frame));
+	__asm__ volatile("mov %%rbp, %0" : "=rm"(frame));
 	while (frame->rbp) {
 		const char* name = resolve_ip(frame->rip);
 		if (lock) {

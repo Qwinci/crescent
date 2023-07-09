@@ -4,6 +4,7 @@
 #include "sched/mutex.h"
 #include "stdio.h"
 #include "utils.h"
+#include "string.h"
 
 // 1 2 4 8 16 32 64 128 256 512 1024
 #define FREELIST_COUNT 11
@@ -224,8 +225,11 @@ Page* pmalloc(usize count) {
 	}
 
 	mutex_lock(&PMALLOC_LOCK);
-	void* ptr = freelist_get_nonrecursive(index);
+	Page* ptr = freelist_get_nonrecursive(index);
 	mutex_unlock(&PMALLOC_LOCK);
+	if (ptr) {
+		memset(to_virt(ptr->phys), 0xCB, index_to_size(index) * PAGE_SIZE);
+	}
 	return ptr;
 }
 
@@ -239,6 +243,7 @@ void pfree(Page* ptr, usize count) {
 		index += 1;
 	}
 
+	memset(to_virt(ptr->phys), 0xCB, index_to_size(index) * PAGE_SIZE);
 	mutex_lock(&PMALLOC_LOCK);
 	freelist_insert_nonrecursive(index, ptr);
 	mutex_unlock(&PMALLOC_LOCK);
