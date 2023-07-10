@@ -1,16 +1,24 @@
-#include "mutex.h"
+#include "irq_mutex.h"
 #include "arch/cpu.h"
 #include "arch/interrupts.h"
 
-bool mutex_try_lock(Mutex* self) {
-	return !atomic_exchange_explicit(&self->inner, true, memory_order_acquire);
+bool irq_mutex_try_lock(IrqMutex* self) {
+	Ipl ipl = arch_ipl_set(IPL_CRITICAL);
+	if (!atomic_exchange_explicit(&self->inner, true, memory_order_acquire)) {
+		self->ipl = (u8) ipl;
+		return true;
+	}
+	else {
+		arch_ipl_set(ipl);
+		return false;
+	}
 }
 
-void mutex_lock(Mutex* self) {
+void irq_mutex_lock(IrqMutex* self) {
+	Ipl ipl = arch_ipl_set(IPL_CRITICAL);
 	bool result = atomic_exchange_explicit(&self->inner, true, memory_order_acquire);
 	if (result) {
 		Task* task = arch_get_cur_task();
-		Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 		task->status = TASK_STATUS_WAITING;
 		task->next = NULL;
@@ -28,20 +36,22 @@ void mutex_lock(Mutex* self) {
 
 		spinlock_unlock(&self->task_protector);
 
-		arch_ipl_set(old);
+		arch_ipl_set(ipl);
 		sched();
+		arch_ipl_set(IPL_CRITICAL);
 	}
+	self->ipl = (u8) ipl;
 }
 
-void mutex_unlock(Mutex* self) {
-	atomic_store_explicit(&self->inner, false, memory_order_release);
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
+void irq_mutex_unlock(IrqMutex* self) {
 	spinlock_lock(&self->task_protector);
 	if (self->waiting_tasks) {
 		Task* task = self->waiting_tasks;
 		self->waiting_tasks = task->next;
 		spinlock_unlock(&self->task_protector);
-		arch_ipl_set(old);
+
+		atomic_store_explicit(&self->inner, false, memory_order_release);
+		arch_ipl_set(self->ipl);
 
 		if (sched_unblock(task)) {
 			sched();
@@ -49,7 +59,8 @@ void mutex_unlock(Mutex* self) {
 	}
 	else {
 		spinlock_unlock(&self->task_protector);
-		arch_ipl_set(old);
+		atomic_store_explicit(&self->inner, false, memory_order_release);
+		arch_ipl_set(self->ipl);
 	}
 }
 

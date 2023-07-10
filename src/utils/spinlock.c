@@ -3,6 +3,8 @@
 
 #ifdef CONFIG_TEST
 #include "utils/test.h"
+#include "arch/interrupts.h"
+
 static bool test_spinlock_lock() {
 	Spinlock lock = {};
 	spinlock_lock(&lock);

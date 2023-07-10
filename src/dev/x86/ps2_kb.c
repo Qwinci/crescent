@@ -156,7 +156,7 @@ static u8 queue_get_byte() {
 	return byte;
 }
 
-NORETURN static void ps2_kb_translator() {
+NORETURN static void ps2_kb_translator(void*) {
 	while (true) {
 		u8 byte0 = queue_get_byte();
 

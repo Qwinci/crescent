@@ -17,7 +17,7 @@ typedef struct IrqHandler {
 	struct IrqHandler* next;
 } IrqHandler;
 
-typedef enum : u32 {
+typedef enum : u8 {
 	IPL_NORMAL,
 	IPL_DEV,
 	IPL_TIMER,

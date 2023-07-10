@@ -44,7 +44,7 @@
 
 	vm_user_dealloc_kernel(mem, ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE + 100);
 
-	void (*user_fn)() = (void (*)()) loaded.entry;
+	void (*user_fn)(void*) = (void (*)(void*)) loaded.entry;
 
 	arch_set_user_task_fn(test_user, user_fn);
 

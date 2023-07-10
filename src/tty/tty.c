@@ -7,7 +7,7 @@
 static Task* tty_task = NULL;
 extern const char* layout_fi_scan_to_key(Scancode code, Modifier modifiers);
 
-NORETURN static void tty() {
+NORETURN static void tty(void*) {
 	while (true) {
 		Event event;
 		if (!event_queue_get(&tty_task->event_queue, &event)) {

@@ -19,14 +19,18 @@ typedef struct {
 	usize slice_us;
 } SchedLevel;
 
-Task* arch_create_kernel_task(const char* name, void (*fn)(), void* arg);
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent, bool detach);
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, struct TaskVMem* vmem, bool detach);
-void arch_set_user_task_fn(Task* task, void (*fn)());
+Task* arch_create_kernel_task(const char* name, void (*fn)(void*), void* arg);
+Task* arch_create_user_task(const char* name, void (*fn)(void*), void* arg, Task* parent, bool detach);
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(void*), void* arg, Task* parent, void* map, struct TaskVMem* vmem, bool detach);
+void arch_set_user_task_fn(Task* task, void (*fn)(void*));
 void arch_destroy_task(Task* task);
 
+// Precondition: ipl is critical or interrupts are disabled
 void sched();
+
+// Precondition: ipl is critical or interrupts are disabled
 void sched_queue_task(Task* task);
+
 void sched_block(TaskStatus status);
 bool sched_unblock(Task* task);
 void sched_sleep(usize us);

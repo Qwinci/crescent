@@ -12,14 +12,18 @@
 x86_usermode_ret:
 	swapgs
 	pop %rcx
+	pop %rdi
 
 	xor %eax, %eax
 	xor %edx, %edx
 	xor %esi, %esi
-	xor %edi, %edi
 	xor %r8d, %r8d
 	xor %r9d, %r9d
 	xor %r10d, %r10d
+	xor %r12d, %r12d
+	xor %r13d, %r13d
+	xor %r14d, %r14d
+	xor %r15d, %r15d
 
 	mov $0x202, %r11
 	sysretq

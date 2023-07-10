@@ -1,25 +1,23 @@
 #pragma once
 #include "types.h"
 #include "crescent/sys.h"
-
-typedef struct Handle {
-	struct Handle* prev;
-	struct Handle* next;
-	HandleId id;
-} Handle;
-
-#define HANDLE_LIST_HASH_TAB_COUNT 16
+#include "sched/mutex.h"
 
 typedef struct {
-	Handle* root;
-	Handle* end;
-} HandleHashTab;
+	Handle handle;
+	void* data;
+} HandleEntry;
 
 typedef struct {
-	HandleHashTab handles[HANDLE_LIST_HASH_TAB_COUNT];
-	usize counter;
-} HandleList;
+	HandleEntry* table;
+	usize size;
+	usize cap;
+	HandleEntry* freelist;
+	Mutex lock;
+} HandleTable;
 
-void handle_list_add(HandleList* self, Handle* handle);
-void handle_list_remove(HandleList* self, Handle* handle);
-Handle* handle_list_get(HandleList* self, HandleId id);
+#define INVALID_HANDLE ((Handle) -1)
+
+Handle handle_tab_insert(HandleTable* self, void* data);
+void handle_tab_remove(HandleTable* self, Handle handle);
+void* handle_tab_get(HandleTable* self, Handle handle);

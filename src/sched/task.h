@@ -32,14 +32,13 @@ typedef struct Task {
 	struct Task* child_prev;
 	struct Task* child_next;
 	struct Task* children;
-	HandleList thread_handles;
-	HandleId id;
 	Mutex lock;
 	struct TaskVMem* user_vmem;
 	File* stdout;
 	File* stderr;
 	File* stdin;
 	struct Task* signal_waiters;
+	HandleTable handle_table;
 	EventQueue event_queue;
 	int exit_status;
 	bool detached;

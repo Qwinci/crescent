@@ -17,7 +17,7 @@
 typedef struct {
 	u64 r15, r14, r13, r12, rbp, rbx;
 	void (*after_switch)(X86Task* old_task);
-	void (*fn)();
+	void (*fn)(void*);
 	void* arg;
 	u64 null_rbp;
 	u64 null_rip;
@@ -27,7 +27,7 @@ typedef struct {
 	u64 r15, r14, r13, r12, rbp, rbx;
 	void (*after_switch)(X86Task* old_task);
 	void (*usermode_ret)();
-	void (*fn)();
+	void (*fn)(void*);
 	void* arg;
 	u64 null_rbp;
 	u64 null_rip;
@@ -46,7 +46,7 @@ typedef struct TaskVMem {
     struct Task* task;
 } TaskVMem;
 
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, Task* parent, void* map, TaskVMem* vmem, bool detach) {
+Task* arch_create_user_task_with_map(const char* name, void (*fn)(void*), void* arg, Task* parent, void* map, TaskVMem* vmem, bool detach) {
 	X86PageMap* m = (X86PageMap*) map;
 	m->ref_count += 1;
 
@@ -130,7 +130,7 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(), void* arg, 
 	return &task->common;
 }
 
-Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* parent, bool detach) {
+Task* arch_create_user_task(const char* name, void (*fn)(void*), void* arg, Task* parent, bool detach) {
 	void* map = x86_create_user_map();
 	if (!map) {
 		kprintf("[kernel][x86]: failed to create user map (out of memory)\n");
@@ -139,7 +139,7 @@ Task* arch_create_user_task(const char* name, void (*fn)(), void* arg, Task* par
 	return arch_create_user_task_with_map(name, fn, arg, parent, map, NULL, detach);
 }
 
-void arch_set_user_task_fn(Task* task, void (*fn)()) {
+void arch_set_user_task_fn(Task* task, void (*fn)(void*)) {
 	X86Task* x86_task = container_of(task, X86Task, common);
 
 	void* page = to_virt(arch_virt_to_phys(task->map, ALIGNDOWN(x86_task->rsp, PAGE_SIZE)) + (x86_task->rsp & (PAGE_SIZE - 1)));
@@ -147,7 +147,7 @@ void arch_set_user_task_fn(Task* task, void (*fn)()) {
 	frame->fn = fn;
 }
 
-Task* arch_create_kernel_task(const char* name, void (*fn)(), void* arg) {
+Task* arch_create_kernel_task(const char* name, void (*fn)(void*), void* arg) {
 	X86Task* task = kmalloc(sizeof(X86Task));
 	assert(task);
 	memset(task, 0, sizeof(X86Task));

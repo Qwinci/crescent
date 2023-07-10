@@ -10,10 +10,10 @@
 #include "assert.h"
 
 void sys_exit(int status);
-HandleId sys_create_thread(void (*fn)(), void* arg, bool detach);
+Handle sys_create_thread(void (*fn)(void*), void* arg, bool detach);
 void sys_dprint(const char* msg, size_t len);
 void sys_sleep(usize ms);
-int sys_wait_thread(HandleId handle);
+int sys_wait_thread(Handle handle);
 void sys_wait_for_event(Event* res);
 bool sys_poll_event(Event* res);
 bool sys_shutdown(ShutdownType type);
@@ -35,7 +35,6 @@ __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / s
 #define E_ARG (-2)
 
 typedef struct {
-	Handle common;
 	union {
 		Task* task;
 		int status;
@@ -73,18 +72,16 @@ bool sys_poll_event(Event* res) {
 	return event_queue_get(&self->event_queue, res);
 }
 
-int sys_wait_thread(HandleId handle) {
-	if (!handle) {
+int sys_wait_thread(Handle handle) {
+	if (handle == INVALID_HANDLE) {
 		return E_ARG;
 	}
 	Task* self = arch_get_cur_task();
-	mutex_lock(&self->lock);
-	Handle* tmp_handle = handle_list_get(&self->thread_handles, handle);
-	if (!tmp_handle) {
-		mutex_unlock(&self->lock);
+
+	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_get(&self->handle_table, handle);
+	if (t_handle == NULL) {
 		return E_ARG;
 	}
-	ThreadHandle* t_handle = container_of(tmp_handle, ThreadHandle, common);
 
 	Task* thread = t_handle->task;
 
@@ -97,7 +94,7 @@ int sys_wait_thread(HandleId handle) {
 	sched_sigwait(thread);
 
 	int status = t_handle->status;
-	handle_list_remove(&self->thread_handles, tmp_handle);
+	handle_tab_remove(&self->handle_table, handle);
 	kfree(t_handle, sizeof(ThreadHandle));
 	return status;
 }
@@ -114,7 +111,7 @@ void sys_dprint(const char* msg, size_t len) {
 }
 
 void sys_exit(int status) {
-	Task* task = arch_get_cur_task();
+	/*Task* task = arch_get_cur_task();
 	kprintf("task '%s' exited with status %d\n", task->name, status);
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	if (!task->detached) {
@@ -139,37 +136,35 @@ void sys_exit(int status) {
 			arch_ipl_set(old);
 			mutex_unlock(&task->parent->lock);
 		}
-	}
+	}*/
 
 	sched_exit(status, TASK_STATUS_EXITED);
 }
 
-HandleId sys_create_thread(void (*fn)(), void* arg, bool detach) {
+Handle sys_create_thread(void (*fn)(void*), void* arg, bool detach) {
 	Task* self = arch_get_cur_task();
 	ThreadHandle* handle = kmalloc(sizeof(ThreadHandle));
 	if (!handle) {
-		return 0;
+		return INVALID_HANDLE;
 	}
 
 	Task* task = arch_create_user_task_with_map("user thread", fn, arg, self, self->map, self->user_vmem, detach);
 	if (!task) {
 		kfree(handle, sizeof(ThreadHandle));
-		return 0;
+		return INVALID_HANDLE;
 	}
+
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	task->child_next = self->children;
 	self->children = task;
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
-	HandleId id = ++self->thread_handles.counter;
-	handle->common.id = id;
 	handle->task = task;
 	handle->exited = false;
 	handle->status = 0;
 	mutex_lock(&self->lock);
-	handle_list_add(&self->thread_handles, &handle->common);
+	Handle id = handle_tab_insert(&self->handle_table, handle);
 	mutex_unlock(&self->lock);
 
-	task->id = id;
 	sched_queue_task(task);
 	arch_ipl_set(old);
 	return id;

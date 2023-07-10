@@ -11,7 +11,7 @@
 #include "mem/vmem.h"
 #include "arch/map.h"
 
-[[noreturn]] static void idle_task_fn() {
+[[noreturn]] static void idle_task_fn(void*) {
 	while (true) {
 		arch_hlt();
 		Ipl old = arch_ipl_set(IPL_CRITICAL);
@@ -23,9 +23,12 @@
 	}
 }
 
+// Precondition: ipl is critical or interrupts are disabled
 void sched_switch_from(Task* old_task, Task* self) {
 	Task* t = arch_get_cur_task();
 	Cpu* cpu = t->cpu;
+
+	mutex_unlock(&old_task->lock);
 	if (old_task->status == TASK_STATUS_RUNNING) {
 		if (old_task == cpu->idle_task) {
 			cpu->idle_time += arch_get_ns_since_boot() - cpu->idle_start;
@@ -35,6 +38,7 @@ void sched_switch_from(Task* old_task, Task* self) {
 		}
 	}
 	else if (old_task->status == TASK_STATUS_EXITED || old_task->status == TASK_STATUS_KILLED) {
+		// todo new architecture here
 		cpu->thread_count -= 1;
 		arch_destroy_task(old_task);
 	}
@@ -78,36 +82,9 @@ Task* sched_get_next_task() {
 	return task;
 }
 
-void sched_with_next(Task* next) {
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
+void sched_with_next(Task* task) {
 	Cpu* cpu = arch_get_cur_task()->cpu;
 
-	if (!next) {
-		if (cpu->current_task->status != TASK_STATUS_RUNNING) {
-			next = cpu->idle_task;
-			cpu->idle_start = arch_get_ns_since_boot();
-		}
-		else {
-			arch_ipl_set(old);
-			return;
-		}
-	}
-
-	Task* self = cpu->current_task;
-	cpu->current_task = next;
-	arch_switch_task(self, cpu->current_task);
-	arch_ipl_set(old);
-}
-
-void sched() {
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
-
-	Cpu* cpu = arch_get_cur_task()->cpu;
-
-	Task* task = sched_get_next_task();
-	while (task && task->status != TASK_STATUS_READY) {
-		task = sched_get_next_task();
-	}
 	if (!task) {
 		if (cpu->current_task->status != TASK_STATUS_RUNNING) {
 			task = cpu->idle_task;
@@ -117,45 +94,36 @@ void sched() {
 			return;
 		}
 	}
-	while (task->status == TASK_STATUS_KILLED) {
-		kprintf("task '%s' was killed\n", task->name);
-		if (task->parent) {
-			if (task->child_prev) {
-				task->child_prev->child_next = task->child_next;
-			}
-			else {
-				task->parent->children = task->child_next;
-			}
-			if (task->child_next) {
-				task->child_next->child_prev = task->child_prev;
-			}
-
-			arch_destroy_task(task);
-		}
-		task = sched_get_next_task();
-		if (!task) {
-			if (cpu->current_task->status != TASK_STATUS_RUNNING) {
-				task = cpu->idle_task;
-				cpu->idle_start = arch_get_ns_since_boot();
-			}
-			else {
-				return;
-			}
-		}
-	}
 
 	Task* self = cpu->current_task;
 	cpu->current_task = task;
+	mutex_lock(&task->lock);
+
 	arch_switch_task(self, cpu->current_task);
-	arch_ipl_set(old);
+}
+
+void sched() {
+	Cpu* cpu = arch_get_cur_task()->cpu;
+	// This is a spinlock and not a mutex because only this cpu might access it (along with the load balancer)
+	// so if it would be a mutex it would try to reschedule in case of load balancing and then block again at this same point
+	spinlock_lock(&cpu->tasks_lock);
+
+	// Get the next task or idle if current task doesn't want to run anymore
+	Task* task = sched_get_next_task();
+
+	// Now we have gotten a task, so we don't need the lock anymore
+	spinlock_unlock(&cpu->tasks_lock);
+	sched_with_next(task);
 }
 
 void sched_queue_task_for_cpu(Task* task, Cpu* cpu) {
+
 	task->status = TASK_STATUS_READY;
 	task->next = NULL;
 	task->cpu = cpu;
 
 	SchedLevel* level = &cpu->sched_levels[task->level];
+	spinlock_lock(&cpu->tasks_lock);
 	if (!level->ready_tasks) {
 		level->ready_tasks = task;
 		level->ready_tasks_end = task;
@@ -164,6 +132,7 @@ void sched_queue_task_for_cpu(Task* task, Cpu* cpu) {
 		level->ready_tasks_end->next = task;
 		level->ready_tasks_end = task;
 	}
+	spinlock_unlock(&cpu->tasks_lock);
 }
 
 void sched_queue_task(Task* task) {
@@ -171,22 +140,21 @@ void sched_queue_task(Task* task) {
 }
 
 void sched_block(TaskStatus status) {
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
+	arch_ipl_set(IPL_CRITICAL);
 	arch_get_cur_task()->status = status;
-	arch_ipl_set(old);
 	sched();
 }
 
 void sched_sigwait(Task* task) {
 	Task* self = arch_get_cur_task();
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
+	arch_ipl_set(IPL_CRITICAL);
 
 	self->status = TASK_STATUS_WAITING;
 	self->next = task->signal_waiters;
 	task->signal_waiters = self;
 
+	// todo new architecture
 	mutex_unlock(&self->lock);
-	arch_ipl_set(old);
 	sched();
 }
 
@@ -199,10 +167,12 @@ bool sched_unblock(Task* task) {
 		task->level += 1;
 	}
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
+
 	Task* current_task = arch_get_cur_task();
 	u16 priority = current_task->level + current_task->priority;
 	u16 task_priority = task->level + task->priority;
 	sched_queue_task(task);
+
 	arch_ipl_set(old);
 	return priority < task_priority;
 }
@@ -240,7 +210,9 @@ void sched_kill_children(Task* self) {
 	Task* task = self->children;
 	while (true) {
 		kprintf("killing child task '%s'\n", *task->name ? task->name : "<no name>");
+		mutex_lock(&task->lock);
 		sched_kill_child(task);
+		mutex_unlock(&task->lock);
 		if (task->children) {
 			task = task->children;
 		}
@@ -279,6 +251,7 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 	self->exit_status = status;
 
 	if (self->parent) {
+		mutex_lock(&self->parent->lock);
 		if (self->child_prev) {
 			self->child_prev->child_next = self->child_next;
 		}
@@ -288,6 +261,7 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 		if (self->child_next) {
 			self->child_next->child_prev = self->child_prev;
 		}
+		mutex_unlock(&self->parent->lock);
 	}
 
 	if (self->children) {
@@ -309,16 +283,16 @@ void sched_kill_child(Task* task) {
 	task->status = TASK_STATUS_KILLED;
 }
 
-NORETURN void sched_load_balance() {
+NORETURN void sched_load_balance(void*) {
 	while (true) {
-		usize min_thread_count = UINT64_MAX;
-		u8 min_cpu_i = 0;
+		usize min_thread_count = UINTPTR_MAX;
 		usize max_thread_count = 0;
+		u8 min_cpu_i = 0;
 		u8 max_cpu_i = 0;
 
 		for (usize i = 0; i < arch_get_cpu_count(); ++i) {
 			Cpu* cpu = arch_get_cpu(i);
-			u32 thread_count = cpu->thread_count;
+			u32 thread_count = atomic_load_explicit(&cpu->thread_count, memory_order_relaxed);
 			if (thread_count < min_thread_count) {
 				min_thread_count = thread_count;
 				min_cpu_i = i;
@@ -335,41 +309,44 @@ NORETURN void sched_load_balance() {
 			Cpu* min_cpu = arch_get_cpu(min_cpu_i);
 			Cpu* max_cpu = arch_get_cpu(max_cpu_i);
 
-			spinlock_lock(&min_cpu->hold_lock);
-			spinlock_lock(&max_cpu->hold_lock);
+			spinlock_lock(&min_cpu->tasks_lock);
+			spinlock_lock(&max_cpu->tasks_lock);
 
+			// todo better names since these don't hlt anymore
 			arch_hlt_cpu(min_cpu_i);
 			arch_hlt_cpu(max_cpu_i);
-			mutex_lock(&min_cpu->tasks_lock);
 
 			usize amount = 0;
 			for (usize i = SCHED_MAX_LEVEL; i > 0 && diff > 1; --i) {
 				SchedLevel* level = &max_cpu->sched_levels[i - 1];
+
 				Task* prev = NULL;
-				for (Task* task = level->ready_tasks; task; task = task->next) {
+				Task* next = NULL;
+				for (Task* task = level->ready_tasks; task; task = next) {
+					next = task->next;
 					if (!task->pin_cpu) {
 						diff -= 1;
 						if (prev) {
-							prev->next = task->next;
+							prev->next = next;
 						}
 						else {
-							level->ready_tasks = task->next;
+							level->ready_tasks = next;
 						}
-						//kprintf("moved task '%s' from cpu %u to %u\n", task->name, max_cpu_i, min_cpu_i);
+
 						sched_queue_task_for_cpu(task, min_cpu);
 						++amount;
 					}
-					prev = task;
+					else {
+						prev = task;
+					}
 				}
 			}
 
 			max_cpu->thread_count -= amount;
 			min_cpu->thread_count += amount;
 
-			mutex_unlock(&min_cpu->tasks_lock);
-
-			spinlock_unlock(&min_cpu->hold_lock);
-			spinlock_unlock(&max_cpu->hold_lock);
+			spinlock_unlock(&min_cpu->tasks_lock);
+			spinlock_unlock(&max_cpu->tasks_lock);
 		}
 
 		arch_ipl_set(old);

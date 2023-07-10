@@ -31,19 +31,19 @@ size_t syscall3(size_t num, size_t a0, size_t a1, size_t a2) {
 	__builtin_unreachable();
 }
 
-HandleId sys_create_thread(void (*fn)(void*), void* arg, bool detach) {
-	return (HandleId) syscall3(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg, (size_t) detach);
-}
-
 void sys_dprint(const char* msg, size_t len) {
 	syscall2(SYS_DPRINT, (size_t) msg, len);
+}
+
+Handle sys_create_thread(void (*fn)(void*), void* arg, bool detach) {
+	return (Handle) syscall3(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg, (size_t) detach);
 }
 
 void sys_sleep(size_t ms) {
 	syscall1(SYS_SLEEP, ms);
 }
 
-int sys_wait_thread(HandleId thread) {
+int sys_wait_thread(Handle thread) {
 	return (int) syscall1(SYS_WAIT_THREAD, thread);
 }
 
@@ -142,7 +142,7 @@ size_t strlen(const char* str) {
 	return len;
 }
 
-_Noreturn void _start() {
+_Noreturn void _start(void*) {
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9
 

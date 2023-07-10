@@ -1,8 +1,10 @@
 #ifndef CRESCENT_SYS_H
 #define CRESCENT_SYS_H
-#include <stddef.h>
+#include <stdint.h>
 
-typedef size_t HandleId;
+#define INVALID_HANDLE ((Handle) -1)
+
+typedef uint64_t Handle;
 
 typedef enum {
 	SHUTDOWN_TYPE_REBOOT
