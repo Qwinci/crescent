@@ -3,6 +3,7 @@
 #include "mem/allocator.h"
 #include "sched.h"
 #include "string.h"
+#include "arch/cpu.h"
 
 #define EVENT_QUEUE_MAX_SIZE 256
 
@@ -33,7 +34,6 @@ void event_queue_push(EventQueue* self, Event event) {
 	}
 	if (self->events_len == EVENT_QUEUE_MAX_SIZE) {
 		mutex_unlock(&self->lock);
-		kprintf("[kernel][input]: warning: event queue full, discarding new event\n");
 		return;
 	}
 	self->events[self->event_producer_ptr] = event;

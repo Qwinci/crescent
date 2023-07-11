@@ -638,7 +638,7 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 	assert(ident_ns);
 	memset(ident_ns, 0, sizeof(NvmeIdentifyNamespace));
 	nvme_identify_ns(self, nsid, ident_ns);
-	kprintf("[kernel][nvme]: identified namespace with id %u\n", nsid);
+	//kprintf("[kernel][nvme]: identified namespace with id %u\n", nsid);
 
 	u8 fmt_index = ident_ns->flbas & 0xF;
 	if (ident_ns->nlbaf > 16) {
@@ -663,9 +663,9 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 	ns->storage.max_transfer_blk = max_transfer_lbas;
 
 	nvme_ns_create_queues(self, ns, nsid);
-	kprintf("[kernel][nvme]: successfully created io queues for ns %u\n", nsid);
+	//kprintf("[kernel][nvme]: successfully created io queues for ns %u\n", nsid);
 
-	kprintf("[kernel][nvme]: ns %u has %u blocks of size %u (total %uGB)\n", nsid, lba_count, lba_size, lba_count * lba_size / 1024 / 1024 / 1024);
+	//kprintf("[kernel][nvme]: ns %u has %u blocks of size %u (total %uGB)\n", nsid, lba_count, lba_size, lba_count * lba_size / 1024 / 1024 / 1024);
 	kfree(ident_ns, sizeof(NvmeIdentifyNamespace));
 
 	// todo
@@ -694,7 +694,7 @@ static void nvme_set_queue_count(NvmeController* self) {
 	set_queue_count_cmd.features.fid = FEAT_NUM_QUEUES;
 	set_queue_count_cmd.features.cdw11[0] = (4 - 1) | ((4 - 1) << 16);
 	nvme_queue_submit_and_wait(&self->admin_queue, set_queue_count_cmd);
-	kprintf("[kernel][nvme]: set io queue count to 4\n");
+	//kprintf("[kernel][nvme]: set io queue count to 4\n");
 }
 
 static void nvme_init(PciHdr0* hdr) {
@@ -734,8 +734,8 @@ static void nvme_init(PciHdr0* hdr) {
 	assert(ident_controller);
 	memset(ident_controller, 0, sizeof(NvmeIdentifyController));
 	nvme_identify(self, ident_controller);
-	kprintf("[kernel][nvme]: controller ident success\n");
-	kprintf("[kernel][nvme]: controller model: %.40s\n", ident_controller->mn);
+	//kprintf("[kernel][nvme]: controller ident success\n");
+	//kprintf("[kernel][nvme]: controller model: %.40s\n", ident_controller->mn);
 
 	usize min_page_size = 1 << (12 + CAP_MPSMIN(regs->cap));
 	assert(min_page_size == PAGE_SIZE);
@@ -746,14 +746,14 @@ static void nvme_init(PciHdr0* hdr) {
 	else {
 		self->max_transfer_size = 1024 * PAGE_SIZE;
 	}
-	kprintf("[kernel][nvme]: max transfer size: %u\n", self->max_transfer_size);
+	//kprintf("[kernel][nvme]: max transfer size: %u\n", self->max_transfer_size);
 
 	NvmeCmd set_queue_count_cmd = {};
 	set_queue_count_cmd.features.opc = OP_SET_FEATURES;
 	set_queue_count_cmd.features.fid = FEAT_NUM_QUEUES;
 	set_queue_count_cmd.features.cdw11[0] = (4 - 1) | ((4 - 1) << 16);
 	nvme_queue_submit_and_wait(&self->admin_queue, set_queue_count_cmd);
-	kprintf("[kernel][nvme]: set io queue count to 4\n");
+	//kprintf("[kernel][nvme]: set io queue count to 4\n");
 
 	// todo more than 1024 active namespaces
 

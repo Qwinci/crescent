@@ -144,7 +144,6 @@ static u8 queue_get_byte() {
 		spinlock_unlock(&ps2_spinlock);
 		arch_ipl_set(old);
 		sched_block(TASK_STATUS_WAITING);
-		sched();
 		old = arch_ipl_set(IPL_CRITICAL);
 		spinlock_lock(&ps2_spinlock);
 		byte = ps2_key_queue[ps2_key_queue_translator_ptr];

@@ -102,7 +102,7 @@ bool gpt_enum_partitions(Storage* storage) {
 		}
 
 		usize name_len = gpt->partition_entry_size - sizeof(GptEntry);
-		kprintf("[kernel][fs][gpt]: gpt entry '");
+		/*kprintf("[kernel][fs][gpt]: gpt entry '");
 		for (usize j = 0; j < name_len; ++j) {
 			u16 codepoint = entry->name[j];
 			if (codepoint == 0) {
@@ -111,7 +111,8 @@ bool gpt_enum_partitions(Storage* storage) {
 			// todo properly convert and print
 			kprintf("%c", (char) codepoint);
 		}
-		kprintf("'\n");
+		kprintf("'\n");*/
+		// todo print
 
 		if (entry->start_lba >= storage->blk_count || entry->start_lba >= entry->end_lba) {
 			kprintf("[kernel][fs][gpt]: gpt entry is invalid\n");

@@ -5,17 +5,18 @@
 #include "dev/timer.h"
 #include "mutex.h"
 #include "sched_internals.h"
-#include "stdio.h"
 #include "task.h"
 #include "utils/attribs.h"
 #include "mem/vmem.h"
-#include "arch/map.h"
 
 [[noreturn]] static void idle_task_fn(void*) {
 	while (true) {
 		arch_hlt();
 		Ipl old = arch_ipl_set(IPL_CRITICAL);
+		Cpu* cpu = arch_get_cur_task()->cpu;
+		spinlock_lock(&cpu->tasks_lock);
 		Task* task = sched_get_next_task();
+		spinlock_unlock(&cpu->tasks_lock);
 		if (task) {
 			sched_with_next(task);
 		}
@@ -120,7 +121,6 @@ void sched_queue_task_for_cpu(Task* task, Cpu* cpu) {
 	task->cpu = cpu;
 
 	SchedLevel* level = &cpu->sched_levels[task->level];
-	spinlock_lock(&cpu->tasks_lock);
 	if (!level->ready_tasks) {
 		level->ready_tasks = task;
 		level->ready_tasks_end = task;
@@ -129,11 +129,13 @@ void sched_queue_task_for_cpu(Task* task, Cpu* cpu) {
 		level->ready_tasks_end->next = task;
 		level->ready_tasks_end = task;
 	}
-	spinlock_unlock(&cpu->tasks_lock);
 }
 
 void sched_queue_task(Task* task) {
-	sched_queue_task_for_cpu(task, arch_get_cur_task()->cpu);
+	Cpu* cpu = arch_get_cur_task()->cpu;
+	spinlock_lock(&cpu->tasks_lock);
+	sched_queue_task_for_cpu(task, cpu);
+	spinlock_unlock(&cpu->tasks_lock);
 }
 
 void sched_block(TaskStatus status) {
