@@ -57,6 +57,7 @@
 	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));
 	h->task = test_user;
 	h->exited = false;
+	memset(&h->lock, 0, sizeof(Mutex));
 	handle_tab_insert(&test_user_process->handle_table, h, HANDLE_TYPE_THREAD);
 	test_user->event_queue.notify_target = test_user;
 

@@ -146,7 +146,35 @@ size_t strlen(const char* str) {
 	return len;
 }
 
+void puts(const char* str) {
+	sys_dprint(str, strlen(str));
+}
+
+void another_thread(void* arg) {
+	puts("hello from another thread\n");
+	if (arg == (void*) 0xCAFE) {
+		puts("cafe received from thread 1!\n");
+	}
+	else {
+		puts("didn't receive cafe from thread 1\n");
+	}
+	sys_exit(0xCAFE);
+}
+
 _Noreturn void _start(void*) {
+	Handle another = sys_create_thread(another_thread, (void*) 0xCAFE);
+	if (another == INVALID_HANDLE) {
+		puts("sys_create_thread failed to create thread\n");
+	}
+	puts("waiting for thread 2 to exit in thread1\n");
+	int status = sys_wait_thread(another);
+	if (status == 0xCAFE) {
+		puts("thread 2 exited with status 0xCAFE\n");
+	}
+	else {
+		puts("thread 2 didn't exit with status 0xCAFE\n");
+	}
+
 	if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
 		sys_dprint("user_tty got direct fb access\n", sizeof("user_tty got direct fb access\n") - 1);
 	}

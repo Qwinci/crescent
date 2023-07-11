@@ -42,10 +42,7 @@ void mutex_unlock(Mutex* self) {
 		self->waiting_tasks = task->next;
 		spinlock_unlock(&self->task_protector);
 		arch_ipl_set(old);
-
-		if (sched_unblock(task)) {
-			sched();
-		}
+		sched_unblock(task);
 	}
 	else {
 		spinlock_unlock(&self->task_protector);

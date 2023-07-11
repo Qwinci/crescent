@@ -7,6 +7,8 @@
 #include "types.h"
 #include "utils/handle.h"
 #include "mem/allocator.h"
+#include "string.h"
+#include "assert.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
@@ -104,12 +106,18 @@ int sys_wait_thread(Handle handle) {
 	if (t_handle == NULL) {
 		return E_ARG;
 	}
+	mutex_lock(&t_handle->lock);
 	if (t_handle->exited) {
+		mutex_unlock(&t_handle->lock);
 		handle_tab_close(&self->process->handle_table, handle);
 	}
 	else {
 		Task* thread = t_handle->task;
+		handle_tab_close(&self->process->handle_table, handle);
+		mutex_lock(&thread->signal_waiters_lock);
+		mutex_unlock(&t_handle->lock);
 		sched_sigwait(thread);
+		t_handle = (ThreadHandle*) handle_tab_open(&self->process->handle_table, handle);
 	}
 
 	int status = t_handle->status;
@@ -150,10 +158,12 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	handle->task = task;
 	handle->exited = false;
-	handle->status = 0;
+	memset(&handle->lock, 0, sizeof(Mutex));
 	Handle id = handle_tab_insert(&self->process->handle_table, handle, HANDLE_TYPE_THREAD);
+	task->tid = id;
 
 	sched_queue_task(task);
+	process_add_thread(self->process, task);
 	arch_ipl_set(old);
 	return id;
 }

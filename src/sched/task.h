@@ -20,9 +20,10 @@ typedef struct Process Process;
 typedef struct {
 	union {
 		Task* task;
-		atomic_int status;
+		int status;
 	};
-	atomic_bool exited;
+	bool exited;
+	Mutex lock;
 } ThreadHandle;
 
 typedef struct Task {

@@ -155,7 +155,6 @@ void sched_sigwait(Task* task) {
 
 	self->status = TASK_STATUS_WAITING;
 
-	mutex_lock(&task->signal_waiters_lock);
 	self->next = task->signal_waiters;
 	task->signal_waiters = self;
 	mutex_unlock(&task->signal_waiters_lock);
@@ -215,19 +214,23 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
+	self->status = type;
+	if (self->process) {
+		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
+		mutex_lock(&handle->lock);
+		handle->exited = true;
+		handle->status = status;
+		mutex_unlock(&handle->lock);
+		handle_tab_close(&self->process->handle_table, self->tid);
+	}
+
+	mutex_lock(&self->signal_waiters_lock);
 	while (self->signal_waiters) {
 		Task* next = self->signal_waiters->next;
 		sched_unblock(self->signal_waiters);
 		self->signal_waiters = next;
 	}
-
-	self->status = type;
-	if (self->process) {
-		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
-		handle->exited = true;
-		handle->status = status;
-		// todo might have sync issues with the wait syscall
-	}
+	mutex_unlock(&self->signal_waiters_lock);
 
 	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
 	if (ACTIVE_INPUT_TASK == self) {

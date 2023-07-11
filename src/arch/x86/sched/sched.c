@@ -12,9 +12,7 @@ void arch_sched_switch_from(Task*, Task* self) {
 	cpu->tss.rsp0_low = x86_self->kernel_rsp;
 	cpu->tss.rsp0_high = x86_self->kernel_rsp >> 32;
 
-	if (!x86_self->user) {
-		arch_ipl_set(IPL_NORMAL);
-	}
+	arch_ipl_set(IPL_NORMAL);
 }
 
 void arch_switch_task(Task* self, Task* new_task) {
