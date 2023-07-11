@@ -28,7 +28,6 @@ void sched_switch_from(Task* old_task, Task* self) {
 	Task* t = arch_get_cur_task();
 	Cpu* cpu = t->cpu;
 
-	mutex_unlock(&old_task->lock);
 	if (old_task->status == TASK_STATUS_RUNNING) {
 		if (old_task == cpu->idle_task) {
 			cpu->idle_time += arch_get_ns_since_boot() - cpu->idle_start;
@@ -38,7 +37,6 @@ void sched_switch_from(Task* old_task, Task* self) {
 		}
 	}
 	else if (old_task->status == TASK_STATUS_EXITED || old_task->status == TASK_STATUS_KILLED) {
-		// todo new architecture here
 		cpu->thread_count -= 1;
 		arch_destroy_task(old_task);
 	}
@@ -97,7 +95,6 @@ void sched_with_next(Task* task) {
 
 	Task* self = cpu->current_task;
 	cpu->current_task = task;
-	mutex_lock(&task->lock);
 
 	arch_switch_task(self, cpu->current_task);
 }
@@ -153,8 +150,6 @@ void sched_sigwait(Task* task) {
 	self->next = task->signal_waiters;
 	task->signal_waiters = self;
 
-	// todo new architecture
-	mutex_unlock(&self->lock);
 	sched();
 }
 
@@ -205,37 +200,6 @@ void sched_sleep(usize us) {
 	arch_ipl_set(old);
 }
 
-void sched_kill_children(Task* self) {
-	Task* parent = self;
-	Task* task = self->children;
-	while (true) {
-		kprintf("killing child task '%s'\n", *task->name ? task->name : "<no name>");
-		mutex_lock(&task->lock);
-		sched_kill_child(task);
-		mutex_unlock(&task->lock);
-		if (task->children) {
-			task = task->children;
-		}
-		else if (task->child_next) {
-			task = task->child_next;
-		}
-		else {
-			while (true) {
-				if (task->parent == parent) {
-					return;
-				}
-				else if (task->parent->child_next) {
-					task = task->parent->child_next;
-					break;
-				}
-				else {
-					task = task->parent;
-				}
-			}
-		}
-	}
-}
-
 NORETURN void sched_exit(int status, TaskStatus type) {
 	Task* self = arch_get_cur_task();
 
@@ -248,39 +212,26 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 	}
 
 	self->status = type;
-	self->exit_status = status;
-
-	if (self->parent) {
-		mutex_lock(&self->parent->lock);
-		if (self->child_prev) {
-			self->child_prev->child_next = self->child_next;
-		}
-		else {
-			self->parent->children = self->child_next;
-		}
-		if (self->child_next) {
-			self->child_next->child_prev = self->child_prev;
-		}
-		mutex_unlock(&self->parent->lock);
+	if (self->process) {
+		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
+		handle->exited = true;
+		handle->status = status;
+		// todo fix sync
 	}
 
-	if (self->children) {
-		sched_kill_children(self);
+	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
+	if (ACTIVE_INPUT_TASK == self) {
+		ACTIVE_INPUT_TASK = NULL;
 	}
+	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
 
 	arch_ipl_set(old);
 	sched();
-	while (true) {
-		arch_hlt();
-	}
+	__builtin_unreachable();
 }
 
 NORETURN void sched_kill_cur() {
 	sched_exit(-1, TASK_STATUS_KILLED);
-}
-
-void sched_kill_child(Task* task) {
-	task->status = TASK_STATUS_KILLED;
 }
 
 NORETURN void sched_load_balance(void*) {
@@ -378,30 +329,10 @@ static void create_kernel_tasks(bool bsp) {
 	}
 }
 
-typedef struct TaskVMem {
-	VMem vmem;
-	struct Task* task;
-} TaskVMem;
-
 void sched_init(bool bsp) {
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
 	create_kernel_tasks(bsp);
-
-	arch_ipl_set(old);
-}
-
-void sched_invalidate_map(Task* self) {
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
-
-	for (Task* task = self->user_vmem->task; task; task = task->same_map_next) {
-		if (task->status == TASK_STATUS_RUNNING) {
-			arch_invalidate_mapping(task);
-		}
-	}
-
-	// todo pcid
-	arch_use_map(self->map);
 
 	arch_ipl_set(old);
 }

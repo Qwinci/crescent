@@ -3,7 +3,7 @@
 #include "page.h"
 #include "pmalloc.h"
 #include "sched/mutex.h"
-#include "sched/task.h"
+#include "sched/process.h"
 #include "vmem.h"
 
 static VMem kernel_vmem = {};
@@ -68,28 +68,23 @@ void vm_kernel_dealloc_backed(void* ptr, usize count) {
 	vm_kernel_dealloc(ptr, count);
 }
 
-typedef struct TaskVMem {
-    VMem vmem;
-    struct Task* task;
-} TaskVMem;
-
-void vm_user_init(Task* task, usize base, usize size) {
-	vmem_new(&task->user_vmem->vmem, "user vmem", (void*) base, size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
+void vm_user_init(Process* process, usize base, usize size) {
+	vmem_new(&process->vmem, "user vmem", (void*) base, size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
 }
 
-void vm_user_free(Task* task) {
-	vmem_destroy(&task->user_vmem->vmem, false);
+void vm_user_free(Process* process) {
+	vmem_destroy(&process->vmem, false);
 }
 
-void* vm_user_alloc(Task* task, usize count) {
-	return vmem_alloc(&task->user_vmem->vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+void* vm_user_alloc(Process* process, usize count) {
+	return vmem_alloc(&process->vmem, count * PAGE_SIZE, VM_INSTANTFIT);
 }
-void vm_user_dealloc(Task* task, void* ptr, usize count) {
-	vmem_free(&task->user_vmem->vmem, ptr, count * PAGE_SIZE);
+void vm_user_dealloc(Process* process, void* ptr, usize count) {
+	vmem_free(&process->vmem, ptr, count * PAGE_SIZE);
 }
 
-void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, void** kernel_mapping) {
-	void* vm = vm_user_alloc(task, count);
+void* vm_user_alloc_backed(Process* process, usize count, PageFlags flags, void** kernel_mapping) {
+	void* vm = vm_user_alloc(process, count);
 	if (!vm) {
 		return NULL;
 	}
@@ -97,37 +92,48 @@ void* vm_user_alloc_backed(Task* task, usize count, PageFlags flags, void** kern
 	if (kernel_mapping) {
 		*kernel_mapping = vm_kernel_alloc(count);
 		if (!*kernel_mapping) {
-			vm_user_dealloc(task, vm, count);
+			vm_user_dealloc(process, vm, count);
 			return NULL;
 		}
 		kernel_vm = *kernel_mapping;
 	}
 
+	mutex_lock(&process->mapping_lock);
+	if (!process_add_mapping(process, (usize) vm, count * PAGE_SIZE)) {
+		mutex_unlock(&process->mapping_lock);
+		vm_user_dealloc(process, vm, count);
+		if (kernel_vm) {
+			vm_kernel_dealloc(kernel_vm, count);
+		}
+		return NULL;
+	}
+	mutex_unlock(&process->mapping_lock);
 	for (usize i = 0; i < count; ++i) {
 		Page* page = pmalloc(1);
 		if (!page) {
 			for (usize j = 0; j < i; ++j) {
-				Page* cur_page = task->allocated_pages;
-				task_remove_page(task, cur_page);
-				pfree(cur_page, 1);
+				Page* p = page_from_addr(arch_virt_to_phys(process->map, (usize) kernel_vm + j * PAGE_SIZE));
+				pfree(p, 1);
 
 				if (kernel_vm) {
 					arch_unmap_page(KERNEL_MAP, (usize) kernel_vm + j * PAGE_SIZE, true);
 				}
-				arch_user_unmap_page(task, (usize) vm + j * PAGE_SIZE, true);
+				arch_user_unmap_page(process, (usize) vm + j * PAGE_SIZE, true);
 			}
-			vm_user_dealloc(task, vm, count);
+			vm_user_dealloc(process, vm, count);
 			if (kernel_vm) {
 				vm_kernel_dealloc(kernel_vm, count);
 			}
+			mutex_lock(&process->mapping_lock);
+			process_remove_mapping(process, (usize) vm);
+			mutex_unlock(&process->mapping_lock);
 			return NULL;
 		}
-		task_add_page(task, page);
 
 		if (kernel_vm) {
 			arch_map_page(KERNEL_MAP, (usize) kernel_vm + i * PAGE_SIZE, page->phys, flags);
 		}
-		arch_user_map_page(task, (usize) vm + i * PAGE_SIZE, page->phys, flags);
+		arch_user_map_page(process, (usize) vm + i * PAGE_SIZE, page->phys, flags);
 	}
 
 	return vm;
@@ -140,23 +146,23 @@ void vm_user_dealloc_kernel(void* kernel_mapping, usize count) {
 	}
 }
 
-void vm_user_dealloc_backed(Task* task, void* ptr, usize count, void* kernel_mapping) {
+void vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping) {
 	for (usize i = 0; i < count; ++i) {
 		usize virt = (usize) ptr + i * PAGE_SIZE;
-		usize phys = arch_virt_to_phys(task->map, virt);
+		usize phys = arch_virt_to_phys(process->map, virt);
 		if (!phys) {
 			panic("vm_kernel_dealloc_backed: phys is null\n");
 		}
 		if (kernel_mapping) {
 			arch_unmap_page(KERNEL_MAP, (usize) kernel_mapping + i * PAGE_SIZE, true);
 		}
-		arch_user_unmap_page(task, virt, true);
+		arch_user_unmap_page(process, virt, true);
 
 		Page* page = page_from_addr(phys);
-		task_remove_page(task, page);
 		pfree(page, 1);
 	}
-	vm_user_dealloc(task, ptr, count);
+	vm_user_dealloc(process, ptr, count);
+	process_remove_mapping(process, (usize) ptr);
 	if (kernel_mapping) {
 		vm_kernel_dealloc(kernel_mapping, count);
 	}

@@ -3,13 +3,33 @@
 #include "mem/page.h"
 #include "mem/pmalloc.h"
 #include "mem/utils.h"
-#include "sched/task.h"
+#include "sched/process.h"
 #include "string.h"
 
-void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags) {
-	X86Task* x86_task = container_of(task, X86Task, common);
+void x86_add_map_page(X86PageMap* map, Page* page) {
+	page->prev = NULL;
+	page->next = map->map_pages;
+	if (map->map_pages) {
+		map->map_pages->prev = page;
+	}
+	map->map_pages = page;
+}
 
-	u64* pml4 = (u64*) to_virt(((X86PageMap*) task->map)->page->phys);
+void x86_remove_map_page(X86PageMap* map, Page* page) {
+	if (page->prev) {
+		page->prev->next = page->next;
+	}
+	else {
+		map->map_pages = page->next;
+	}
+	if (page->next) {
+		page->next->prev = page->prev;
+	}
+}
+
+void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flags) {
+	X86PageMap* map = (X86PageMap*) process->map;
+	u64* pml4 = (u64*) to_virt(map->page->phys);
 
 	u64 x86_flags = x86_pf_from_generic(flags);
 
@@ -35,7 +55,8 @@ void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags) {
 	else {
 		Page* page = pmalloc(1);
 		assert(page);
-		x86_task_add_map_page(x86_task, page);
+		process_add_mapping(process, page->phys, PAGE_SIZE);
+		x86_add_map_page(map, page);
 		pdp = (u64*) to_virt(page->phys);
 		memset(pdp, 0, PAGE_SIZE);
 
@@ -51,7 +72,7 @@ void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags) {
 	else {
 		Page* page = pmalloc(1);
 		assert(page);
-		x86_task_add_map_page(x86_task, page);
+		x86_add_map_page(map, page);
 		pd = (u64*) to_virt(page->phys);
 		memset(pd, 0, PAGE_SIZE);
 
@@ -66,7 +87,7 @@ void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags) {
 	if (pd[pd_offset] & X86_PF_H && flags & PF_SPLIT) {
 		Page* page = pmalloc(1);
 		assert(page);
-		x86_task_add_map_page(x86_task, page);
+		x86_add_map_page(map, page);
 		u64* frame = (u64*) to_virt(page->phys);
 
 		u64 old_flags = pd[pd_offset] & PAGE_FLAG_MASK;
@@ -95,7 +116,7 @@ void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags) {
 	else {
 		Page* page = pmalloc(1);
 		assert(page);
-		x86_task_add_map_page(x86_task, page);
+		x86_add_map_page(map, page);
 		pt = (u64*) to_virt(page->phys);
 		memset(pt, 0, PAGE_SIZE);
 
@@ -106,8 +127,9 @@ void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags) {
 	x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
 }
 
-void arch_user_unmap_page(Task* task, usize virt, bool dealloc) {
-	u64* pml4 = (u64*) to_virt(((X86PageMap*) task->map)->page->phys);
+void arch_user_unmap_page(Process* process, usize virt, bool dealloc) {
+	X86PageMap* map = (X86PageMap*) process->map;
+	u64* pml4 = (u64*) to_virt(map->page->phys);
 
 	usize orig_virt = virt;
 
@@ -166,14 +188,12 @@ void arch_user_unmap_page(Task* task, usize virt, bool dealloc) {
 		}
 	}
 
-	X86Task* x86_task = container_of(task, X86Task, common);
-
 	usize pd_phys = pd[pd_offset] & PAGE_ADDR_MASK;
 	usize pd_virt = (usize) to_virt(pd_phys);
 	pd[pd_offset] = 0;
 	x86_refresh_page(pd_virt);
 	Page* page = page_from_addr(pd_phys);
-	x86_task_remove_map_page(x86_task, page);
+	x86_remove_map_page(map, page);
 	pfree(page, 1);
 
 dealloc_huge:
@@ -189,6 +209,6 @@ dealloc_huge:
 	x86_refresh_page(pdp_virt);
 
 	page = page_from_addr(pdp_phys);
-	x86_task_remove_map_page(x86_task, page);
+	x86_remove_map_page(map, page);
 	pfree(page, 1);
 }

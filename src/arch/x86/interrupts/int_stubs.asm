@@ -68,7 +68,6 @@ int_common:
 
     pushq 17 * 8(%rsp)
     .cfi_adjust_cfa_offset 8
-	//push qword [rsp + 17 * 8]
 	push %rbp
 	.cfi_adjust_cfa_offset 8
 	mov %rsp, %rbp

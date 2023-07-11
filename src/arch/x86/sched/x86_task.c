@@ -10,6 +10,7 @@
 #include "sched/sched.h"
 #include "sched/sched_internals.h"
 #include "string.h"
+#include "sched/process.h"
 
 #define KERNEL_STACK_SIZE 0x2000
 #define USER_STACK_SIZE 0x2000
@@ -41,13 +42,8 @@ extern void x86_usermode_ret();
 
 extern void* x86_create_user_map();
 
-typedef struct TaskVMem {
-    VMem vmem;
-    struct Task* task;
-} TaskVMem;
-
-Task* arch_create_user_task_with_map(const char* name, void (*fn)(void*), void* arg, Task* parent, void* map, TaskVMem* vmem, bool detach) {
-	X86PageMap* m = (X86PageMap*) map;
+Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*), void* arg) {
+	X86PageMap* m = (X86PageMap*) process->map;
 	m->ref_count += 1;
 
 	X86Task* task = kmalloc(sizeof(X86Task));
@@ -57,31 +53,11 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(void*), void* 
 	}
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
-	task->common.map = map;
-	bool new_vmem = false;
-	if (!vmem) {
-		vmem = (TaskVMem*) kmalloc(sizeof(TaskVMem));
-		assert(vmem);
-		memset(vmem, 0, sizeof(TaskVMem));
-		task->common.user_vmem = vmem;
-		vm_user_init(&task->common, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
-		new_vmem = true;
-	}
-	else {
-		task->common.user_vmem = vmem;
-	}
-
-    task->common.same_map_next = vmem->task;
-    vmem->task = &task->common;
+	task->common.map = m;
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
 	if (!kernel_stack) {
 		kprintf("[kernel][x86]: failed to allocate kernel stack for user task (out of memory)\n");
-		if (new_vmem) {
-			vm_user_free(&task->common);
-			kfree(vmem, sizeof(VMem));
-		}
-		arch_destroy_map(task->common.map);
 		kfree(task, sizeof(X86Task));
 		return NULL;
 	}
@@ -89,15 +65,10 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(void*), void* 
 	task->kernel_rsp = (usize) kernel_stack + KERNEL_STACK_SIZE;
 
 	u8* stack;
-	u8* user_stack = (u8*) vm_user_alloc_backed(&task->common, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);
+	u8* user_stack = (u8*) vm_user_alloc_backed(process, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);
 	if (!user_stack) {
 		kprintf("[kernel][x86]: failed to allocate user stack (out of memory)\n");
 		kfree(kernel_stack, KERNEL_STACK_SIZE);
-		if (new_vmem) {
-			vm_user_free(&task->common);
-			kfree(vmem, sizeof(VMem));
-		}
-		arch_destroy_map(task->common.map);
 		kfree(task, sizeof(X86Task));
 		return NULL;
 	}
@@ -124,19 +95,9 @@ Task* arch_create_user_task_with_map(const char* name, void (*fn)(void*), void* 
 	task->common.level = SCHED_MAX_LEVEL - 1;
 	task->user = true;
 	task->common.priority = 0;
-	task->common.parent = parent;
-	task->common.detached = detach;
+	task->common.process = process;
 
 	return &task->common;
-}
-
-Task* arch_create_user_task(const char* name, void (*fn)(void*), void* arg, Task* parent, bool detach) {
-	void* map = x86_create_user_map();
-	if (!map) {
-		kprintf("[kernel][x86]: failed to create user map (out of memory)\n");
-		return NULL;
-	}
-	return arch_create_user_task_with_map(name, fn, arg, parent, map, NULL, detach);
 }
 
 void arch_set_user_task_fn(Task* task, void (*fn)(void*)) {
@@ -182,23 +143,29 @@ void arch_destroy_task(Task* task) {
 	X86Task* x86_task = container_of(task, X86Task, common);
 
 	if (x86_task->user) {
-		vm_user_dealloc_backed(&x86_task->common, (void*) x86_task->stack_base, USER_STACK_SIZE / PAGE_SIZE, NULL);
+		vm_user_dealloc_backed(task->process, (void*) x86_task->stack_base, USER_STACK_SIZE / PAGE_SIZE, NULL);
 
 		kfree((void*) (x86_task->kernel_rsp - KERNEL_STACK_SIZE), KERNEL_STACK_SIZE);
 
-		for (Page* page = x86_task->common.allocated_pages; page;) {
-			Page* next = page->next;
-			pfree(page, 1);
-			page = next;
+		// todo refcount
+		Process* process = task->process;
+		process->thread_count -= 1;
+
+		if (process->thread_count == 0) {
+			for (MemMapping* mapping = process->mappings; mapping; mapping = mapping->next) {
+				for (usize i = mapping->base; i < mapping->base + mapping->size; i += PAGE_SIZE) {
+					usize phys = arch_virt_to_phys(task->map, i);
+					Page* page = page_from_addr(phys);
+					page->refs -= 1;
+					if (page->refs == 0) {
+						pfree(page, 1);
+					}
+				}
+			}
+
+			vm_user_free(task->process);
+			arch_destroy_map(x86_task->common.map);
 		}
-
-		X86PageMap* map = (X86PageMap*) task->map;
-
-		if (map->ref_count == 1) {
-			vm_user_free(task);
-		}
-
-		arch_destroy_map(x86_task->common.map);
 	}
 	else {
 		kfree((void*) x86_task->stack_base, KERNEL_STACK_SIZE);

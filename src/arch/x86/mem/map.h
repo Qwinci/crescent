@@ -45,6 +45,7 @@ typedef struct Page Page;
 
 typedef struct {
 	Page* page;
+	Page* map_pages;
 	usize ref_count;
 } X86PageMap;
 

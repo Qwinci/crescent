@@ -9,13 +9,14 @@ typedef struct Page {
 	struct Page* next;
 	usize phys;
 	struct PRegion* region;
+	u32 refs;
 	enum : u8 {
 		PAGE_FREE,
 		PAGE_USED
 	} type;
 	u8 list_index;
 	union {
-		char pad[6];
+		char pad[2];
 	};
 } Page;
 

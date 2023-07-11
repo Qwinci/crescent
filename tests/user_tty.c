@@ -4,25 +4,25 @@
 
 size_t syscall0(size_t num) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num) : "rsi", "rdx", "r10", "r8", "r9", "r11", "rcx");
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num) : "r11", "rcx");
 	return ret;
 }
 
 size_t syscall1(size_t num, size_t a0) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0) : "rsi", "rdx", "r10", "r8", "r9", "r11", "rcx");
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0) : "r11", "rcx");
 	return ret;
 }
 
 size_t syscall2(size_t num, size_t a0, size_t a1) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0), "S"(a1) : "rdx", "r10", "r8", "r9", "r11", "rcx");
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0), "S"(a1) : "r11", "rcx");
 	return ret;
 }
 
 size_t syscall3(size_t num, size_t a0, size_t a1, size_t a2) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0), "S"(a1), "d"(a2) : "r10", "r8", "r9", "r11", "rcx");
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0), "S"(a1), "d"(a2) : "r11", "rcx");
 	return ret;
 }
 
@@ -35,8 +35,8 @@ void sys_dprint(const char* msg, size_t len) {
 	syscall2(SYS_DPRINT, (size_t) msg, len);
 }
 
-Handle sys_create_thread(void (*fn)(void*), void* arg, bool detach) {
-	return (Handle) syscall3(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg, (size_t) detach);
+Handle sys_create_thread(void (*fn)(void*), void* arg) {
+	return (Handle) syscall2(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg);
 }
 
 void sys_sleep(size_t ms) {
@@ -57,6 +57,10 @@ bool sys_poll_event(Event* event) {
 
 bool sys_shutdown(ShutdownType type) {
 	return syscall1(SYS_SHUTDOWN, type);
+}
+
+bool sys_request_cap(uint32_t cap) {
+	return syscall1(SYS_REQUEST_CAP, cap);
 }
 
 // clang-format off
@@ -143,6 +147,13 @@ size_t strlen(const char* str) {
 }
 
 _Noreturn void _start(void*) {
+	if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
+		sys_dprint("user_tty got direct fb access\n", sizeof("user_tty got direct fb access\n") - 1);
+	}
+	else {
+		sys_dprint("user_tty didn't get direct fb access\n", sizeof("user_tty didn't get direct fb access\n") - 1);
+	}
+
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9
 

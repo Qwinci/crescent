@@ -12,6 +12,8 @@
 #include "string.h"
 #ifdef CONFIG_TEST
 #include "utils/test.h"
+#include "mem/allocator.h"
+
 #endif
 
 [[noreturn]] void kmain() {
@@ -28,12 +30,13 @@
 
 	ElfInfo info = elf_get_info(user_file.base);
 
-	Task* test_user = arch_create_user_task("basic", NULL, NULL, NULL, true);
+	Process* test_user_process = process_new_user();
+	Task* test_user = arch_create_user_task(test_user_process, "basic", NULL, NULL);
 	assert(test_user);
 
 	void* mem;
 	void* user_mem = vm_user_alloc_backed(
-		test_user,
+		test_user_process,
 		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE + 100,
 		PF_READ | PF_WRITE | PF_EXEC | PF_USER, &mem);
 	assert(user_mem);
@@ -51,6 +54,10 @@
 	//tty_init();
 
 	ACTIVE_INPUT_TASK = test_user;
+	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));
+	h->task = test_user;
+	h->exited = false;
+	handle_tab_insert(&test_user_process->handle_table, h, HANDLE_TYPE_THREAD);
 	test_user->event_queue.notify_target = test_user;
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(test_user);

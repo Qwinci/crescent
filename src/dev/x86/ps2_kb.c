@@ -217,6 +217,7 @@ NORETURN static void ps2_kb_translator(void*) {
 			}
 		}
 
+		spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
 		if (ACTIVE_INPUT_TASK) {
 			Event event = {
 				.type = EVENT_KEY,
@@ -228,6 +229,7 @@ NORETURN static void ps2_kb_translator(void*) {
 			};
 			event_queue_push(&ACTIVE_INPUT_TASK->event_queue, event);
 		}
+		spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
 	}
 }
 

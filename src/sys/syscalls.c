@@ -7,16 +7,16 @@
 #include "types.h"
 #include "utils/handle.h"
 #include "mem/allocator.h"
-#include "assert.h"
 
 void sys_exit(int status);
-Handle sys_create_thread(void (*fn)(void*), void* arg, bool detach);
+Handle sys_create_thread(void (*fn)(void*), void* arg);
 void sys_dprint(const char* msg, size_t len);
 void sys_sleep(usize ms);
 int sys_wait_thread(Handle handle);
 void sys_wait_for_event(Event* res);
 bool sys_poll_event(Event* res);
 bool sys_shutdown(ShutdownType type);
+bool sys_request_cap(u32 cap);
 
 __attribute__((used)) void* syscall_handlers[] = {
 	sys_exit,
@@ -26,7 +26,8 @@ __attribute__((used)) void* syscall_handlers[] = {
 	sys_wait_thread,
 	sys_wait_for_event,
 	sys_poll_event,
-	sys_shutdown
+	sys_shutdown,
+	sys_request_cap
 };
 
 __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
@@ -34,13 +35,34 @@ __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / s
 #define E_DETACHED (-1)
 #define E_ARG (-2)
 
-typedef struct {
-	union {
-		Task* task;
-		int status;
-	};
-	bool exited;
-} ThreadHandle;
+static const char* CAP_STRS[CAP_MAX] = {
+	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS"
+};
+
+bool sys_request_cap(u32 cap) {
+	kprintf("task '%s' is requesting cap '%s', allow?\n", arch_get_cur_task()->name, CAP_STRS[cap]);
+	Task* self = arch_get_cur_task();
+
+	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
+	Task* old = ACTIVE_INPUT_TASK;
+	ACTIVE_INPUT_TASK = self;
+	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
+
+	Event res;
+	if (!event_queue_get(&self->event_queue, &res)) {
+		sched_block(TASK_STATUS_WAITING);
+		event_queue_get(&self->event_queue, &res);
+	}
+	bool allow = false;
+	if (res.type == EVENT_KEY && res.key.key == SCAN_Y && res.key.pressed) {
+		allow = true;
+	}
+
+	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
+	ACTIVE_INPUT_TASK = old;
+	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
+	return allow;
+}
 
 bool sys_shutdown(ShutdownType type) {
 	if (type == SHUTDOWN_TYPE_REBOOT) {
@@ -78,24 +100,17 @@ int sys_wait_thread(Handle handle) {
 	}
 	Task* self = arch_get_cur_task();
 
-	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_get(&self->handle_table, handle);
+	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_open(&self->process->handle_table, handle);
 	if (t_handle == NULL) {
 		return E_ARG;
 	}
 
 	Task* thread = t_handle->task;
 
-	if (thread->detached) {
-		mutex_unlock(&self->lock);
-		return E_DETACHED;
-	}
-
 	// unlocks the lock and yields
 	sched_sigwait(thread);
 
 	int status = t_handle->status;
-	handle_tab_remove(&self->handle_table, handle);
-	kfree(t_handle, sizeof(ThreadHandle));
 	return status;
 }
 
@@ -111,59 +126,30 @@ void sys_dprint(const char* msg, size_t len) {
 }
 
 void sys_exit(int status) {
-	/*Task* task = arch_get_cur_task();
+	Task* task = arch_get_cur_task();
 	kprintf("task '%s' exited with status %d\n", task->name, status);
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
-	if (!task->detached) {
-		if (task->parent) {
-			mutex_lock(&task->parent->lock);
-			Handle* handle = handle_list_get(&task->parent->thread_handles, task->id);
-			assert(handle);
-			ThreadHandle* t_handle = container_of(handle, ThreadHandle, common);
-			t_handle->exited = true;
-			t_handle->status = status;
-			arch_ipl_set(old);
-			mutex_unlock(&task->parent->lock);
-		}
-	}
-	else {
-		if (task->parent) {
-			mutex_lock(&task->parent->lock);
-			Handle* handle = handle_list_get(&task->parent->thread_handles, task->id);
-			assert(handle);
-			handle_list_remove(&task->parent->thread_handles, handle);
-			kfree(container_of(handle, ThreadHandle, common), sizeof(ThreadHandle));
-			arch_ipl_set(old);
-			mutex_unlock(&task->parent->lock);
-		}
-	}*/
-
+	arch_ipl_set(IPL_CRITICAL);
 	sched_exit(status, TASK_STATUS_EXITED);
 }
 
-Handle sys_create_thread(void (*fn)(void*), void* arg, bool detach) {
+Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	Task* self = arch_get_cur_task();
 	ThreadHandle* handle = kmalloc(sizeof(ThreadHandle));
 	if (!handle) {
 		return INVALID_HANDLE;
 	}
 
-	Task* task = arch_create_user_task_with_map("user thread", fn, arg, self, self->map, self->user_vmem, detach);
+	Task* task = arch_create_user_task(self->process, "user thread", fn, arg);
 	if (!task) {
 		kfree(handle, sizeof(ThreadHandle));
 		return INVALID_HANDLE;
 	}
 
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
-	task->child_next = self->children;
-	self->children = task;
-
 	handle->task = task;
 	handle->exited = false;
 	handle->status = 0;
-	mutex_lock(&self->lock);
-	Handle id = handle_tab_insert(&self->handle_table, handle);
-	mutex_unlock(&self->lock);
+	Handle id = handle_tab_insert(&self->process->handle_table, handle, HANDLE_TYPE_THREAD);
 
 	sched_queue_task(task);
 	arch_ipl_set(old);

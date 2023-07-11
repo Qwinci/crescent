@@ -32,7 +32,7 @@ usize arch_get_hugepage_size() {
 	return X86_HUGEPAGE_SIZE;
 }
 
-void* x86_create_user_map() {
+void* arch_create_user_map() {
 	Page* page = pmalloc(1);
 	if (!page) {
 		return NULL;

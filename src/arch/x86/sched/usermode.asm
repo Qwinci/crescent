@@ -34,8 +34,19 @@ x86_syscall_entry:
 	mov %gs:X86Task.kernel_rsp, %rsp
 	sti
 
+    push %rbx
+    push %rcx
+    push %rdx
+    push %rdi
+    push %rsi
+    push %r8
+    push %r9
+    push %r10
 	push %r11
-	push %rcx
+	push %r12
+	push %r13
+	push %r14
+	push %r15
 
     cmp (syscall_handler_count), %rdi
 	jl 0f
@@ -53,16 +64,21 @@ x86_syscall_entry:
 	call *%r10
 
 	cli
-	xor %edi, %edi
-	xor %esi, %esi
-	xor %edx, %edx
-	xor %r8d, %r8d
-	xor %r9d, %r9d
-	xor %r10d, %r10d
 
 exit:
-	pop %rcx
-	pop %r11
+    pop %r15
+    pop %r14
+    pop %r13
+    pop %r12
+    pop %r11
+    pop %r10
+    pop %r9
+    pop %r8
+    pop %rsi
+    pop %rdi
+    pop %rdx
+    pop %rcx
+    pop %rbx
 
     mov %gs:X86Task.syscall_save_rsp, %rsp
 	swapgs

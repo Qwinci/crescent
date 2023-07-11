@@ -26,6 +26,7 @@ typedef enum {
 
 usize arch_get_hugepage_size();
 void* arch_create_map();
+void* arch_create_user_map();
 void arch_destroy_map(void* map);
 void arch_map_page(void* map, usize virt, usize phys, PageFlags flags);
 void arch_protect_page(void* map, usize virt, PageFlags flags);
@@ -33,10 +34,10 @@ void arch_unmap_page(void* map, usize virt, bool dealloc);
 void arch_use_map(void* map);
 usize arch_virt_to_phys(void* map, usize virt);
 
-typedef struct Task Task;
+typedef struct Process Process;
 
-void arch_user_map_page(Task* task, usize virt, usize phys, PageFlags flags);
-void arch_user_unmap_page(Task* task, usize virt, bool dealloc);
-void arch_invalidate_mapping(Task* task);
+void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flags);
+void arch_user_unmap_page(Process* process, usize virt, bool dealloc);
+void arch_invalidate_mapping(Process* process);
 
 extern void* KERNEL_MAP;

@@ -18,5 +18,9 @@ typedef enum {
 #define SYS_WAIT_FOR_EVENT 5
 #define SYS_POLL_EVENT 6
 #define SYS_SHUTDOWN 7
+#define SYS_REQUEST_CAP 8
+
+#define CAP_DIRECT_FB_ACCESS (1 << 0)
+#define CAP_MAX (CAP_DIRECT_FB_ACCESS + 1)
 
 #endif
