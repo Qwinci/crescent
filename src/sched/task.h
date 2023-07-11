@@ -28,12 +28,15 @@ typedef struct {
 typedef struct Task {
 	char name[128];
 	struct Task* next;
+	struct Task* thread_prev;
+	struct Task* thread_next;
 	usize sleep_end;
 	Cpu* cpu;
 	void* map;
 	Process* process;
 	Handle tid;
 	struct Task* signal_waiters;
+	Mutex signal_waiters_lock;
 	EventQueue event_queue;
 	TaskStatus status;
 	u32 caps;

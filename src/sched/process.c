@@ -2,6 +2,7 @@
 #include "mem/allocator.h"
 #include "string.h"
 #include "mem/vm.h"
+#include "task.h"
 
 Process* ACTIVE_INPUT_PROCESS = NULL;
 
@@ -51,4 +52,30 @@ Process* process_new_user() {
 	vm_user_init(process, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
 	process->map = arch_create_user_map();
 	return process;
+}
+
+void process_add_thread(Process* process, Task* task) {
+	mutex_lock(&process->threads_lock);
+	task->thread_prev = NULL;
+	task->thread_next = process->threads;
+	if (task->thread_next) {
+		task->thread_next->thread_prev = task;
+	}
+	process->threads = task;
+	process->thread_count += 1;
+	mutex_unlock(&process->threads_lock);
+}
+
+void process_remove_thread(Process* process, Task* task) {
+	mutex_lock(&process->threads_lock);
+	if (task->thread_prev) {
+		task->thread_prev->thread_next = task->thread_next;
+	}
+	else {
+		process->threads = task->thread_next;
+	}
+	if (task->thread_next) {
+		task->thread_next->thread_prev = task->thread_prev;
+	}
+	mutex_unlock(&process->threads_lock);
 }

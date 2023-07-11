@@ -147,7 +147,7 @@ void arch_destroy_task(Task* task) {
 
 		kfree((void*) (x86_task->kernel_rsp - KERNEL_STACK_SIZE), KERNEL_STACK_SIZE);
 
-		// todo refcount
+		// todo refcount for shared memory
 		Process* process = task->process;
 		process->thread_count -= 1;
 

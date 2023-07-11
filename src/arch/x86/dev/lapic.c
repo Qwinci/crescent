@@ -47,11 +47,11 @@ IrqStatus ipi_handler(void*, void*) {
 			// todo this is not halt anymore
 			break;
 		case LAPIC_MSG_INVALIDATE:
+			// todo pcid
 			if (cpu->common.cur_map == g_map) {
-				// todo pcid
 				arch_use_map(g_map);
 			}
-			map_use_ack = true;
+			atomic_store_explicit(&map_use_ack, true, memory_order_relaxed);
 			break;
 		case LAPIC_MSG_PANIC:
 			panic("received panic msg on cpu %u\n", cpu->apic_id);

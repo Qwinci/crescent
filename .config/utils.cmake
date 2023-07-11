@@ -30,22 +30,22 @@ add_custom_target(run_kvm
         COMMAND qemu-system-x86_64
         -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         ${QEMU_FLAGS} -enable-kvm -cpu host,+invtsc
-        DEPENDS crescent USES_TERMINAL VERBATIM)
+        DEPENDS image.iso USES_TERMINAL VERBATIM)
 
 add_custom_target(run
         COMMAND qemu-system-x86_64
         -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         ${QEMU_FLAGS}
-        DEPENDS crescent USES_TERMINAL VERBATIM)
+        DEPENDS image.iso USES_TERMINAL VERBATIM)
 
 add_custom_target(debug
         COMMAND qemu-system-x86_64
         -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         ${QEMU_FLAGS} -S -s
-        DEPENDS crescent USES_TERMINAL VERBATIM)
+        DEPENDS image.iso USES_TERMINAL VERBATIM)
 
 add_custom_target(debug_kvm
         COMMAND qemu-system-x86_64
         -boot d -cdrom ${PROJECT_BINARY_DIR}/image.iso
         ${QEMU_FLAGS} -enable-kvm -S -s
-        DEPENDS crescent USES_TERMINAL VERBATIM)
+        DEPENDS image.iso USES_TERMINAL VERBATIM)

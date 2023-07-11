@@ -14,6 +14,7 @@ typedef struct Cpu {
 	Task* idle_task;
 	Task* blocked_tasks[TASK_STATUS_MAX];
 	void* cur_map;
+	usize id;
 	Spinlock tasks_lock;
 } Cpu;
 

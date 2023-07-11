@@ -8,6 +8,7 @@ set(CMAKE_C_STANDARD 23)
 set(FILES
         ${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
         ${PROJECT_SOURCE_DIR}/limine.cfg
+		crescent
         basic
         user_tty
         )
@@ -38,9 +39,9 @@ find_program(CP cp REQUIRED)
 find_program(GIT git REQUIRED)
 find_program(MKDIR mkdir REQUIRED)
 
-add_custom_command(TARGET crescent POST_BUILD
+add_custom_command(OUTPUT image.iso DEPENDS ${FILES}
         COMMAND ${MKDIR} -p ${PROJECT_BINARY_DIR}/iso_root
-        COMMAND ${CP} crescent ${FILES} ${PROJECT_BINARY_DIR}/iso_root
+        COMMAND ${CP} ${FILES} ${PROJECT_BINARY_DIR}/iso_root
         COMMAND ${XORRISO} -as mkisofs
         -b limine-bios-cd.bin -no-emul-boot
         -boot-load-size 4 -boot-info-table

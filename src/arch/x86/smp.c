@@ -15,6 +15,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "utils/spinlock.h"
+#include "utils/math.h"
 
 static volatile struct limine_smp_request SMP_REQUEST = {
 	.id = LIMINE_SMP_REQUEST
@@ -63,6 +64,7 @@ static X86Task* create_this_task(Cpu* cpu) {
 	cpu->common.thread_count += 1;
 	cpu->lapic_timer.period_us = US_IN_SEC;
 	cpu->common.cur_map = KERNEL_MAP;
+	cpu->common.id = CPU_COUNT - 1;
 	x86_set_cpu_local(this_task);
 
 	__asm__ volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
@@ -99,6 +101,7 @@ void arch_init_smp() {
 	CPUS[0].common.thread_count += 1;
 	CPUS[0].lapic_timer.period_us = US_IN_SEC;
 	CPUS[0].common.cur_map = KERNEL_MAP;
+	CPUS[0].common.id = 0;
 	CPU_COUNT = 1;
 	x86_load_gdt(&CPUS[0].tss);
 	x86_set_cpu_local(this_task);
@@ -114,7 +117,7 @@ void arch_init_smp() {
 	sched_init(true);
 	kprintf("[kernel][smp]: sched init\n");
 
-	for (usize i = 0; i < SMP_REQUEST.response->cpu_count; ++i) {
+	for (usize i = 0; i < MIN(SMP_REQUEST.response->cpu_count, CONFIG_MAX_CPUS); ++i) {
 		struct limine_smp_info* info = SMP_REQUEST.response->cpus[i];
 		if (info->lapic_id == SMP_REQUEST.response->bsp_lapic_id) {
 			continue;

@@ -8,6 +8,7 @@
 #include "task.h"
 #include "utils/attribs.h"
 #include "mem/vmem.h"
+#include "arch/map.h"
 
 [[noreturn]] static void idle_task_fn(void*) {
 	while (true) {
@@ -96,6 +97,11 @@ void sched_with_next(Task* task) {
 
 	Task* self = cpu->current_task;
 	cpu->current_task = task;
+	if (task->process) {
+		spinlock_lock(&task->process->used_cpus_lock);
+		task->process->used_cpus[cpu->id / 32] |= 1U << (cpu->id % 32);
+		spinlock_unlock(&task->process->used_cpus_lock);
+	}
 
 	arch_switch_task(self, cpu->current_task);
 }
@@ -115,7 +121,6 @@ void sched() {
 }
 
 void sched_queue_task_for_cpu(Task* task, Cpu* cpu) {
-
 	task->status = TASK_STATUS_READY;
 	task->next = NULL;
 	task->cpu = cpu;
@@ -149,8 +154,11 @@ void sched_sigwait(Task* task) {
 	arch_ipl_set(IPL_CRITICAL);
 
 	self->status = TASK_STATUS_WAITING;
+
+	mutex_lock(&task->signal_waiters_lock);
 	self->next = task->signal_waiters;
 	task->signal_waiters = self;
+	mutex_unlock(&task->signal_waiters_lock);
 
 	sched();
 }
@@ -218,7 +226,7 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
 		handle->exited = true;
 		handle->status = status;
-		// todo fix sync
+		// todo might have sync issues with the wait syscall
 	}
 
 	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
@@ -226,6 +234,8 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 		ACTIVE_INPUT_TASK = NULL;
 	}
 	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
+
+	process_remove_thread(self->process, self);
 
 	arch_ipl_set(old);
 	sched();
@@ -337,4 +347,8 @@ void sched_init(bool bsp) {
 	create_kernel_tasks(bsp);
 
 	arch_ipl_set(old);
+}
+
+void sched_invalidate_map(Process* process) {
+	arch_invalidate_mapping(process);
 }

@@ -37,3 +37,4 @@ void sched_sleep(usize us);
 NORETURN void sched_exit(int status, TaskStatus type);
 NORETURN void sched_kill_cur();
 void sched_sigwait(Task* task);
+void sched_invalidate_map(Process* process);

@@ -59,6 +59,9 @@
 	h->exited = false;
 	handle_tab_insert(&test_user_process->handle_table, h, HANDLE_TYPE_THREAD);
 	test_user->event_queue.notify_target = test_user;
+
+	process_add_thread(test_user_process, test_user);
+
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(test_user);
 	arch_ipl_set(old);

@@ -104,11 +104,13 @@ int sys_wait_thread(Handle handle) {
 	if (t_handle == NULL) {
 		return E_ARG;
 	}
-
-	Task* thread = t_handle->task;
-
-	// unlocks the lock and yields
-	sched_sigwait(thread);
+	if (t_handle->exited) {
+		handle_tab_close(&self->process->handle_table, handle);
+	}
+	else {
+		Task* thread = t_handle->task;
+		sched_sigwait(thread);
+	}
 
 	int status = t_handle->status;
 	return status;
