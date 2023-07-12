@@ -106,8 +106,6 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 
 	u64* pdp;
 	if (pml4[pml4_offset] & X86_PF_P) {
-		pml4[pml4_offset] &= ~PAGE_FLAG_MASK;
-		pml4[pml4_offset] |= x86_generic_flags;
 		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
 	}
 	else {
@@ -116,8 +114,6 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 
 	u64* pd;
 	if (pdp[pdp_offset] & X86_PF_P) {
-		pdp[pdp_offset] &= ~PAGE_FLAG_MASK;
-		pdp[pdp_offset] |= x86_generic_flags;
 		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
 	}
 	else {
@@ -133,8 +129,6 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 
 	u64* pt;
 	if (pd[pd_offset] & X86_PF_P) {
-		pd[pd_offset] &= ~PAGE_FLAG_MASK;
-		pd[pd_offset] |= x86_generic_flags;
 		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
 	}
 	else {

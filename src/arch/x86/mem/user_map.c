@@ -27,7 +27,7 @@ void x86_remove_map_page(X86PageMap* map, Page* page) {
 	}
 }
 
-void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flags) {
+bool arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flags) {
 	X86PageMap* map = (X86PageMap*) process->map;
 	u64* pml4 = (u64*) to_virt(map->page->phys);
 
@@ -48,13 +48,13 @@ void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flag
 
 	u64* pdp;
 	if (pml4[pml4_offset] & X86_PF_P) {
-		pml4[pml4_offset] &= ~PAGE_FLAG_MASK;
-		pml4[pml4_offset] |= x86_generic_flags;
 		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
 	}
 	else {
 		Page* page = pmalloc(1);
-		assert(page);
+		if (!page) {
+			return false;
+		}
 		process_add_mapping(process, page->phys, PAGE_SIZE);
 		x86_add_map_page(map, page);
 		pdp = (u64*) to_virt(page->phys);
@@ -65,13 +65,13 @@ void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flag
 
 	u64* pd;
 	if (pdp[pdp_offset] & X86_PF_P) {
-		pdp[pdp_offset] &= ~PAGE_FLAG_MASK;
-		pdp[pdp_offset] |= x86_generic_flags;
 		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
 	}
 	else {
 		Page* page = pmalloc(1);
-		assert(page);
+		if (!page) {
+			return false;
+		}
 		x86_add_map_page(map, page);
 		pd = (u64*) to_virt(page->phys);
 		memset(pd, 0, PAGE_SIZE);
@@ -82,11 +82,13 @@ void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flag
 	if (flags & PF_HUGE) {
 		pd[pd_offset] = phys | x86_flags | X86_PF_H;
 		x86_refresh_page(orig_virt & ~(X86_HUGEPAGE_SIZE - 1));
-		return;
+		return true;
 	}
 	if (pd[pd_offset] & X86_PF_H && flags & PF_SPLIT) {
 		Page* page = pmalloc(1);
-		assert(page);
+		if (!page) {
+			return false;
+		}
 		x86_add_map_page(map, page);
 		u64* frame = (u64*) to_virt(page->phys);
 
@@ -104,18 +106,18 @@ void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flag
 		pd[pd_offset] &= ~PAGE_FLAG_MASK;
 		pd[pd_offset] |= flags | X86_PF_H;
 		x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
-		return;
+		return true;
 	}
 
 	u64* pt;
 	if (pd[pd_offset] & X86_PF_P) {
-		pd[pd_offset] &= ~PAGE_FLAG_MASK;
-		pd[pd_offset] |= x86_generic_flags;
 		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
 	}
 	else {
 		Page* page = pmalloc(1);
-		assert(page);
+		if (!page) {
+			return false;
+		}
 		x86_add_map_page(map, page);
 		pt = (u64*) to_virt(page->phys);
 		memset(pt, 0, PAGE_SIZE);
@@ -125,6 +127,7 @@ void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flag
 
 	pt[pt_offset] = phys | x86_flags;
 	x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
+	return true;
 }
 
 void arch_user_unmap_page(Process* process, usize virt, bool dealloc) {

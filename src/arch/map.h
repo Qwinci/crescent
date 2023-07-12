@@ -36,7 +36,7 @@ usize arch_virt_to_phys(void* map, usize virt);
 
 typedef struct Process Process;
 
-void arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flags);
+bool arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flags);
 void arch_user_unmap_page(Process* process, usize virt, bool dealloc);
 void arch_invalidate_mapping(Process* process);
 

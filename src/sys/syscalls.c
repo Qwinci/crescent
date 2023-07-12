@@ -9,45 +9,57 @@
 #include "string.h"
 #include "mem/vm.h"
 #include "mem/page.h"
+#include "crescent/fb.h"
+#include "dev/fb.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
-void sys_dprint(const char* msg, size_t len);
+int sys_dprint(const char* msg, size_t len);
 void sys_sleep(usize ms);
 int sys_wait_thread(Handle handle);
-void sys_wait_for_event(Event* res);
-bool sys_poll_event(Event* res);
+int sys_wait_for_event(Event* res);
+int sys_poll_event(Event* res);
 bool sys_shutdown(ShutdownType type);
 bool sys_request_cap(u32 cap);
 void* sys_mmap(size_t size, int protection);
 int sys_munmap(void* ptr, size_t size);
 int sys_close(Handle handle);
+int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count);
 
 __attribute__((used)) void* syscall_handlers[] = {
-	sys_exit,
 	sys_create_thread,
-	sys_dprint,
-	sys_sleep,
 	sys_wait_thread,
+	sys_exit,
+	sys_sleep,
+
 	sys_wait_for_event,
 	sys_poll_event,
+
+	sys_dprint,
 	sys_shutdown,
 	sys_request_cap,
+
 	sys_mmap,
 	sys_munmap,
-	sys_close
+
+	sys_close,
+
+	sys_enumerate_framebuffers
 };
 
 __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
-
-#define E_DETACHED (-1)
-#define E_ARG (-2)
 
 static const char* CAP_STRS[CAP_MAX] = {
 	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS"
 };
 
+#define VALIDATE_PTR(ptr) if ((usize) (ptr) >= HHDM_OFFSET) return ERR_INVALID_ARG
+
 bool sys_request_cap(u32 cap) {
+	if (cap >= CAP_MAX) {
+		return false;
+	}
+
 	kprintf("task '%s' is requesting cap '%s', allow?\n", arch_get_cur_task()->name, CAP_STRS[cap]);
 	Task* self = arch_get_cur_task();
 
@@ -65,6 +77,9 @@ bool sys_request_cap(u32 cap) {
 	if (res.type == EVENT_KEY && res.key.key == SCAN_Y && res.key.pressed) {
 		allow = true;
 	}
+	if (allow) {
+		self->caps |= cap;
+	}
 
 	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
 	ACTIVE_INPUT_TASK = old;
@@ -79,38 +94,32 @@ bool sys_shutdown(ShutdownType type) {
 	return false;
 }
 
-void sys_wait_for_event(Event* res) {
-	if ((usize) res >= HHDM_OFFSET) {
-		sched_kill_cur();
-	}
+int sys_wait_for_event(Event* res) {
+	VALIDATE_PTR(res);
 
 	Task* self = arch_get_cur_task();
-	if (event_queue_get(&self->event_queue, res)) {
-		return;
-	}
-	else {
+	if (!event_queue_get(&self->event_queue, res)) {
 		sched_block(TASK_STATUS_WAITING);
 		event_queue_get(&self->event_queue, res);
 	}
+	return 0;
 }
 
-bool sys_poll_event(Event* res) {
-	if ((usize) res >= HHDM_OFFSET) {
-		sched_kill_cur();
-	}
+int sys_poll_event(Event* res) {
+	VALIDATE_PTR(res);
 	Task* self = arch_get_cur_task();
 	return event_queue_get(&self->event_queue, res);
 }
 
 int sys_wait_thread(Handle handle) {
 	if (handle == INVALID_HANDLE) {
-		return E_ARG;
+		return ERR_INVALID_ARG;
 	}
 	Task* self = arch_get_cur_task();
 
 	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_open(&self->process->handle_table, handle);
 	if (t_handle == NULL) {
-		return E_ARG;
+		return ERR_INVALID_ARG;
 	}
 	mutex_lock(&t_handle->lock);
 	if (t_handle->exited) {
@@ -126,6 +135,7 @@ int sys_wait_thread(Handle handle) {
 	}
 
 	int status = t_handle->status;
+	assert(t_handle->exited);
 	handle_tab_close(&self->process->handle_table, handle);
 	return status;
 }
@@ -134,11 +144,10 @@ void sys_sleep(usize ms) {
 	sched_sleep(ms * US_IN_MS);
 }
 
-void sys_dprint(const char* msg, size_t len) {
-	if ((usize) msg >= HHDM_OFFSET) {
-		sched_kill_cur();
-	}
+int sys_dprint(const char* msg, size_t len) {
+	VALIDATE_PTR(msg);
 	kputs(msg, len);
+	return 0;
 }
 
 void sys_exit(int status) {
@@ -149,6 +158,10 @@ void sys_exit(int status) {
 }
 
 Handle sys_create_thread(void (*fn)(void*), void* arg) {
+	if ((usize) fn >= HHDM_OFFSET) {
+		return INVALID_HANDLE;
+	}
+
 	Task* self = arch_get_cur_task();
 	ThreadHandle* handle = kmalloc(sizeof(ThreadHandle));
 	if (!handle) {
@@ -198,8 +211,10 @@ void* sys_mmap(size_t size, int protection) {
 }
 
 int sys_munmap(void* ptr, size_t size) {
-	if (!ptr || (usize) ptr >= HHDM_OFFSET || !size || (size & (PAGE_SIZE - 1))) {
-		return E_ARG;
+	VALIDATE_PTR(ptr);
+
+	if (!ptr || !size || (size & (PAGE_SIZE - 1))) {
+		return ERR_INVALID_ARG;
 	}
 
 	vm_user_dealloc_backed(arch_get_cur_task()->process, ptr, size / PAGE_SIZE, NULL);
@@ -209,12 +224,12 @@ int sys_munmap(void* ptr, size_t size) {
 
 int sys_close(Handle handle) {
 	if (handle == INVALID_HANDLE) {
-		return E_ARG;
+		return ERR_INVALID_ARG;
 	}
 	Process* process = arch_get_cur_task()->process;
 	HandleEntry* entry = handle_tab_get(&process->handle_table, handle);
 	if (!entry) {
-		return E_ARG;
+		return ERR_INVALID_ARG;
 	}
 	HandleType type = entry->type;
 	void* data = entry->data;
@@ -226,5 +241,41 @@ int sys_close(Handle handle) {
 				break;
 		}
 	}
+	return 0;
+}
+
+int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count) {
+	Task* self = arch_get_cur_task();
+	if (!(self->caps & CAP_DIRECT_FB_ACCESS)) {
+		return ERR_NO_PERMISSIONS;
+	}
+
+	VALIDATE_PTR(res);
+	VALIDATE_PTR(count);
+
+	// todo support more than one
+	if (primary_fb) {
+		if (count) {
+			*count = 1;
+		}
+		if (count && res) {
+			usize size = primary_fb->height * primary_fb->pitch;
+			void* mem = vm_user_alloc(self->process, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+			if (!mem) {
+				return ERR_NO_MEM;
+			}
+			for (usize i = 0; i < size; i += PAGE_SIZE) {
+				if (!arch_user_map_page(self->process, (usize) mem + i, to_phys(primary_fb->base) + i, PF_READ | PF_WRITE | PF_WC | PF_USER)) {
+					return ERR_NO_MEM;
+				}
+			}
+			memcpy(res, primary_fb, sizeof(SysFramebuffer));
+			res->base = mem;
+		}
+	}
+	else {
+		return 1;
+	}
+
 	return 0;
 }

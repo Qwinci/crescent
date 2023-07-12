@@ -1,5 +1,6 @@
 #include "crescent/sys.h"
 #include "crescent/input.h"
+#include "crescent/fb.h"
 #include <stddef.h>
 
 size_t syscall0(size_t num) {
@@ -31,8 +32,8 @@ size_t syscall3(size_t num, size_t a0, size_t a1, size_t a2) {
 	__builtin_unreachable();
 }
 
-void sys_dprint(const char* msg, size_t len) {
-	syscall2(SYS_DPRINT, (size_t) msg, len);
+int sys_dprint(const char* msg, size_t len) {
+	return (int) syscall2(SYS_DPRINT, (size_t) msg, len);
 }
 
 Handle sys_create_thread(void (*fn)(void*), void* arg) {
@@ -47,12 +48,12 @@ int sys_wait_thread(Handle thread) {
 	return (int) syscall1(SYS_WAIT_THREAD, thread);
 }
 
-void sys_wait_for_event(Event* event) {
-	syscall1(SYS_WAIT_FOR_EVENT, (size_t) event);
+int sys_wait_for_event(Event* event) {
+	return (int) syscall1(SYS_WAIT_FOR_EVENT, (size_t) event);
 }
 
-bool sys_poll_event(Event* event) {
-	return syscall1(SYS_POLL_EVENT, (size_t) event);
+int sys_poll_event(Event* event) {
+	return (int) syscall1(SYS_POLL_EVENT, (size_t) event);
 }
 
 bool sys_shutdown(ShutdownType type) {
@@ -73,6 +74,10 @@ int sys_munmap(void* ptr, size_t size) {
 
 int sys_close(Handle handle) {
 	return (int) syscall1(SYS_CLOSE, handle);
+}
+
+int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count) {
+	return (int) syscall2(SYS_ENUMERATE_FRAMEBUFFERS, (size_t) res, (size_t) count);
 }
 
 // clang-format off
@@ -198,16 +203,31 @@ _Noreturn void _start(void*) {
 		int res = sys_munmap(mem, 0x1000);
 		if (res == 0) {
 			puts("unmapped memory\n");
-			*(uint64_t*) mem = 20;
 		}
 	}
 
-	/*if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
+	if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
 		sys_dprint("user_tty got direct fb access\n", sizeof("user_tty got direct fb access\n") - 1);
 	}
 	else {
 		sys_dprint("user_tty didn't get direct fb access\n", sizeof("user_tty didn't get direct fb access\n") - 1);
-	}*/
+	}
+
+	SysFramebuffer fb;
+	size_t count = 1;
+	int ret = sys_enumerate_framebuffers(&fb, &count);
+	if (ret == 0) {
+		puts("got a framebuffer\n");
+
+		for (size_t y = 0; y < 20; ++y) {
+			for (size_t x = fb.width - 20; x < fb.width; ++x) {
+				*(uint32_t*) ((uintptr_t) fb.base + y * fb.pitch + x * (fb.bpp / 8)) = 0x0000FF;
+			}
+		}
+	}
+	else if (ret == ERR_NO_PERMISSIONS) {
+		puts("no permissions to get a framebuffer\n");
+	}
 
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9

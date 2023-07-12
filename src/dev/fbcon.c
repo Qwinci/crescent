@@ -16,7 +16,7 @@ typedef struct {
 
 typedef struct {
 	Con common;
-	Framebuffer* fb;
+	SysFramebuffer* fb;
 	const PsfFont* font;
 } FbCon;
 
@@ -96,7 +96,7 @@ static int fbcon_write_at(Con* self, usize x, usize y, char c) {
 	return 1;
 }
 
-void fbcon_init(Framebuffer* fb, const void* font) {
+void fbcon_init(SysFramebuffer* fb, const void* font) {
 	fbcon.fb = fb;
 	fbcon.font = (const PsfFont*) font;
 	kernel_con = &fbcon.common;

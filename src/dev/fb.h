@@ -1,22 +1,9 @@
 #pragma once
 #include "types.h"
+#include "crescent/fb.h"
 
-typedef enum {
-	FB_FMT_BGRA32
-} FramebufferFormat;
+void fb_set_pixel(SysFramebuffer* self, usize x, usize y, u32 color);
+u32 fb_get_pixel(SysFramebuffer* self, usize x, usize y);
+void fb_clear(SysFramebuffer* self, u32 color);
 
-typedef struct Framebuffer {
-	u8* base;
-	usize width;
-	usize height;
-	usize pitch;
-	usize bpp;
-	FramebufferFormat fmt;
-} Framebuffer;
-
-void fb_set_pixel(Framebuffer* self, usize x, usize y, u32 color);
-u32 fb_get_pixel(Framebuffer* self, usize x, usize y);
-void fb_clear(Framebuffer* self, u32 color);
-void fb_alloc_same(const Framebuffer* from, Framebuffer* to);
-
-extern Framebuffer* primary_fb;
+extern SysFramebuffer* primary_fb;
