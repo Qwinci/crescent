@@ -2,6 +2,7 @@
 #include "types.h"
 #include "event_queue.h"
 #include "utils/handle.h"
+#include "assert.h"
 
 typedef enum : u8 {
 	TASK_STATUS_RUNNING = 0,
@@ -45,6 +46,7 @@ typedef struct Task {
 	u8 priority;
 	bool pin_level;
 	bool pin_cpu;
+	bool inside_syscall;
 } Task;
 
 extern Spinlock ACTIVE_INPUT_TASK_LOCK;

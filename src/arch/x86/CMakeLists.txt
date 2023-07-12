@@ -8,9 +8,9 @@ target_sources(crescent PRIVATE
         mem/mem.c
         interrupts/interrupts.c
         interrupts/idt.c
-        interrupts/int_stubs.asm
+		interrupts/int_stubs.S
         interrupts/gdt.c
-        interrupts/gdt.asm
+		interrupts/gdt.S
         interrupts/exceptions.c
         interrupts/ipl.c
         smp.c
@@ -19,7 +19,7 @@ target_sources(crescent PRIVATE
         mem/user_map.c
         acpi/fadt.c
         acpi/madt.c
-		start.asm
+		start.S
         )
 
 add_subdirectory(dev)

@@ -4,20 +4,30 @@
 #include "stdio.h"
 #include "arch/x86/dev/lapic.h"
 #include "arch/interrupts.h"
+#include "exceptions.h"
+
+extern void* x86_syscall_entry_exit[];
 
 #define GENERIC_EX(ex_name, msg) \
-NORETURN IrqStatus ex_##ex_name(void* void_ctx, void*) {\
+IrqStatus ex_##ex_name(void* void_ctx, void*) {\
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx; \
 	spinlock_lock(&PRINT_LOCK); \
 	kprintf_nolock("%fg%s\n%s", COLOR_RED, msg, "backtrace:\n"); \
     backtrace_display(false); \
 	spinlock_unlock(&PRINT_LOCK); \
+    Task* task = arch_get_cur_task(); \
 	if (ctx->cs == 0x2b) { \
 		kprintf("killing user task '%s'", arch_get_cur_task()->name); \
 		__asm__ volatile("sti"); \
 		sched_kill_cur(); \
 	} \
-	\
+	else { \
+		X86Task* task = container_of(task, X86Task, common); \
+		ctx->ip = (u64) x86_syscall_entry_exit; \
+		ctx->sp = (u64) task->kernel_stack_base + KERNEL_STACK_SIZE - 14 * 8; \
+		ctx->rax = 0xFA10ED; \
+		return IRQ_ACK; \
+    } \
 	lapic_ipi_all(LAPIC_MSG_PANIC);\
 	\
 	while (true) { \
@@ -48,7 +58,7 @@ GENERIC_EX(hypervisor, "hypervisor injection exception")
 GENERIC_EX(vmm_comm, "vmm communication exception")
 GENERIC_EX(security, "security exception")
 
-NORETURN void ex_pf(void* void_ctx, void*) {
+IrqStatus ex_pf(void* void_ctx, void*) {
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx;
 
 	bool present = ctx->error & 1;
@@ -82,10 +92,22 @@ NORETURN void ex_pf(void* void_ctx, void*) {
 	backtrace_display(false);
 	spinlock_unlock(&PRINT_LOCK);
 
+	Task* self = arch_get_cur_task();
 	if (ctx->cs == 0x2b) {
-		kprintf("killing user task '%s'", arch_get_cur_task()->name);
+		kprintf("killing user task '%s'", self->name);
 		__asm__ volatile("sti");
 		sched_kill_cur();
+	}
+	else if (self->inside_syscall) {
+		kprintf("task '%s' faulted inside a syscall, returning 0xFA10ED from the syscall\n", self->name);
+
+		X86Task* task = container_of(self, X86Task, common);
+
+		ctx->ip = (u64) x86_syscall_entry_exit;
+		ctx->sp = (u64) task->kernel_stack_base + KERNEL_STACK_SIZE - 14 * 8;
+		ctx->rax = 0xFA10ED;
+		kprintf("%" PRIfg, COLOR_RESET);
+		return IRQ_ACK;
 	}
 
 	lapic_ipi_all(LAPIC_MSG_PANIC);

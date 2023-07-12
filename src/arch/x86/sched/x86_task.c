@@ -11,9 +11,6 @@
 #include "string.h"
 #include "sched/process.h"
 
-#define KERNEL_STACK_SIZE 0x2000
-#define USER_STACK_SIZE 0x2000
-
 typedef struct {
 	u64 r15, r14, r13, r12, rbp, rbx;
 	void (*after_switch)(X86Task* old_task);
@@ -62,6 +59,7 @@ Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*
 	}
 	memset(kernel_stack, 0, KERNEL_STACK_SIZE);
 	task->kernel_rsp = (usize) kernel_stack + KERNEL_STACK_SIZE;
+	task->kernel_stack_base = (usize) kernel_stack;
 
 	u8* stack;
 	u8* user_stack = (u8*) vm_user_alloc_backed(process, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);

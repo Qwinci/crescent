@@ -1,5 +1,6 @@
 .global x86_usermode_ret
 .global x86_syscall_entry
+.global x86_syscall_entry_exit
 .type x86_usermode_ret, @function
 .type x86_syscall_entry, @function
 
@@ -8,6 +9,8 @@
 .set X86Task.rsp, 8
 .set X86Task.kernel_rsp, X86Task.rsp + 8
 .set X86Task.syscall_save_rsp, X86Task.kernel_rsp + 8
+
+#include "usermode.inc"
 
 x86_usermode_ret:
 	swapgs
@@ -47,13 +50,16 @@ x86_syscall_entry:
 	push %r13
 	push %r14
 	push %r15
+	push %rbp
 
     cmp (syscall_handler_count), %rdi
 	jl 0f
 	mov $-1, %rax
-	jmp exit
+	jmp x86_syscall_entry_exit
 
 0:
+    movb $1, %gs:X86TASK_INSIDE_SYSCALL_OFFSET
+
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9
 
@@ -63,9 +69,10 @@ x86_syscall_entry:
     mov %rax, %rdi
 	call *%r10
 
-	cli
-
-exit:
+x86_syscall_entry_exit:
+    cli
+    movb $0, %gs:X86TASK_INSIDE_SYSCALL_OFFSET
+    pop %rbp
     pop %r15
     pop %r14
     pop %r13

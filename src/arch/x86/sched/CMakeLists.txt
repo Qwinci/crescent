@@ -1,6 +1,6 @@
 target_sources(crescent PRIVATE
         x86_task.c
         sched.c
-        sched.asm
-        usermode.asm
+		sched.S
+		usermode.S
         usermode.c)
