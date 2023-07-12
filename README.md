@@ -16,17 +16,18 @@
 - [ ] ACPI
 	- [x] FADT
 	- [x] MADT
-    - [ ] MCFG
+    - [x] MCFG
+    - [ ] Power management
 - [ ] Filesystems
 	- [ ] FAT32
 - [ ] Drivers
 	- [x] SMP
 	- [ ] AHCI SATA
-	- [ ] NVMe
-	- [ ] PS2
-		- [ ] Keyboard
+	- [x] NVMe
+	- [x] PS2
+		- [x] Keyboard
 		- [ ] Mouse
-	- [ ] Generic PCI device interface
+	- [x] Generic PCI device interface
 	- [ ] USB
 		- [ ] Generic HCI interface abstraction
 		- [ ] HCI
