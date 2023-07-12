@@ -63,6 +63,18 @@ bool sys_request_cap(uint32_t cap) {
 	return syscall1(SYS_REQUEST_CAP, cap);
 }
 
+void* sys_mmap(size_t size, int protection) {
+	return (void*) syscall2(SYS_MMAP, size, protection);
+}
+
+int sys_munmap(void* ptr, size_t size) {
+	return (int) syscall2(SYS_MUNMAP, (size_t) ptr, size);
+}
+
+int sys_close(Handle handle) {
+	return (int) syscall1(SYS_CLOSE, handle);
+}
+
 // clang-format off
 
 static const char* LAYOUT[SCAN_MAX] = {
@@ -168,6 +180,9 @@ _Noreturn void _start(void*) {
 	}
 	puts("waiting for thread 2 to exit in thread1\n");
 	int status = sys_wait_thread(another);
+	if (sys_close(another)) {
+		puts("failed to close thread handle\n");
+	}
 	if (status == 0xCAFE) {
 		puts("thread 2 exited with status 0xCAFE\n");
 	}
@@ -175,12 +190,24 @@ _Noreturn void _start(void*) {
 		puts("thread 2 didn't exit with status 0xCAFE\n");
 	}
 
-	if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
+	void* mem = sys_mmap(0x1000, PROT_READ | PROT_WRITE);
+	if (mem) {
+		puts("got some mem\n");
+		*(uint64_t*) mem = 10;
+		puts("memory set successful\n");
+		int res = sys_munmap(mem, 0x1000);
+		if (res == 0) {
+			puts("unmapped memory\n");
+			*(uint64_t*) mem = 20;
+		}
+	}
+
+	/*if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
 		sys_dprint("user_tty got direct fb access\n", sizeof("user_tty got direct fb access\n") - 1);
 	}
 	else {
 		sys_dprint("user_tty didn't get direct fb access\n", sizeof("user_tty didn't get direct fb access\n") - 1);
-	}
+	}*/
 
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9

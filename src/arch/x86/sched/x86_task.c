@@ -6,7 +6,6 @@
 #include "mem/pmalloc.h"
 #include "mem/utils.h"
 #include "mem/vm.h"
-#include "mem/vmem.h"
 #include "sched/sched.h"
 #include "sched/sched_internals.h"
 #include "string.h"
@@ -149,7 +148,6 @@ void arch_destroy_task(Task* task) {
 
 		// todo refcount for shared memory
 		Process* process = task->process;
-		process->thread_count -= 1;
 
 		if (process->thread_count == 0) {
 			for (MemMapping* mapping = process->mappings; mapping; mapping = mapping->next) {

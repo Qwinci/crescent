@@ -4,11 +4,11 @@
 #include "mem/utils.h"
 #include "sched/sched.h"
 #include "stdio.h"
-#include "types.h"
 #include "utils/handle.h"
 #include "mem/allocator.h"
 #include "string.h"
-#include "assert.h"
+#include "mem/vm.h"
+#include "mem/page.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
@@ -19,6 +19,9 @@ void sys_wait_for_event(Event* res);
 bool sys_poll_event(Event* res);
 bool sys_shutdown(ShutdownType type);
 bool sys_request_cap(u32 cap);
+void* sys_mmap(size_t size, int protection);
+int sys_munmap(void* ptr, size_t size);
+int sys_close(Handle handle);
 
 __attribute__((used)) void* syscall_handlers[] = {
 	sys_exit,
@@ -29,7 +32,10 @@ __attribute__((used)) void* syscall_handlers[] = {
 	sys_wait_for_event,
 	sys_poll_event,
 	sys_shutdown,
-	sys_request_cap
+	sys_request_cap,
+	sys_mmap,
+	sys_munmap,
+	sys_close
 };
 
 __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
@@ -109,7 +115,6 @@ int sys_wait_thread(Handle handle) {
 	mutex_lock(&t_handle->lock);
 	if (t_handle->exited) {
 		mutex_unlock(&t_handle->lock);
-		handle_tab_close(&self->process->handle_table, handle);
 	}
 	else {
 		Task* thread = t_handle->task;
@@ -121,6 +126,7 @@ int sys_wait_thread(Handle handle) {
 	}
 
 	int status = t_handle->status;
+	handle_tab_close(&self->process->handle_table, handle);
 	return status;
 }
 
@@ -166,4 +172,59 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	process_add_thread(self->process, task);
 	arch_ipl_set(old);
 	return id;
+}
+
+void* sys_mmap(size_t size, int protection) {
+	if (!size || (size & (PAGE_SIZE - 1))) {
+		return NULL;
+	}
+
+	PageFlags flags = PF_USER;
+	if (protection & PROT_READ) {
+		flags |= PF_READ;
+	}
+	if (protection & PROT_WRITE) {
+		flags |= PF_READ | PF_WRITE;
+	}
+	if (protection & PROT_EXEC) {
+		flags |= PF_READ | PF_EXEC;
+	}
+	void* res = vm_user_alloc_backed(arch_get_cur_task()->process, size / PAGE_SIZE, flags, NULL);
+	if (res) {
+		memset(res, 0, size);
+	}
+	arch_invalidate_mapping(arch_get_cur_task()->process);
+	return res;
+}
+
+int sys_munmap(void* ptr, size_t size) {
+	if (!ptr || (usize) ptr >= HHDM_OFFSET || !size || (size & (PAGE_SIZE - 1))) {
+		return E_ARG;
+	}
+
+	vm_user_dealloc_backed(arch_get_cur_task()->process, ptr, size / PAGE_SIZE, NULL);
+	arch_invalidate_mapping(arch_get_cur_task()->process);
+	return 0;
+}
+
+int sys_close(Handle handle) {
+	if (handle == INVALID_HANDLE) {
+		return E_ARG;
+	}
+	Process* process = arch_get_cur_task()->process;
+	HandleEntry* entry = handle_tab_get(&process->handle_table, handle);
+	if (!entry) {
+		return E_ARG;
+	}
+	HandleType type = entry->type;
+	void* data = entry->data;
+
+	if (handle_tab_close(&arch_get_cur_task()->process->handle_table, handle)) {
+		switch (type) {
+			case HANDLE_TYPE_THREAD:
+				kfree(data, sizeof(ThreadHandle));
+				break;
+		}
+	}
+	return 0;
 }

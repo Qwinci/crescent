@@ -11,7 +11,7 @@ bool process_add_mapping(Process* process, usize base, usize size) {
 	if (!mapping) {
 		return false;
 	}
-	mapping->next = process->mappings_end;
+	mapping->next = NULL;
 	mapping->base = base;
 	mapping->size = size;
 	if (!process->mappings) {
@@ -35,6 +35,9 @@ void process_remove_mapping(Process* process, usize base) {
 			}
 			else {
 				process->mappings = mapping->next;
+			}
+			if (process->mappings_end == mapping) {
+				process->mappings_end = prev;
 			}
 			break;
 		}

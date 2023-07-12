@@ -14,6 +14,7 @@ NORETURN IrqStatus ex_##ex_name(void* void_ctx, void*) {\
 	spinlock_unlock(&PRINT_LOCK); \
 	if (ctx->cs == 0x2b) { \
 		kprintf("killing user task '%s'", arch_get_cur_task()->name); \
+		__asm__ volatile("sti"); \
 		sched_kill_cur(); \
 	} \
 	\
@@ -83,6 +84,7 @@ NORETURN void ex_pf(void* void_ctx, void*) {
 
 	if (ctx->cs == 0x2b) {
 		kprintf("killing user task '%s'", arch_get_cur_task()->name);
+		__asm__ volatile("sti");
 		sched_kill_cur();
 	}
 

@@ -11,6 +11,7 @@ typedef struct MemMapping {
 typedef struct Process {
 	HandleTable handle_table;
 	VMem vmem;
+	Mutex vmem_lock;
 	void* map;
 	MemMapping* mappings;
 	MemMapping* mappings_end;

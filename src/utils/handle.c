@@ -42,26 +42,42 @@ Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 	}
 }
 
-void handle_tab_close(HandleTable* self, Handle handle) {
+HandleEntry* handle_tab_get(HandleTable* self, Handle handle) {
 	mutex_lock(&self->lock);
 	if (handle >= self->size) {
 		mutex_unlock(&self->lock);
-		return;
+		return NULL;
 	}
 	HandleEntry* entry = &self->table[handle];
 	if (entry->handle & FREED_HANDLE) {
 		mutex_unlock(&self->lock);
-		return;
+		return NULL;
 	}
-	if (entry->refs) {
-		entry->refs -= 1;
+	mutex_unlock(&self->lock);
+	return entry;
+}
+
+bool handle_tab_close(HandleTable* self, Handle handle) {
+	mutex_lock(&self->lock);
+	if (handle >= self->size) {
 		mutex_unlock(&self->lock);
-		return;
+		return false;
+	}
+	HandleEntry* entry = &self->table[handle];
+	if (entry->handle & FREED_HANDLE) {
+		mutex_unlock(&self->lock);
+		return false;
+	}
+	entry->refs -= 1;
+	if (entry->refs) {
+		mutex_unlock(&self->lock);
+		return false;
 	}
 	entry->data = (void*) self->freelist;
 	entry->handle |= FREED_HANDLE;
 	self->freelist = entry;
 	mutex_unlock(&self->lock);
+	return true;
 }
 
 void* handle_tab_open(HandleTable* self, Handle handle) {

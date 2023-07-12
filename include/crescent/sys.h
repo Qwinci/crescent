@@ -19,6 +19,13 @@ typedef enum {
 #define SYS_POLL_EVENT 6
 #define SYS_SHUTDOWN 7
 #define SYS_REQUEST_CAP 8
+#define SYS_MMAP 9
+#define SYS_MUNMAP 10
+#define SYS_CLOSE 11
+
+#define PROT_READ (1 << 0)
+#define PROT_WRITE (1 << 1)
+#define PROT_EXEC (1 << 2)
 
 #define CAP_DIRECT_FB_ACCESS (1 << 0)
 #define CAP_MAX (CAP_DIRECT_FB_ACCESS + 1)
