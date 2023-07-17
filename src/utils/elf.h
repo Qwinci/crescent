@@ -201,3 +201,8 @@ typedef struct {
 #define R_AMD64_GOTPC32 26
 #define R_AMD64_SIZE32 32
 #define R_AMD64_SIZE64 33
+
+typedef struct {
+	i32 d_tag;
+	usize d_val;
+} Elf64Dyn;

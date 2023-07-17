@@ -63,21 +63,7 @@ ElfInfo elf_get_info(const void* data) {
 	return res;
 }
 
-void elf_process_relocs(ElfInfo info, ElfSection rela_sect, void* load_base, void* run_base) {
-	for (usize i = 0; i < rela_sect.size / sizeof(Elf64Rela); ++i) {
-		Elf64Rela rela = *offset(rela_sect.base, const Elf64Rela*, i * sizeof(Elf64Rela));
-		u64 type = ELF64_R_TYPE(rela.r_info);
-
-		usize off = rela.r_offset - info.base;
-
-		if (type == R_AMD64_RELATIVE) {
-			*offset(load_base, u64*, off) = (usize) run_base + rela.r_addend;
-		}
-		else {
-			panic("unsupported elf relocation type %u\n", type);
-		}
-	}
-}
+#define DT_COUNT 34
 
 LoadedElf elf_load(ElfInfo info, void* load_base, void* run_base) {
 	assert(load_base);
@@ -100,9 +86,43 @@ LoadedElf elf_load(ElfInfo info, void* load_base, void* run_base) {
 	LoadedElf res = {};
 	res.entry = offset(run_base, void*, e_hdr->e_entry - info.base);
 
+	const Elf64Dyn* dyn_ptr = NULL;
 	if (run_base != (void*) info.base) {
-		elf_process_relocs(info, elf_get_section(info, ".rela"), load_base, run_base);
-		elf_process_relocs(info, elf_get_section(info, ".rela.dyn"), load_base, run_base);
+		for (u16 i = 0; i < e_hdr->e_phnum; ++i) {
+			const Elf64PHdr* p_hdr = offset(e_hdr, const Elf64PHdr*, e_hdr->e_phoff + i * e_hdr->e_phentsize);
+			if (p_hdr->p_type == PT_DYNAMIC) {
+				dyn_ptr = offset(e_hdr, const Elf64Dyn*, p_hdr->p_offset);
+				break;
+			}
+		}
+
+		if (dyn_ptr) {
+			usize dyn[DT_COUNT] = {};
+			for (usize i = 0; dyn_ptr[i].d_tag != DT_NULL; ++i) {
+				if (dyn_ptr[i].d_tag < DT_COUNT) {
+					dyn[dyn_ptr[i].d_tag] = dyn_ptr[i].d_val;
+				}
+			}
+
+			usize rela_size = dyn[DT_RELASZ];
+			usize rela_off = dyn[DT_RELA];
+			if (rela_size) {
+				const Elf64Rela* rela = offset(e_hdr, const Elf64Rela*, rela_off);
+
+				for (usize i = 0; i < rela_size / sizeof(Elf64Rela); ++i, ++rela) {
+					u64 type = ELF64_R_TYPE(rela->r_info);
+
+					usize off = rela->r_offset - info.base;
+
+					if (type == R_AMD64_RELATIVE) {
+						*offset(load_base, u64*, off) = (usize) run_base + rela->r_addend;
+					}
+					else {
+						panic("unsupported elf relocation type %u\n", type);
+					}
+				}
+			}
+		}
 	}
 
 	return res;
