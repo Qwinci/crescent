@@ -178,31 +178,50 @@ void another_thread(void* arg) {
 	sys_exit(0xCAFE);
 }
 
+_Noreturn static void infinite_loop(void*) {
+	while (true) {
+		__asm__ volatile("nop");
+	}
+}
+
 _Noreturn void _start(void*) {
 	Handle another = sys_create_thread(another_thread, (void*) 0xCAFE);
 	if (another == INVALID_HANDLE) {
 		puts("sys_create_thread failed to create thread\n");
 	}
-	puts("waiting for thread 2 to exit in thread1\n");
+	//puts("waiting for thread 2 to exit in thread1\n");
 	int status = sys_wait_thread(another);
 	if (sys_close(another)) {
 		puts("failed to close thread handle\n");
 	}
 	if (status == 0xCAFE) {
-		puts("thread 2 exited with status 0xCAFE\n");
+		//puts("thread 2 exited with status 0xCAFE\n");
 	}
 	else {
 		puts("thread 2 didn't exit with status 0xCAFE\n");
 	}
 
-	void* mem = sys_mmap(0x1000, PROT_READ | PROT_WRITE);
+	/*void* mem = sys_mmap(0x1000, PROT_READ | PROT_WRITE);
 	if (mem) {
-		puts("got some mem\n");
+		//puts("got some mem\n");
 		*(uint64_t*) mem = 10;
-		puts("memory set successful\n");
+		//puts("memory set successful\n");
 		int res = sys_munmap(mem, 0x1000);
 		if (res == 0) {
-			puts("unmapped memory\n");
+			//puts("unmapped memory\n");
+		}
+	}*/
+
+	size_t size = 0x40000000;
+	while (size) {
+		if (!sys_mmap(size, PROT_READ)) {
+			size /= 2;
+		}
+	}
+
+	while (true) {
+		if (sys_create_thread(infinite_loop, NULL) == INVALID_HANDLE) {
+			break;
 		}
 	}
 
@@ -224,6 +243,9 @@ _Noreturn void _start(void*) {
 				*(uint32_t*) ((uintptr_t) fb.base + y * fb.pitch + x * (fb.bpp / 8)) = 0x0000FF;
 			}
 		}
+	}
+	else if (ret == ERR_NO_MEM) {
+		puts("no memory for framebuffer mappings\n");
 	}
 	else if (ret == ERR_NO_PERMISSIONS) {
 		puts("no permissions to get a framebuffer\n");

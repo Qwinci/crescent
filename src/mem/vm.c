@@ -5,6 +5,7 @@
 #include "sched/mutex.h"
 #include "sched/process.h"
 #include "vmem.h"
+#include "string.h"
 
 static VMem kernel_vmem = {};
 static Mutex KERNEL_VM_LOCK = {};
@@ -117,7 +118,7 @@ void* vm_user_alloc_backed(Process* process, usize count, PageFlags flags, void*
 		Page* page = pmalloc(1);
 		if (!page) {
 			for (usize j = 0; j < i; ++j) {
-				Page* p = page_from_addr(arch_virt_to_phys(process->map, (usize) kernel_vm + j * PAGE_SIZE));
+				Page* p = page_from_addr(arch_virt_to_phys(process->map, (usize) vm + j * PAGE_SIZE));
 				pfree(p, 1);
 
 				if (kernel_vm) {
@@ -138,7 +139,25 @@ void* vm_user_alloc_backed(Process* process, usize count, PageFlags flags, void*
 		if (kernel_vm) {
 			arch_map_page(KERNEL_MAP, (usize) kernel_vm + i * PAGE_SIZE, page->phys, flags);
 		}
-		arch_user_map_page(process, (usize) vm + i * PAGE_SIZE, page->phys, flags);
+		if (!arch_user_map_page(process, (usize) vm + i * PAGE_SIZE, page->phys, flags)) {
+			for (usize j = 0; j < i; ++j) {
+				Page* p = page_from_addr(arch_virt_to_phys(process->map, (usize) vm + j * PAGE_SIZE));
+				pfree(p, 1);
+
+				if (kernel_vm) {
+					arch_unmap_page(KERNEL_MAP, (usize) kernel_vm + j * PAGE_SIZE, true);
+				}
+				arch_user_unmap_page(process, (usize) vm + j * PAGE_SIZE, true);
+			}
+			vm_user_dealloc(process, vm, count);
+			if (kernel_vm) {
+				vm_kernel_dealloc(kernel_vm, count);
+			}
+			mutex_lock(&process->mapping_lock);
+			process_remove_mapping(process, (usize) vm);
+			mutex_unlock(&process->mapping_lock);
+			return NULL;
+		}
 	}
 
 	return vm;

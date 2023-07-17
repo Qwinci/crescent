@@ -58,8 +58,6 @@ x86_syscall_entry:
 	jmp x86_syscall_entry_exit
 
 0:
-    movb $1, %gs:X86TASK_INSIDE_SYSCALL_OFFSET
-
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9
 
@@ -71,7 +69,6 @@ x86_syscall_entry:
 
 x86_syscall_entry_exit:
     cli
-    movb $0, %gs:X86TASK_INSIDE_SYSCALL_OFFSET
     pop %rbp
     pop %r15
     pop %r14

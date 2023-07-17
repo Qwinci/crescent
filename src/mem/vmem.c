@@ -17,7 +17,9 @@
 
 static void* alloc_page_wrapper() {
 	Page* page = pmalloc(1);
-	assert(page);
+	if (!page) {
+		return NULL;
+	}
 	return to_virt(page->phys);
 }
 
@@ -36,7 +38,9 @@ static VMemSeg* seg_alloc(VMem* self) {
 	}
 	else {
 		void* page = ALLOC_PAGE;
-		ASSERT(page && "vmem failed to allocate a page for segments");
+		if (!page) {
+			return NULL;
+		}
 
 		VMemSeg* page_seg = (VMemSeg*) page;
 		page_seg->next = self->seg_page_list;
@@ -297,6 +301,14 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 
 			if (list->size > size) {
 				VMemSeg* alloc_seg = seg_alloc(self);
+				if (!alloc_seg) {
+					self->freelists[i] = list;
+					if (list->next) {
+						list->next->prev = list;
+					}
+					return NULL;
+				}
+
 				split_seg(list, alloc_seg, size);
 
 				freelist_insert(self, list);
@@ -349,6 +361,19 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 
 			if (list->size > size) {
 				VMemSeg* alloc_seg = seg_alloc(self);
+				if (!alloc_seg) {
+					if (list->prev) {
+						list->prev->next = list;
+					}
+					else {
+						self->freelists[i] = list;
+					}
+					if (list->next) {
+						list->next->prev = list;
+					}
+					return NULL;
+				}
+
 				alloc_seg->base = list->base;
 				alloc_seg->size = size;
 				alloc_seg->seg_list_prev = list->seg_list_prev;
@@ -397,6 +422,19 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 
 				if (seg->size > size) {
 					VMemSeg* alloc_seg = seg_alloc(self);
+					if (!alloc_seg) {
+						if (seg->prev) {
+							seg->prev->next = seg;
+						}
+						else {
+							self->freelists[list_index] = seg;
+						}
+						if (seg->next) {
+							seg->next->prev = seg;
+						}
+						return NULL;
+					}
+
 					split_seg(seg, alloc_seg, size);
 
 					freelist_insert(self, seg);
@@ -420,7 +458,9 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 void vmem_xfree(VMem* self, void* ptr, size_t size) {
 	VMemSeg* seg = hashtab_remove(self, ptr);
 	if (!seg) {
-		ASSERT(false && "tried to free not allocated pointer");
+		// todo
+		//ASSERT(false && "tried to free not allocated pointer");
+		return;
 	}
 	else if (seg->size != ALIGNUP(size, self->quantum)) {
 		ASSERT(false && "tried to free a pointer with different size than allocated");
@@ -430,6 +470,10 @@ void vmem_xfree(VMem* self, void* ptr, size_t size) {
 
 void* vmem_add(VMem* self, void* base, size_t size, VMFlags flags) {
 	VMemSeg* seg = seg_alloc(self);
+	if (!seg) {
+		return NULL;
+	}
+
 	seg->type = VMEM_SEG_FREE;
 	seg->base = base;
 	seg->size = size;
@@ -437,6 +481,10 @@ void* vmem_add(VMem* self, void* base, size_t size, VMFlags flags) {
 	seg->next = NULL;
 
 	VMemSeg* span = seg_alloc(self);
+	if (!span) {
+		return NULL;
+	}
+
 	span->type = VMEM_SEG_SPAN;
 	span->base = base;
 	span->size = size;

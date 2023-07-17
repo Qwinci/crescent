@@ -11,6 +11,7 @@
 #include "mem/page.h"
 #include "crescent/fb.h"
 #include "dev/fb.h"
+#include "utils.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
@@ -202,9 +203,10 @@ void* sys_mmap(size_t size, int protection) {
 	if (protection & PROT_EXEC) {
 		flags |= PF_READ | PF_EXEC;
 	}
-	void* res = vm_user_alloc_backed(arch_get_cur_task()->process, size / PAGE_SIZE, flags, NULL);
-	if (res) {
-		memset(res, 0, size);
+	Task* self = arch_get_cur_task();
+	void* res = vm_user_alloc_backed(self->process, size / PAGE_SIZE, flags, NULL);
+	if (!res) {
+		kprintf("mmap failed\n");
 	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);
 	return res;

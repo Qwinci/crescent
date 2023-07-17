@@ -50,6 +50,11 @@ Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
 	task->common.map = m;
+	if (!event_queue_init(&task->common.event_queue)) {
+		kprintf("[kernel][x86]: failed to allocate event queue (out of memory)\n");
+		kfree(task, sizeof(X86Task));
+		return NULL;
+	}
 
 	u8* kernel_stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
 	if (!kernel_stack) {
@@ -110,6 +115,11 @@ Task* arch_create_kernel_task(const char* name, void (*fn)(void*), void* arg) {
 	assert(task);
 	memset(task, 0, sizeof(X86Task));
 	task->self = task;
+	if (!event_queue_init(&task->common.event_queue)) {
+		kprintf("[kernel][x86]: failed to allocate event queue (out of memory)\n");
+		kfree(task, sizeof(X86Task));
+		return NULL;
+	}
 
 	u8* stack = (u8*) kmalloc(KERNEL_STACK_SIZE);
 	assert(stack);

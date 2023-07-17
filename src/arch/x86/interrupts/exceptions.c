@@ -99,13 +99,11 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 		sched_kill_cur();
 	}
 	else if (self->inside_syscall) {
-		kprintf("task '%s' faulted inside a syscall, returning 0xFA10ED from the syscall\n", self->name);
-
-		X86Task* task = container_of(self, X86Task, common);
-
-		ctx->ip = (u64) x86_syscall_entry_exit;
-		ctx->sp = (u64) task->kernel_stack_base + KERNEL_STACK_SIZE - 14 * 8;
-		ctx->rax = 0xFA10ED;
+		ctx->sp = ctx->rbp + 8;
+		ctx->rbp = *(const u64*) ctx->rbp;
+		ctx->ip = *(const u64*) ctx->sp;
+		ctx->sp += 8;
+		ctx->rax = ERR_FAULT;
 		kprintf("%" PRIfg, COLOR_RESET);
 		return IRQ_ACK;
 	}

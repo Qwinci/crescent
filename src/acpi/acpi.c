@@ -52,6 +52,7 @@ void acpi_init(void* rsdp_ptr) {
 	}
 	else {
 		dt.xsdt = (const Xsdt*) to_virt(rsdp->xsdt_addr);
+		kprintf("xsdt len: %u\n", dt.xsdt->header.length);
 		if (!acpi_checksum(dt.xsdt, dt.xsdt->header.length)) {
 			kprintf("[kernel][acpi]: xsdt has invalid checksum");
 		}

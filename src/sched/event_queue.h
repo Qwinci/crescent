@@ -13,5 +13,6 @@ typedef struct {
 	Mutex lock;
 } EventQueue;
 
+bool event_queue_init(EventQueue* self);
 bool event_queue_get(EventQueue* self, Event* event);
 void event_queue_push(EventQueue* self, Event event);
