@@ -12,6 +12,8 @@ typedef struct X86Task {
 	usize stack_base;
 	usize kernel_stack_base;
 	struct Page* map_pages;
+	usize ex_rsp;
+	usize ex_rip;
 	Task common;
 	bool user;
 } X86Task;

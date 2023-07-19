@@ -83,6 +83,7 @@ void* vm_user_alloc(Process* process, usize count) {
 	mutex_unlock(&process->vmem_lock);
 	return res;
 }
+
 void vm_user_dealloc(Process* process, void* ptr, usize count) {
 	mutex_lock(&process->vmem_lock);
 	vmem_free(&process->vmem, ptr, count * PAGE_SIZE);
@@ -170,13 +171,13 @@ void vm_user_dealloc_kernel(void* kernel_mapping, usize count) {
 	}
 }
 
-void vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping) {
+bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping) {
+	if (!process_remove_mapping(process, (usize) ptr)) {
+		return false;
+	}
 	for (usize i = 0; i < count; ++i) {
 		usize virt = (usize) ptr + i * PAGE_SIZE;
 		usize phys = arch_virt_to_phys(process->map, virt);
-		if (!phys) {
-			panic("vm_kernel_dealloc_backed: phys is null\n");
-		}
 		if (kernel_mapping) {
 			arch_unmap_page(KERNEL_MAP, (usize) kernel_mapping + i * PAGE_SIZE, true);
 		}
@@ -186,8 +187,8 @@ void vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kern
 		pfree(page, 1);
 	}
 	vm_user_dealloc(process, ptr, count);
-	process_remove_mapping(process, (usize) ptr);
 	if (kernel_mapping) {
 		vm_kernel_dealloc(kernel_mapping, count);
 	}
+	return true;
 }

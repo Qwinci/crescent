@@ -10,6 +10,7 @@ set(FILES
         ${PROJECT_SOURCE_DIR}/limine.cfg
 		crescent
         user_tty
+		initramfs.tar
         )
 
 add_executable(crescent src/main.c)

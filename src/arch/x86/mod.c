@@ -1,4 +1,4 @@
-#include "mod.h"
+#include "arch/mod.h"
 #include "limine/limine.h"
 #include "string.h"
 
@@ -6,7 +6,7 @@ static volatile struct limine_module_request MODULE_REQUEST = {
 	.id = LIMINE_MODULE_REQUEST
 };
 
-Module x86_module_get(const char* name) {
+Module arch_get_module(const char* name) {
 	if (!MODULE_REQUEST.response) {
 		return (Module) {};
 	}

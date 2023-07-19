@@ -26,6 +26,6 @@ typedef struct Process {
 Process* process_new();
 Process* process_new_user();
 bool process_add_mapping(Process* process, usize base, usize size);
-void process_remove_mapping(Process* process, usize base);
+bool process_remove_mapping(Process* process, usize base);
 void process_add_thread(Process* process, Task* task);
 void process_remove_thread(Process* process, Task* task);

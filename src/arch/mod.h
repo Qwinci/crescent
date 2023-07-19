@@ -6,4 +6,4 @@ typedef struct {
 	usize size;
 } Module;
 
-Module x86_module_get(const char* name);
+Module arch_get_module(const char* name);

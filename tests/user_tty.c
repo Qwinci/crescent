@@ -56,8 +56,8 @@ int sys_poll_event(Event* event) {
 	return (int) syscall1(SYS_POLL_EVENT, (size_t) event);
 }
 
-bool sys_shutdown(ShutdownType type) {
-	return syscall1(SYS_SHUTDOWN, type);
+int sys_shutdown(ShutdownType type) {
+	return (int) syscall1(SYS_SHUTDOWN, type);
 }
 
 bool sys_request_cap(uint32_t cap) {
@@ -178,12 +178,6 @@ void another_thread(void* arg) {
 	sys_exit(0xCAFE);
 }
 
-_Noreturn static void infinite_loop(void*) {
-	while (true) {
-		__asm__ volatile("nop");
-	}
-}
-
 _Noreturn void _start(void*) {
 	Handle another = sys_create_thread(another_thread, (void*) 0xCAFE);
 	if (another == INVALID_HANDLE) {
@@ -201,35 +195,18 @@ _Noreturn void _start(void*) {
 		puts("thread 2 didn't exit with status 0xCAFE\n");
 	}
 
-	/*void* mem = sys_mmap(0x1000, PROT_READ | PROT_WRITE);
-	if (mem) {
-		//puts("got some mem\n");
-		*(uint64_t*) mem = 10;
-		//puts("memory set successful\n");
-		int res = sys_munmap(mem, 0x1000);
-		if (res == 0) {
-			//puts("unmapped memory\n");
-		}
-	}*/
-
-	size_t size = 0x40000000;
-	while (size) {
-		if (!sys_mmap(size, PROT_READ)) {
-			size /= 2;
-		}
-	}
-
-	while (true) {
-		if (sys_create_thread(infinite_loop, NULL) == INVALID_HANDLE) {
-			break;
-		}
-	}
-
 	if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
 		sys_dprint("user_tty got direct fb access\n", sizeof("user_tty got direct fb access\n") - 1);
 	}
 	else {
 		sys_dprint("user_tty didn't get direct fb access\n", sizeof("user_tty didn't get direct fb access\n") - 1);
+	}
+
+	if (sys_request_cap(CAP_MANAGE_POWER)) {
+		puts("user_tty got power management access\n");
+	}
+	else {
+		puts("user_tty didn't get power management access, F5 isn't going to work\n");
 	}
 
 	SysFramebuffer fb;
@@ -260,7 +237,9 @@ _Noreturn void _start(void*) {
 
 		if (event.type == EVENT_KEY && event.key.pressed) {
 			if (event.key.key == SCAN_F5) {
-				sys_shutdown(SHUTDOWN_TYPE_REBOOT);
+				if (sys_shutdown(SHUTDOWN_TYPE_REBOOT) == ERR_NO_PERMISSIONS) {
+					puts("no permissions to perform the reboot\n");
+				}
 			}
 
 			const char* text = LAYOUT[event.key.key];

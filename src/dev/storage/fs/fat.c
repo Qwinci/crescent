@@ -176,6 +176,39 @@ static bool fat_verify_bpb(const PackedFatBootSector* boot_sector, FatBpb* bpb) 
 	return res;
 }
 
+typedef struct {
+	u8 name[11];
+	u8 attr;
+	u8 reserved;
+	u8 creation_time_tenth;
+	union {
+		struct {
+			u16 creation_time;
+			u16 creation_date;
+			u16 last_access_date;
+			u16 first_cluster_high;
+			u16 write_time;
+			u16 write_date;
+		};
+		u8 name2[12];
+	};
+	u16 first_cluster_low;
+	union {
+		u32 file_size;
+		u8 name3[4];
+	};
+} FatDirectory;
+
+typedef struct {
+	usize start_blk;
+	u32 first_data_sector;
+	u8 sectors_per_cluster;
+} FatPartition;
+
+static inline usize cluster_to_sector(const FatPartition* self, u32 cluster) {
+	return (cluster - 2) * self->sectors_per_cluster + self->first_data_sector;
+}
+
 bool fat_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	PackedFatBootSector* packed_boot_sector = (PackedFatBootSector*) kmalloc(storage->blk_size);
 	assert(packed_boot_sector);
@@ -192,7 +225,6 @@ bool fat_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	usize fat_size_in_sectors = bpb.sectors_per_fat ? bpb.sectors_per_fat : bpb.large_sectors_per_fat;
 	usize root_dir_sectors = ALIGNUP(bpb.num_root_entries * 32, bpb.bytes_per_sector) / bpb.bytes_per_sector;
 	usize first_data_sector = bpb.num_reserved_sectors + (bpb.num_fats * fat_size_in_sectors) + root_dir_sectors;
-	usize first_fat_sector = bpb.num_reserved_sectors;
 	usize num_data_sectors = total_sectors - first_data_sector;
 	usize num_clusters = num_data_sectors / bpb.sectors_per_cluster;
 
@@ -208,11 +240,77 @@ bool fat_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 		first_root_dir_sector = first_sector;
 	}
 
-	usize blks_in_sector = MAX(bpb.bytes_per_sector / storage->blk_size, 1);
+	u32 blks_in_sector = ALIGNUP(bpb.bytes_per_sector, storage->blk_size) / storage->blk_size;
 
 	u8* data = kmalloc(blks_in_sector * storage->blk_size);
 	assert(data);
 	assert(storage->read(storage, data, start_blk + blks_in_sector * first_root_dir_sector, blks_in_sector));
+
+	const FatDirectory* dir = (const FatDirectory*) data;
+	char* long_name = NULL;
+	usize long_name_cap = 0;
+	usize long_name_len = 0;
+
+	usize current_offset = start_blk + blks_in_sector * first_root_dir_sector;
+	isize data_remaining = (isize) (blks_in_sector * storage->blk_size);
+	while (true) {
+		if (data_remaining == 0) {
+			current_offset += blks_in_sector * storage->blk_size;
+			dir = (const FatDirectory*) data;
+			assert(storage->read(storage, data, current_offset, blks_in_sector));
+		}
+
+		if (dir->name[0] == 0) {
+			break;
+		}
+		// Unused entry
+		else if (dir->name[0] == 0xE5) {
+			++dir;
+			data_remaining -= sizeof(*dir);
+			continue;
+		}
+		// long file name
+		if (dir->attr == 0xF) {
+			if (long_name_len + 13 >= long_name_cap) {
+				usize old_size = long_name_cap;
+				long_name_cap = long_name_cap < 13 ? 13 : (long_name_cap * 2);
+				char* new_name = (char*) kmalloc(long_name_cap + 1);
+				assert(new_name);
+				memcpy(new_name, long_name, long_name_len);
+				new_name[long_name_len] = 0;
+				kfree(long_name, old_size);
+				long_name = new_name;
+			}
+
+			for (u8 i = 1; i < 11; i += 2) {
+				long_name[long_name_len++] = (char) dir->name[i];
+			}
+
+			for (u8 i = 0; i < 12; i += 2) {
+				long_name[long_name_len++] = (char) dir->name2[i];
+			}
+
+			for (u8 i = 0; i < 4; i += 2) {
+				long_name[long_name_len++] = (char) dir->name3[i];
+			}
+
+			long_name[long_name_len] = 0;
+		}
+		else {
+			if (long_name) {
+				//kprintf("%s\n", long_name);
+				kfree(long_name, long_name_cap + 1);
+				long_name = NULL;
+				long_name_len = 0;
+				long_name_cap = 0;
+			}
+		}
+
+		data_remaining -= sizeof(*dir);
+		++dir;
+	}
+
+	kfree(data, blks_in_sector * storage->blk_size);
 
 	return true;
 }

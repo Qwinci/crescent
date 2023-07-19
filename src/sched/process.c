@@ -25,7 +25,7 @@ bool process_add_mapping(Process* process, usize base, usize size) {
 	return true;
 }
 
-void process_remove_mapping(Process* process, usize base) {
+bool process_remove_mapping(Process* process, usize base) {
 	MemMapping* prev = NULL;
 	MemMapping* mapping = process->mappings;
 	while (mapping) {
@@ -39,11 +39,12 @@ void process_remove_mapping(Process* process, usize base) {
 			if (process->mappings_end == mapping) {
 				process->mappings_end = prev;
 			}
-			break;
+			return true;
 		}
 		prev = mapping;
 		mapping = mapping->next;
 	}
+	return false;
 }
 
 Process* process_new_user() {

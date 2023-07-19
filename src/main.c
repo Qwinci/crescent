@@ -1,6 +1,6 @@
 #include "arch/interrupts.h"
 #include "arch/misc.h"
-#include "arch/x86/mod.h"
+#include "arch/mod.h"
 #include "assert.h"
 #include "dev/pci_enum.h"
 #include "exe/elf_loader.h"
@@ -13,6 +13,7 @@
 #ifdef CONFIG_TEST
 #include "utils/test.h"
 #include "mem/allocator.h"
+#include "fs/tar.h"
 
 #endif
 
@@ -25,8 +26,9 @@
 
 	pci_init();
 
-	//Module user_file = x86_module_get("basic");
-	Module user_file = x86_module_get("user_tty");
+	tar_initramfs_init();
+
+	Module user_file = arch_get_module("user_tty");
 
 	ElfInfo info = elf_get_info(user_file.base);
 

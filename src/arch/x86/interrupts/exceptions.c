@@ -94,7 +94,7 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 
 	Task* self = arch_get_cur_task();
 	if (ctx->cs == 0x2b) {
-		kprintf("killing user task '%s'", self->name);
+		kprintf("killing user task '%s'\n", self->name);
 		__asm__ volatile("sti");
 		sched_kill_cur();
 	}

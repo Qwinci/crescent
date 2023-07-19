@@ -20,7 +20,7 @@ void sys_sleep(usize ms);
 int sys_wait_thread(Handle handle);
 int sys_wait_for_event(Event* res);
 int sys_poll_event(Event* res);
-bool sys_shutdown(ShutdownType type);
+int sys_shutdown(ShutdownType type);
 bool sys_request_cap(u32 cap);
 void* sys_mmap(size_t size, int protection);
 int sys_munmap(void* ptr, size_t size);
@@ -51,7 +51,8 @@ __attribute__((used)) void* syscall_handlers[] = {
 __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
 
 static const char* CAP_STRS[CAP_MAX] = {
-	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS"
+	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS",
+	[CAP_MANAGE_POWER] = "MANAGE_POWER"
 };
 
 #define VALIDATE_PTR(ptr) if ((usize) (ptr) >= HHDM_OFFSET) return ERR_INVALID_ARG
@@ -69,15 +70,23 @@ bool sys_request_cap(u32 cap) {
 	ACTIVE_INPUT_TASK = self;
 	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
 
-	Event res;
-	if (!event_queue_get(&self->event_queue, &res)) {
-		sched_block(TASK_STATUS_WAITING);
-		event_queue_get(&self->event_queue, &res);
+	bool allow;
+	while (true) {
+		Event res;
+		if (!event_queue_get(&self->event_queue, &res)) {
+			sched_block(TASK_STATUS_WAITING);
+			event_queue_get(&self->event_queue, &res);
+		}
+		if (res.type == EVENT_KEY && res.key.key == SCAN_Y && res.key.pressed) {
+			allow = true;
+			break;
+		}
+		else if (res.type == EVENT_KEY && res.key.pressed) {
+			allow = false;
+			break;
+		}
 	}
-	bool allow = false;
-	if (res.type == EVENT_KEY && res.key.key == SCAN_Y && res.key.pressed) {
-		allow = true;
-	}
+
 	if (allow) {
 		self->caps |= cap;
 	}
@@ -88,28 +97,38 @@ bool sys_request_cap(u32 cap) {
 	return allow;
 }
 
-bool sys_shutdown(ShutdownType type) {
+int sys_shutdown(ShutdownType type) {
+	Task* task = arch_get_cur_task();
+	if (!(task->caps & CAP_MANAGE_POWER)) {
+		return ERR_NO_PERMISSIONS;
+	}
+
 	if (type == SHUTDOWN_TYPE_REBOOT) {
 		arch_reboot();
 	}
-	return false;
+	return ERR_INVALID_ARG;
 }
 
 int sys_wait_for_event(Event* res) {
 	VALIDATE_PTR(res);
 
 	Task* self = arch_get_cur_task();
+	start_catch_faults();
 	if (!event_queue_get(&self->event_queue, res)) {
 		sched_block(TASK_STATUS_WAITING);
 		event_queue_get(&self->event_queue, res);
 	}
+	end_catch_faults();
 	return 0;
 }
 
 int sys_poll_event(Event* res) {
 	VALIDATE_PTR(res);
 	Task* self = arch_get_cur_task();
-	return event_queue_get(&self->event_queue, res);
+	start_catch_faults();
+	bool result = event_queue_get(&self->event_queue, res);
+	end_catch_faults();
+	return !result;
 }
 
 int sys_wait_thread(Handle handle) {
@@ -147,7 +166,9 @@ void sys_sleep(usize ms) {
 
 int sys_dprint(const char* msg, size_t len) {
 	VALIDATE_PTR(msg);
+	start_catch_faults();
 	kputs(msg, len);
+	end_catch_faults();
 	return 0;
 }
 
@@ -205,9 +226,6 @@ void* sys_mmap(size_t size, int protection) {
 	}
 	Task* self = arch_get_cur_task();
 	void* res = vm_user_alloc_backed(self->process, size / PAGE_SIZE, flags, NULL);
-	if (!res) {
-		kprintf("mmap failed\n");
-	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);
 	return res;
 }
@@ -219,7 +237,9 @@ int sys_munmap(void* ptr, size_t size) {
 		return ERR_INVALID_ARG;
 	}
 
-	vm_user_dealloc_backed(arch_get_cur_task()->process, ptr, size / PAGE_SIZE, NULL);
+	if (!vm_user_dealloc_backed(arch_get_cur_task()->process, ptr, size / PAGE_SIZE, NULL)) {
+		return ERR_INVALID_ARG;
+	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);
 	return 0;
 }
@@ -271,8 +291,13 @@ int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count) {
 					return ERR_NO_MEM;
 				}
 			}
-			memcpy(res, primary_fb, sizeof(SysFramebuffer));
-			res->base = mem;
+
+			SysFramebuffer safe_res = *primary_fb;
+			safe_res.base = mem;
+
+			start_catch_faults();
+			memcpy(res, &safe_res, sizeof(SysFramebuffer));
+			end_catch_faults();
 		}
 	}
 	else {

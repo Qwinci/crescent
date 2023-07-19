@@ -13,6 +13,7 @@ extern void kmain();
 extern void x86_init_con();
 extern void x86_init_mem();
 extern void debug_init();
+extern void x86_init_fbs();
 
 static volatile struct limine_rsdp_request RSDP_REQUEST = {
 	.id = LIMINE_RSDP_REQUEST
@@ -24,6 +25,7 @@ static volatile struct limine_rsdp_request RSDP_REQUEST = {
 	x86_init_mem();
 	x86_load_gdt(NULL);
 	x86_init_idt();
+	x86_init_fbs();
 	if (RSDP_REQUEST.response) {
 		acpi_init(RSDP_REQUEST.response->address);
 	}

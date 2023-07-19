@@ -34,6 +34,7 @@ typedef enum {
 #define PROT_EXEC (1 << 2)
 
 #define CAP_DIRECT_FB_ACCESS (1 << 0)
-#define CAP_MAX (CAP_DIRECT_FB_ACCESS + 1)
+#define CAP_MANAGE_POWER (1 << 1)
+#define CAP_MAX (CAP_MANAGE_POWER + 1)
 
 #endif

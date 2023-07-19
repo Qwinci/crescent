@@ -668,12 +668,6 @@ void nvme_init_namespace(NvmeController* self, u32 nsid) {
 	//kprintf("[kernel][nvme]: ns %u has %u blocks of size %u (total %uGB)\n", nsid, lba_count, lba_size, lba_count * lba_size / 1024 / 1024 / 1024);
 	kfree(ident_ns, sizeof(NvmeIdentifyNamespace));
 
-	// todo
-	usize max_transfer = ns->max_transfer_pages * PAGE_SIZE;
-	void* buffer = kmalloc(max_transfer + 1);
-	assert(buffer);
-	assert(!nvme_ns_rw(ns, offset(buffer, void*, 4), 0, max_transfer / ns->lba_size, false));
-	kfree(buffer, max_transfer + 1);
 	storage_register(&ns->storage);
 	storage_enum_partitions(&ns->storage);
 }
