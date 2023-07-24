@@ -99,9 +99,9 @@ bool sys_request_cap(u32 cap) {
 
 int sys_shutdown(ShutdownType type) {
 	Task* task = arch_get_cur_task();
-	if (!(task->caps & CAP_MANAGE_POWER)) {
+	/*if (!(task->caps & CAP_MANAGE_POWER)) {
 		return ERR_NO_PERMISSIONS;
-	}
+	}*/
 
 	if (type == SHUTDOWN_TYPE_REBOOT) {
 		arch_reboot();
