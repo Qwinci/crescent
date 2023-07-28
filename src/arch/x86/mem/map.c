@@ -48,6 +48,7 @@ void* arch_create_user_map() {
 	}
 	map->ref_count = 0;
 	map->page = page;
+	map->lock = (Mutex) {};
 
 	return map;
 }
@@ -68,17 +69,21 @@ void* arch_create_map() {
 	assert(map);
 	map->page = page;
 	map->ref_count = 1;
+	map->lock = (Mutex) {};
 
 	return map;
 }
 
 void arch_destroy_map(void* map) {
 	X86PageMap* p = (X86PageMap*) map;
+	mutex_lock(&p->lock);
 	if (p->ref_count > 1) {
 		--p->ref_count;
+		mutex_unlock(&p->lock);
 		return;
 	}
 	pfree(p->page, 1);
+	mutex_unlock(&p->lock);
 	kfree(p, sizeof(X86PageMap));
 }
 
@@ -87,7 +92,10 @@ void x86_refresh_page(usize addr) {
 }
 
 void arch_protect_page(void* map, usize virt, PageFlags flags) {
-	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
+	X86PageMap* self = (X86PageMap*) map;
+	mutex_lock(&self->lock);
+
+	u64* pml4 = (u64*) to_virt(self->page->phys);
 
 	u64 x86_flags = x86_pf_from_generic(flags);
 
@@ -102,13 +110,12 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 	virt >>= 9;
 	u64 pml4_offset = virt & 0x1FF;
 
-	u64 x86_generic_flags = X86_PF_P | X86_PF_RW | (flags & PF_USER ? X86_PF_U : 0);
-
 	u64* pdp;
 	if (pml4[pml4_offset] & X86_PF_P) {
 		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -117,6 +124,7 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -124,6 +132,7 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 		pd[pd_offset] &= ~PAGE_FLAG_MASK;
 		pd[pd_offset] |= x86_flags | X86_PF_H;
 		x86_refresh_page(orig_virt & ~(X86_HUGEPAGE_SIZE - 1));
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -132,16 +141,20 @@ void arch_protect_page(void* map, usize virt, PageFlags flags) {
 		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
 	pt[pt_offset] &= ~PAGE_FLAG_MASK;
 	pt[pt_offset] |= x86_flags;
 	x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
+	mutex_unlock(&self->lock);
 }
 
 void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
-	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
+	X86PageMap* self = (X86PageMap*) map;
+	mutex_lock(&self->lock);
+	u64* pml4 = (u64*) to_virt(self->page->phys);
 
 	u64 x86_flags = x86_pf_from_generic(flags);
 
@@ -187,6 +200,7 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 	if (flags & PF_HUGE) {
 		pd[pd_offset] = phys | x86_flags | X86_PF_H;
 		x86_refresh_page(orig_virt & ~(X86_HUGEPAGE_SIZE - 1));
+		mutex_unlock(&self->lock);
 		return;
 	}
 	if (pd[pd_offset] & X86_PF_H && flags & PF_SPLIT) {
@@ -208,6 +222,7 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 		pd[pd_offset] &= ~PAGE_FLAG_MASK;
 		pd[pd_offset] |= flags | X86_PF_H;
 		x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -226,10 +241,13 @@ void arch_map_page(void* map, usize virt, usize phys, PageFlags flags) {
 
 	pt[pt_offset] = phys | x86_flags;
 	x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
+	mutex_unlock(&self->lock);
 }
 
 void arch_unmap_page(void* map, usize virt, bool dealloc) {
-	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
+	X86PageMap* self = (X86PageMap*) map;
+	mutex_lock(&self->lock);
+	u64* pml4 = (u64*) to_virt(self->page->phys);
 
 	usize orig_virt = virt;
 
@@ -247,6 +265,7 @@ void arch_unmap_page(void* map, usize virt, bool dealloc) {
 		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -255,6 +274,7 @@ void arch_unmap_page(void* map, usize virt, bool dealloc) {
 		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -264,6 +284,7 @@ void arch_unmap_page(void* map, usize virt, bool dealloc) {
 		if (dealloc) {
 			goto dealloc_huge;
 		}
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -272,6 +293,7 @@ void arch_unmap_page(void* map, usize virt, bool dealloc) {
 		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
@@ -279,11 +301,13 @@ void arch_unmap_page(void* map, usize virt, bool dealloc) {
 	x86_refresh_page(orig_virt & ~(PAGE_SIZE - 1));
 
 	if (!dealloc) {
+		mutex_unlock(&self->lock);
 		return;
 	}
 
 	for (usize i = 0; i < 512; ++i) {
 		if (pt[i]) {
+			mutex_unlock(&self->lock);
 			return;
 		}
 	}
@@ -297,6 +321,7 @@ void arch_unmap_page(void* map, usize virt, bool dealloc) {
 dealloc_huge:
 	for (usize i = 0; i < 512; ++i) {
 		if (pd[i]) {
+			mutex_unlock(&self->lock);
 			return;
 		}
 	}
@@ -306,10 +331,14 @@ dealloc_huge:
 	pdp[pdp_offset] = 0;
 	x86_refresh_page(pdp_virt);
 	pfree(page_from_addr(pdp_phys), 1);
+	mutex_unlock(&self->lock);
 }
 
 usize arch_virt_to_phys(void* map, usize virt) {
-	u64* pml4 = (u64*) to_virt(((X86PageMap*) map)->page->phys);
+	X86PageMap* self = (X86PageMap*) map;
+	mutex_lock(&self->lock);
+
+	u64* pml4 = (u64*) to_virt(self->page->phys);
 
 	u64 p_offset = virt & 0xFFF;
 	virt >>= 12;
@@ -326,6 +355,7 @@ usize arch_virt_to_phys(void* map, usize virt) {
 		pdp = (u64*) to_virt(pml4[pml4_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return 0;
 	}
 
@@ -334,10 +364,12 @@ usize arch_virt_to_phys(void* map, usize virt) {
 		pd = (u64*) to_virt(pdp[pdp_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return 0;
 	}
 
 	if (pd[pd_offset] & X86_PF_H) {
+		mutex_unlock(&self->lock);
 		return pd[pd_offset] & PAGE_ADDR_MASK;
 	}
 
@@ -346,10 +378,13 @@ usize arch_virt_to_phys(void* map, usize virt) {
 		pt = (u64*) to_virt(pd[pd_offset] & PAGE_ADDR_MASK);
 	}
 	else {
+		mutex_unlock(&self->lock);
 		return 0;
 	}
 
-	return (pt[pt_offset] & PAGE_ADDR_MASK) + p_offset;
+	usize addr = (pt[pt_offset] & PAGE_ADDR_MASK) + p_offset;
+	mutex_unlock(&self->lock);
+	return addr;
 }
 
 void arch_use_map(void* map) {

@@ -1,5 +1,6 @@
 #pragma once
 #include "arch/map.h"
+#include "sched/mutex.h"
 
 #define X86_PF_P (1ULL << 0)
 #define X86_PF_RW (1ULL << 1)
@@ -47,6 +48,7 @@ typedef struct {
 	Page* page;
 	Page* map_pages;
 	usize ref_count;
+	Mutex lock;
 } X86PageMap;
 
 u64 x86_pf_from_generic(PageFlags flags);
