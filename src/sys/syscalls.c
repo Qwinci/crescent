@@ -15,6 +15,7 @@
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
+int sys_kill_thread(Handle handle);
 int sys_dprint(const char* msg, size_t len);
 void sys_sleep(usize ms);
 int sys_wait_thread(Handle handle);
@@ -29,6 +30,7 @@ int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count);
 
 __attribute__((used)) void* syscall_handlers[] = {
 	sys_create_thread,
+	sys_kill_thread,
 	sys_wait_thread,
 	sys_exit,
 	sys_sleep,
@@ -129,6 +131,31 @@ int sys_poll_event(Event* res) {
 	bool result = event_queue_get(&self->event_queue, res);
 	end_catch_faults();
 	return !result;
+}
+
+int sys_kill_thread(Handle handle) {
+	if (handle == INVALID_HANDLE) {
+		return ERR_INVALID_ARG;
+	}
+	Task* self = arch_get_cur_task();
+
+	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_open(&self->process->handle_table, handle);
+	if (t_handle == NULL) {
+		return ERR_INVALID_ARG;
+	}
+	mutex_lock(&t_handle->lock);
+	int status;
+	if (t_handle->exited) {
+		status = 1;
+	}
+	else {
+		Task* thread = t_handle->task;
+		sched_exit_task(thread, 1, TASK_STATUS_KILLED);
+		mutex_unlock(&t_handle->lock);
+		status = 0;
+	}
+
+	return status;
 }
 
 int sys_wait_thread(Handle handle) {

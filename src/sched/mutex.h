@@ -5,10 +5,10 @@
 typedef struct Task Task;
 
 typedef struct {
-	atomic_bool inner;
-	Spinlock task_protector;
 	Task* waiting_tasks;
 	Task* waiting_tasks_end;
+	atomic_bool inner;
+	Spinlock task_protector;
 } Mutex;
 
 bool mutex_try_lock(Mutex* self);

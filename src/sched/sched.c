@@ -43,7 +43,13 @@ void sched_switch_from(Task* old_task, Task* self) {
 		arch_destroy_task(old_task);
 	}
 
+	mutex_lock(&self->status_lock);
+	if (self->status != TASK_STATUS_READY) {
+		mutex_unlock(&self->status_lock);
+		sched();
+	}
 	self->status = TASK_STATUS_RUNNING;
+	mutex_unlock(&self->status_lock);
 
 	arch_sched_switch_from(old_task, self);
 }
@@ -209,11 +215,47 @@ void sched_sleep(usize us) {
 	arch_ipl_set(old);
 }
 
+void sched_exit_task(Task* self, int status, TaskStatus type) {
+	mutex_lock(&self->status_lock);
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
+
+	self->status = type;
+	if (self->process) {
+		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
+		handle->exited = true;
+		handle->status = status;
+		handle_tab_close(&self->process->handle_table, self->tid);
+	}
+
+	mutex_lock(&self->signal_waiters_lock);
+	while (self->signal_waiters) {
+		Task* next = self->signal_waiters->next;
+		sched_unblock(self->signal_waiters);
+		self->signal_waiters = next;
+	}
+	mutex_unlock(&self->signal_waiters_lock);
+
+	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
+	if (ACTIVE_INPUT_TASK == self) {
+		ACTIVE_INPUT_TASK = NULL;
+	}
+	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
+
+	process_remove_thread(self->process, self);
+
+	arch_ipl_set(old);
+	mutex_unlock(&self->status_lock);
+}
+
 NORETURN void sched_exit(int status, TaskStatus type) {
 	Task* self = arch_get_cur_task();
 
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 
+	mutex_lock(&self->status_lock);
+	if (self->status != TASK_STATUS_RUNNING) {
+		sched();
+	}
 	self->status = type;
 	if (self->process) {
 		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
@@ -240,6 +282,7 @@ NORETURN void sched_exit(int status, TaskStatus type) {
 
 	process_remove_thread(self->process, self);
 
+	mutex_unlock(&self->status_lock);
 	arch_ipl_set(old);
 	sched();
 	__builtin_unreachable();

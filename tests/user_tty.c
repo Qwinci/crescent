@@ -2,6 +2,7 @@
 #include "crescent/input.h"
 #include "crescent/fb.h"
 #include <stddef.h>
+#include <stdatomic.h>
 
 size_t syscall0(size_t num) {
 	size_t ret;
@@ -38,6 +39,10 @@ int sys_dprint(const char* msg, size_t len) {
 
 Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	return (Handle) syscall2(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg);
+}
+
+int sys_kill_thread(Handle thread) {
+	return (int) syscall1(SYS_KILL_THREAD, (size_t) thread);
 }
 
 void sys_sleep(size_t ms) {
@@ -178,7 +183,26 @@ void another_thread(void* arg) {
 	sys_exit(0xCAFE);
 }
 
+static atomic_bool running = false;
+static _Noreturn void infinite_loop(void*) {
+	puts("hello\n");
+	atomic_store_explicit(&running, true, memory_order_relaxed);
+	for (;;) {
+		__asm__ volatile("nop");
+	}
+}
+
 _Noreturn void _start(void*) {
+	Handle infinite_loop_thread = sys_create_thread(infinite_loop, NULL);
+	if (infinite_loop_thread == INVALID_HANDLE) {
+		puts("failed to create thread\n");
+	}
+	while (!atomic_load_explicit(&running, memory_order_relaxed)) {
+		__builtin_ia32_pause();
+	}
+	puts("killing another thread\n");
+	sys_kill_thread(infinite_loop_thread);
+
 	Handle another = sys_create_thread(another_thread, (void*) 0xCAFE);
 	if (another == INVALID_HANDLE) {
 		puts("sys_create_thread failed to create thread\n");

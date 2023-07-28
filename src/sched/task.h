@@ -40,6 +40,7 @@ typedef struct Task {
 	struct Task* signal_waiters;
 	Mutex signal_waiters_lock;
 	EventQueue event_queue;
+	Mutex status_lock;
 	TaskStatus status;
 	u32 caps;
 	u8 level;

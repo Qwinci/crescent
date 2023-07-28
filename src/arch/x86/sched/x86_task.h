@@ -20,6 +20,8 @@ typedef struct X86Task {
 
 #include "usermode.inc"
 static_assert(offsetof(X86Task, common) + offsetof(Task, inside_syscall) == X86TASK_INSIDE_SYSCALL_OFFSET);
+static_assert(offsetof(Task, inside_syscall) == 332);
+static_assert(offsetof(X86Task, common) == 72);
 
 void x86_task_add_map_page(X86Task* task, struct Page* page);
 void x86_task_remove_map_page(X86Task* task, struct Page* page);

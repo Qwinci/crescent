@@ -36,6 +36,7 @@ bool sched_unblock(Task* task);
 void sched_sleep(usize us);
 NORETURN void sched_exit(int status, TaskStatus type);
 NORETURN void sched_kill_cur();
+void sched_exit_task(Task* self, int status, TaskStatus type);
 // Precondition: task->signal_waiters_lock is acquired
 void sched_sigwait(Task* task);
 void sched_invalidate_map(Process* process);
