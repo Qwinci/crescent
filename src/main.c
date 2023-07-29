@@ -39,15 +39,15 @@
 	void* mem;
 	void* user_mem = vm_user_alloc_backed(
 		test_user_process,
-		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE + 100,
+		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE,
 		PF_READ | PF_WRITE | PF_EXEC | PF_USER, &mem);
 	assert(user_mem);
-	memset(mem, 0, ALIGNUP(info.mem_size, PAGE_SIZE) + 100 * PAGE_SIZE);
+	memset(mem, 0, ALIGNUP(info.mem_size, PAGE_SIZE));
 
 	LoadedElf loaded = elf_load(info, mem, user_mem);
 	elf_protect(info, mem, test_user->map, true);
 
-	vm_user_dealloc_kernel(mem, ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE + 100);
+	vm_user_dealloc_kernel(mem, ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE);
 
 	void (*user_fn)(void*) = (void (*)(void*)) loaded.entry;
 

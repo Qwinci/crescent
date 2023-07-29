@@ -48,6 +48,7 @@ ElfInfo elf_get_info(const void* data) {
 	res.relocatable = e_hdr->e_type == ET_DYN;
 
 	bool base_found = false;
+	usize largest_addr = 0;
 	for (u16 i = 0; i < e_hdr->e_phnum; ++i) {
 		const Elf64PHdr* p_hdr = offset(e_hdr, const Elf64PHdr*, e_hdr->e_phoff + i * e_hdr->e_phentsize);
 		if (p_hdr->p_type == PT_LOAD) {
@@ -56,10 +57,14 @@ ElfInfo elf_get_info(const void* data) {
 				base_found = true;
 			}
 			res.mem_size += ALIGNUP(p_hdr->p_memsz, p_hdr->p_align);
+			if (p_hdr->p_vaddr - res.base + p_hdr->p_memsz > largest_addr) {
+				largest_addr = p_hdr->p_vaddr - res.base + p_hdr->p_memsz;
+			}
 		}
 	}
 
 	res.file_base = data;
+	res.mem_size = largest_addr;
 	return res;
 }
 

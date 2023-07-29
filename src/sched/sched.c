@@ -43,13 +43,7 @@ void sched_switch_from(Task* old_task, Task* self) {
 		arch_destroy_task(old_task);
 	}
 
-	mutex_lock(&self->status_lock);
-	if (self->status != TASK_STATUS_READY) {
-		mutex_unlock(&self->status_lock);
-		sched();
-	}
 	self->status = TASK_STATUS_RUNNING;
-	mutex_unlock(&self->status_lock);
 
 	arch_sched_switch_from(old_task, self);
 }
@@ -88,11 +82,50 @@ Task* sched_get_next_task() {
 	return task;
 }
 
+void sched_exit_no_sched(int status, TaskStatus type) {
+	Task* self = arch_get_cur_task();
+
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
+
+	self->status = type;
+	if (self->process) {
+		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
+		mutex_lock(&handle->lock);
+		handle->exited = true;
+		handle->status = status;
+		mutex_unlock(&handle->lock);
+		handle_tab_close(&self->process->handle_table, self->tid);
+	}
+
+	mutex_lock(&self->signal_waiters_lock);
+	while (self->signal_waiters) {
+		Task* next = self->signal_waiters->next;
+		sched_unblock(self->signal_waiters);
+		self->signal_waiters = next;
+	}
+	mutex_unlock(&self->signal_waiters_lock);
+
+	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
+	if (ACTIVE_INPUT_TASK == self) {
+		ACTIVE_INPUT_TASK = NULL;
+	}
+	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
+
+	process_remove_thread(self->process, self);
+
+	arch_ipl_set(old);
+}
+
 void sched_with_next(Task* task) {
 	Cpu* cpu = arch_get_cur_task()->cpu;
 
+	Task* self = cpu->current_task;
+	if (atomic_load_explicit(&self->killed, memory_order_acquire)) {
+		sched_exit_no_sched(-1, TASK_STATUS_KILLED);
+	}
+
 	if (!task) {
-		if (cpu->current_task->status != TASK_STATUS_RUNNING) {
+		if (self->status != TASK_STATUS_RUNNING) {
 			task = cpu->idle_task;
 			cpu->idle_start = arch_get_ns_since_boot();
 		}
@@ -101,7 +134,6 @@ void sched_with_next(Task* task) {
 		}
 	}
 
-	Task* self = cpu->current_task;
 	cpu->current_task = task;
 	if (task->process) {
 		spinlock_lock(&task->process->used_cpus_lock);
@@ -215,75 +247,12 @@ void sched_sleep(usize us) {
 	arch_ipl_set(old);
 }
 
-void sched_exit_task(Task* self, int status, TaskStatus type) {
-	mutex_lock(&self->status_lock);
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
-
-	self->status = type;
-	if (self->process) {
-		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
-		handle->exited = true;
-		handle->status = status;
-		handle_tab_close(&self->process->handle_table, self->tid);
-	}
-
-	mutex_lock(&self->signal_waiters_lock);
-	while (self->signal_waiters) {
-		Task* next = self->signal_waiters->next;
-		sched_unblock(self->signal_waiters);
-		self->signal_waiters = next;
-	}
-	mutex_unlock(&self->signal_waiters_lock);
-
-	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
-	if (ACTIVE_INPUT_TASK == self) {
-		ACTIVE_INPUT_TASK = NULL;
-	}
-	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
-
-	process_remove_thread(self->process, self);
-
-	arch_ipl_set(old);
-	mutex_unlock(&self->status_lock);
+void sched_kill_task(Task* task) {
+	atomic_store_explicit(&task->killed, true, memory_order_relaxed);
 }
 
 NORETURN void sched_exit(int status, TaskStatus type) {
-	Task* self = arch_get_cur_task();
-
-	Ipl old = arch_ipl_set(IPL_CRITICAL);
-
-	mutex_lock(&self->status_lock);
-	if (self->status != TASK_STATUS_RUNNING) {
-		sched();
-	}
-	self->status = type;
-	if (self->process) {
-		ThreadHandle* handle = handle_tab_open(&self->process->handle_table, self->tid);
-		mutex_lock(&handle->lock);
-		handle->exited = true;
-		handle->status = status;
-		mutex_unlock(&handle->lock);
-		handle_tab_close(&self->process->handle_table, self->tid);
-	}
-
-	mutex_lock(&self->signal_waiters_lock);
-	while (self->signal_waiters) {
-		Task* next = self->signal_waiters->next;
-		sched_unblock(self->signal_waiters);
-		self->signal_waiters = next;
-	}
-	mutex_unlock(&self->signal_waiters_lock);
-
-	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
-	if (ACTIVE_INPUT_TASK == self) {
-		ACTIVE_INPUT_TASK = NULL;
-	}
-	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
-
-	process_remove_thread(self->process, self);
-
-	mutex_unlock(&self->status_lock);
-	arch_ipl_set(old);
+	sched_exit_no_sched(status, type);
 	sched();
 	__builtin_unreachable();
 }
@@ -321,7 +290,7 @@ NORETURN void sched_load_balance(void*) {
 			spinlock_lock(&min_cpu->tasks_lock);
 			spinlock_lock(&max_cpu->tasks_lock);
 
-			// todo better names since these don't hlt anymore
+			// todo better names since these don't hlt anymore (and are actually useless)
 			arch_hlt_cpu(min_cpu_i);
 			arch_hlt_cpu(max_cpu_i);
 

@@ -55,7 +55,6 @@ bool arch_user_map_page(Process* process, usize virt, usize phys, PageFlags flag
 		if (!page) {
 			return false;
 		}
-		process_add_mapping(process, page->phys, PAGE_SIZE);
 		x86_add_map_page(map, page);
 		pdp = (u64*) to_virt(page->phys);
 		memset(pdp, 0, PAGE_SIZE);

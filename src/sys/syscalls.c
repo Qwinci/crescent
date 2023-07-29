@@ -150,10 +150,10 @@ int sys_kill_thread(Handle handle) {
 	}
 	else {
 		Task* thread = t_handle->task;
-		sched_exit_task(thread, 1, TASK_STATUS_KILLED);
-		mutex_unlock(&t_handle->lock);
+		sched_kill_task(thread);
 		status = 0;
 	}
+	mutex_unlock(&t_handle->lock);
 
 	return status;
 }
@@ -212,6 +212,13 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	}
 
 	Task* self = arch_get_cur_task();
+	Process* process = self->process;
+	mutex_lock(&process->threads_lock);
+	if (atomic_load_explicit(&process->killed, memory_order_acquire)) {
+		mutex_unlock(&process->threads_lock);
+		return INVALID_HANDLE;
+	}
+
 	ThreadHandle* handle = kmalloc(sizeof(ThreadHandle));
 	if (!handle) {
 		return INVALID_HANDLE;
@@ -232,8 +239,21 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 
 	sched_queue_task(task);
 	process_add_thread(self->process, task);
+	mutex_unlock(&process->threads_lock);
 	arch_ipl_set(old);
 	return id;
+}
+
+int sys_kill_process(Process* process) {
+	mutex_lock(&process->threads_lock);
+	atomic_store_explicit(&process->killed, true, memory_order_release);
+
+	for (Task* task = process->threads; task; task = task->thread_next) {
+		sched_kill_task(task);
+	}
+
+	mutex_unlock(&process->threads_lock);
+	return 0;
 }
 
 void* sys_mmap(size_t size, int protection) {

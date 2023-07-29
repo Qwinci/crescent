@@ -40,7 +40,6 @@ typedef struct Task {
 	struct Task* signal_waiters;
 	Mutex signal_waiters_lock;
 	EventQueue event_queue;
-	Mutex status_lock;
 	TaskStatus status;
 	u32 caps;
 	u8 level;
@@ -48,6 +47,7 @@ typedef struct Task {
 	bool pin_level;
 	bool pin_cpu;
 	bool inside_syscall;
+	atomic_bool killed;
 } Task;
 
 extern Spinlock ACTIVE_INPUT_TASK_LOCK;

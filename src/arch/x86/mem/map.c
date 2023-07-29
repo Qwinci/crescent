@@ -49,6 +49,7 @@ void* arch_create_user_map() {
 	map->ref_count = 0;
 	map->page = page;
 	map->lock = (Mutex) {};
+	map->map_pages = NULL;
 
 	return map;
 }
@@ -70,21 +71,27 @@ void* arch_create_map() {
 	map->page = page;
 	map->ref_count = 1;
 	map->lock = (Mutex) {};
+	map->map_pages = NULL;
 
 	return map;
 }
 
 void arch_destroy_map(void* map) {
-	X86PageMap* p = (X86PageMap*) map;
-	mutex_lock(&p->lock);
-	if (p->ref_count > 1) {
-		--p->ref_count;
-		mutex_unlock(&p->lock);
+	X86PageMap* self = (X86PageMap*) map;
+	mutex_lock(&self->lock);
+	if (self->ref_count > 1) {
+		--self->ref_count;
+		mutex_unlock(&self->lock);
 		return;
 	}
-	pfree(p->page, 1);
-	mutex_unlock(&p->lock);
-	kfree(p, sizeof(X86PageMap));
+	for (Page* page = self->map_pages; page;) {
+		Page* next = page->next;
+		pfree(page, 1);
+		page = next;
+	}
+	pfree(self->page, 1);
+	mutex_unlock(&self->lock);
+	kfree(self, sizeof(X86PageMap));
 }
 
 void x86_refresh_page(usize addr) {

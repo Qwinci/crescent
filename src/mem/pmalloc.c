@@ -25,6 +25,7 @@ static usize size_to_index(usize size) {
 static void freelist_insert_nonrecursive(usize index, Page* page) {
 	page->type = PAGE_FREE;
 	page->prev = NULL;
+	page->next = NULL;
 	page->list_index = index;
 
 	usize final_i = index;
@@ -243,6 +244,7 @@ void pfree(Page* ptr, usize count) {
 		index += 1;
 	}
 
+	assert(ptr->type == PAGE_USED && "pfree: double free");
 	memset(to_virt(ptr->phys), 0xCB, index_to_size(index) * PAGE_SIZE);
 	mutex_lock(&PMALLOC_LOCK);
 	freelist_insert_nonrecursive(index, ptr);

@@ -39,6 +39,7 @@ bool process_remove_mapping(Process* process, usize base) {
 			if (process->mappings_end == mapping) {
 				process->mappings_end = prev;
 			}
+			kfree(mapping, sizeof(MemMapping));
 			return true;
 		}
 		prev = mapping;
@@ -59,7 +60,6 @@ Process* process_new_user() {
 }
 
 void process_add_thread(Process* process, Task* task) {
-	mutex_lock(&process->threads_lock);
 	task->thread_prev = NULL;
 	task->thread_next = process->threads;
 	if (task->thread_next) {
@@ -67,7 +67,6 @@ void process_add_thread(Process* process, Task* task) {
 	}
 	process->threads = task;
 	process->thread_count += 1;
-	mutex_unlock(&process->threads_lock);
 }
 
 void process_remove_thread(Process* process, Task* task) {
@@ -81,5 +80,6 @@ void process_remove_thread(Process* process, Task* task) {
 	if (task->thread_next) {
 		task->thread_next->thread_prev = task->thread_prev;
 	}
+	process->thread_count -= 1;
 	mutex_unlock(&process->threads_lock);
 }

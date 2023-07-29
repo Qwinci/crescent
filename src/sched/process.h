@@ -21,6 +21,7 @@ typedef struct Process {
 	Task* threads;
 	Spinlock used_cpus_lock;
 	u32 used_cpus[(CONFIG_MAX_CPUS + 31) / 32];
+	atomic_bool killed;
 } Process;
 
 Process* process_new();

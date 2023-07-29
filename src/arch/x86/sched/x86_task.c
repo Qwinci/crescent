@@ -152,26 +152,28 @@ void arch_destroy_task(Task* task) {
 	if (x86_task->user) {
 		vm_user_dealloc_backed(task->process, (void*) x86_task->stack_base, USER_STACK_SIZE / PAGE_SIZE, NULL);
 
-		kfree((void*) (x86_task->kernel_rsp - KERNEL_STACK_SIZE), KERNEL_STACK_SIZE);
+		kfree((void*) (x86_task->kernel_stack_base), KERNEL_STACK_SIZE);
 
 		// todo refcount for shared memory
 		Process* process = task->process;
 
 		if (process->thread_count == 0) {
-			for (MemMapping* mapping = process->mappings; mapping; mapping = mapping->next) {
+			for (MemMapping* mapping = process->mappings; mapping;) {
+				MemMapping* next = mapping->next;
 				for (usize i = mapping->base; i < mapping->base + mapping->size; i += PAGE_SIZE) {
 					usize phys = arch_virt_to_phys(task->map, i);
 					Page* page = page_from_addr(phys);
-					page->refs -= 1;
-					if (page->refs == 0) {
-						pfree(page, 1);
-					}
+					pfree(page, 1);
 				}
+				process_remove_mapping(process, (usize) mapping->base);
+				mapping = next;
 			}
 
 			vm_user_free(task->process);
-			arch_destroy_map(x86_task->common.map);
+			kfree(process, sizeof(Process));
 		}
+
+		arch_destroy_map(x86_task->common.map);
 	}
 	else {
 		kfree((void*) x86_task->stack_base, KERNEL_STACK_SIZE);
