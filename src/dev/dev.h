@@ -11,7 +11,7 @@ enum {
 typedef struct {
 	u16 vendor;
 	u16 device;
-} PciDev;
+} PciDevId;
 
 typedef struct {
 	u8 match;
@@ -20,10 +20,11 @@ typedef struct {
 	u16 dev_subclass;
 	u16 dev_prog;
 
-	void (*load)(PciHdr0* hdr);
+	void (*load)(PciDev* dev);
+	bool (*fine_matcher)(PciDev* dev);
 
 	usize dev_count;
-	PciDev devices[];
+	PciDevId devices[];
 } PciDriver;
 
 typedef enum {

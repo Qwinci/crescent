@@ -111,6 +111,25 @@ void pci_set_irq(PciHdr0* hdr, u8 num, u8 vec, Cpu* cpu);
 void pci_enable_irqs(PciHdr0* hdr);
 void pci_disable_irqs(PciHdr0* hdr);
 
+typedef struct {
+	PciHdr0* hdr0;
+	PciMsiCap* msi;
+	PciMsiXCap* msix;
+	u32* irqs;
+	usize irq_count;
+	bool irqs_shared;
+} PciDev;
+#define PCI_IRQ_ALLOC_MSI (1 << 0)
+#define PCI_IRQ_ALLOC_MSIX (1 << 1)
+#define PCI_IRQ_ALLOC_LEGACY (1 << 2)
+#define PCI_IRQ_ALLOC_ALL (PCI_IRQ_ALLOC_MSI | PCI_IRQ_ALLOC_MSIX | PCI_IRQ_ALLOC_LEGACY)
+#define PCI_IRQ_ALLOC_SHARED (1 << 3)
+
+u32 pci_irq_alloc(PciDev* self, u32 min, u32 max, u32 flags);
+u32 pci_irq_get(PciDev* self, u32 index);
+void pci_irq_free(PciDev* self);
+void pci_dev_destroy(PciDev* self);
+
 void* pci_get_cap(PciHdr0* hdr, PciCap cap, usize index);
 bool pci_is_io_space(PciHdr0* hdr, u8 bar);
 u32 pci_get_io_bar(PciHdr0* hdr, u8 bar);

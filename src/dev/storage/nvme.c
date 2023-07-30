@@ -691,7 +691,9 @@ static void nvme_set_queue_count(NvmeController* self) {
 	//kprintf("[kernel][nvme]: set io queue count to 4\n");
 }
 
-static void nvme_init(PciHdr0* hdr) {
+static void nvme_init(PciDev* dev) {
+	PciHdr0* hdr = dev->hdr0;
+
 	if (pci_is_io_space(hdr, 0)) {
 		return;
 	}

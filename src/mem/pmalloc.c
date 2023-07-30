@@ -245,7 +245,7 @@ void pfree(Page* ptr, usize count) {
 	}
 
 	assert(ptr->type == PAGE_USED && "pfree: double free");
-	memset(to_virt(ptr->phys), 0xCB, index_to_size(index) * PAGE_SIZE);
+	memset(to_virt(ptr->phys), 0xFE, index_to_size(index) * PAGE_SIZE);
 	mutex_lock(&PMALLOC_LOCK);
 	freelist_insert_nonrecursive(index, ptr);
 	mutex_unlock(&PMALLOC_LOCK);

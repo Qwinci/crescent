@@ -3,6 +3,8 @@
 #include "dev.h"
 #include "mem/utils.h"
 #include "pci.h"
+#include "mem/allocator.h"
+#include "string.h"
 
 extern Driver DRIVERS_START;
 extern Driver DRIVERS_END;
@@ -41,10 +43,28 @@ static void enum_func(void* base, u16 func) {
 
 	PciHdr0* hdr = (PciHdr0*) common_hdr;
 
+	PciDev* dev = kmalloc(sizeof(PciDev));
+	assert(dev);
+	memset(dev, 0, sizeof(PciDev));
+	dev->hdr0 = hdr;
+	dev->msi = (PciMsiCap*) pci_get_cap(hdr, PCI_CAP_MSI, 0);
+	dev->msix = (PciMsiXCap*) pci_get_cap(hdr, PCI_CAP_MSIX, 0);
+
+	bool loaded = false;
 	for (Driver* driver = &DRIVERS_START; driver < &DRIVERS_END; ++driver) {
 		if (driver->type == DRIVER_PCI) {
 			PciDriver* pci_driver = driver->pci_driver;
 
+			if (pci_driver->fine_matcher) {
+				if (pci_driver->fine_matcher(dev)) {
+					pci_driver->load(dev);
+					loaded = true;
+					break;
+				}
+				else {
+					continue;
+				}
+			}
 			if (pci_driver->match & PCI_MATCH_CLASS && common_hdr->class_code != pci_driver->dev_class) {
 				continue;
 			}
@@ -56,18 +76,24 @@ static void enum_func(void* base, u16 func) {
 			}
 			if (pci_driver->match & PCI_MATCH_DEV) {
 				for (usize i = 0; i < pci_driver->dev_count; ++i) {
-					PciDev dev = pci_driver->devices[i];
-					if (common_hdr->vendor_id == dev.vendor && common_hdr->device_id == dev.device) {
-						pci_driver->load(hdr);
+					PciDevId id = pci_driver->devices[i];
+					if (common_hdr->vendor_id == id.vendor && common_hdr->device_id == id.device) {
+						pci_driver->load(dev);
+						loaded = true;
 						break;
 					}
 				}
 			}
 			else {
-				pci_driver->load(hdr);
+				pci_driver->load(dev);
+				loaded = true;
 				break;
 			}
 		}
+	}
+
+	if (!loaded) {
+		pci_dev_destroy(dev);
 	}
 }
 

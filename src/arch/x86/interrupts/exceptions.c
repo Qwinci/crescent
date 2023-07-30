@@ -22,9 +22,9 @@ IrqStatus ex_##ex_name(void* void_ctx, void*) {\
 		sched_kill_cur(); \
 	} \
 	else { \
-		X86Task* task = container_of(task, X86Task, common); \
+		X86Task* x86_task = container_of(task, X86Task, common); \
 		ctx->ip = (u64) x86_syscall_entry_exit; \
-		ctx->sp = (u64) task->kernel_stack_base + KERNEL_STACK_SIZE - 14 * 8; \
+		ctx->sp = (u64) x86_task->kernel_stack_base + KERNEL_STACK_SIZE - 14 * 8; \
 		ctx->rax = 0xFA10ED; \
 		return IRQ_ACK; \
     } \

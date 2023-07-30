@@ -3,7 +3,9 @@
 #include "arch/map.h"
 #include "mem/page.h"
 #include "mem/utils.h"
-#include "timer.h"
+#include "utils/math.h"
+#include "mem/allocator.h"
+#include "arch/interrupts.h"
 
 static inline u8 pci_msix_get_table_bar(PciMsiXCap* self) {
 	return self->table_off_bir & 0b111;
@@ -38,6 +40,85 @@ static inline void pci_msi_enable(PciMsiCap* self, bool enable) {
 	else {
 		self->msg_control &= ~1;
 	}
+}
+
+u32 pci_irq_alloc(PciDev* self, u32 min, u32 max, u32 flags) {
+	if (self->irq_count) {
+		return 0;
+	}
+
+	bool use_msi = (flags & PCI_IRQ_ALLOC_MSI) && self->msi;
+	bool use_msix = (flags & PCI_IRQ_ALLOC_MSIX) && self->msix;
+
+	u32 count;
+	if (use_msi) {
+		count = self->msi->msg_control >> 1 & 0b111;
+	}
+	else if (use_msix) {
+		count = self->msix->msg_control & 0x7FF;
+	}
+	else {
+		panic("[kernel][pci]: legacy irqs are not supported\n");
+	}
+
+	if (count < min) {
+		return 0;
+	}
+
+	count = MIN(count, max);
+
+	self->irqs_shared = flags & PCI_IRQ_ALLOC_SHARED;
+	IrqInstallFlags irq_install_flags = self->irqs_shared ? IRQ_INSTALL_SHARED : IRQ_INSTALL_FLAG_NONE;
+	if (use_msi) {
+		u32 irqs = arch_irq_alloc_generic(IPL_DEV, count, irq_install_flags);
+		if (!irqs) {
+			return 0;
+		}
+
+		self->irqs = kmalloc(count * sizeof(u32));
+		assert(self->irqs);
+		self->irq_count = count;
+
+		for (u32 i = 0; i < count; ++i) {
+			self->irqs[i] = irqs + i;
+		}
+	}
+	else if (use_msix) {
+		self->irqs = kmalloc(count * sizeof(u32));
+		assert(self->irqs);
+		self->irq_count = count;
+
+		for (u32 i = 0; i < count; ++i) {
+			u32 irq = arch_irq_alloc_generic(IPL_DEV, 1, irq_install_flags);
+			assert(irq);
+			self->irqs[i] = irq;
+		}
+	}
+
+	return count;
+}
+
+u32 pci_irq_get(PciDev* self, u32 index) {
+	if (index < self->irq_count) {
+		return self->irqs[index];
+	}
+	else {
+		return 0;
+	}
+}
+
+void pci_irq_free(PciDev* self) {
+	for (u32 i = 0; i < self->irq_count; ++i) {
+		arch_irq_dealloc_generic(self->irqs[i], 1, self->irqs_shared ? IRQ_INSTALL_SHARED : IRQ_INSTALL_FLAG_NONE);
+	}
+	kfree(self->irqs, self->irq_count * sizeof(u32));
+	self->irqs = NULL;
+	self->irq_count = 0;
+}
+
+void pci_dev_destroy(PciDev* self) {
+	assert(self->irq_count == 0);
+	kfree(self, sizeof(PciDev));
 }
 
 void pci_set_irq(PciHdr0* hdr, u8 num, u8 vec, Cpu* cpu) {
