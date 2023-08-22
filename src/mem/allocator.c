@@ -157,3 +157,12 @@ void kfree(void* ptr, usize size) {
 	freelist_insert_nonrecursive(index, ptr);
 	mutex_unlock(&MALLOC_LOCK);
 }
+
+void* kcalloc(usize size) {
+	void* mem = kmalloc(size);
+	if (!mem) {
+		return NULL;
+	}
+	memset(mem, 0, size);
+	return mem;
+}

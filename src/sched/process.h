@@ -1,21 +1,25 @@
 #pragma once
 #include "utils/handle.h"
 #include "mem/vmem.h"
+#include "utils/rb_tree.h"
 
-typedef struct MemMapping {
-	struct MemMapping* next;
+typedef struct {
+	RbTreeNode hook;
 	usize base;
 	usize size;
-} MemMapping;
+} Mapping;
+
+typedef struct {
+	RbTree hook;
+} MappingTree;
 
 typedef struct Process {
 	HandleTable handle_table;
 	VMem vmem;
 	Mutex vmem_lock;
 	void* map;
-	MemMapping* mappings;
-	MemMapping* mappings_end;
 	Mutex mapping_lock;
+	MappingTree mappings;
 	usize thread_count;
 	Mutex threads_lock;
 	Task* threads;
@@ -26,7 +30,8 @@ typedef struct Process {
 
 Process* process_new();
 Process* process_new_user();
-bool process_add_mapping(Process* process, usize base, usize size);
-bool process_remove_mapping(Process* process, usize base);
-void process_add_thread(Process* process, Task* task);
-void process_remove_thread(Process* process, Task* task);
+bool process_add_mapping(Process* self, usize base, usize size);
+bool process_remove_mapping(Process* self, usize base);
+bool process_is_mapped(Process* self, usize start, usize size);
+void process_add_thread(Process* self, Task* task);
+void process_remove_thread(Process* self, Task* task);

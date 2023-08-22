@@ -158,8 +158,8 @@ void arch_destroy_task(Task* task) {
 		Process* process = task->process;
 
 		if (process->thread_count == 0) {
-			for (MemMapping* mapping = process->mappings; mapping;) {
-				MemMapping* next = mapping->next;
+			for (Mapping* mapping = (Mapping*) process->mappings.hook.root; mapping;) {
+				Mapping* next = (Mapping*) mapping->hook.successor;
 				for (usize i = mapping->base; i < mapping->base + mapping->size; i += PAGE_SIZE) {
 					usize phys = arch_virt_to_phys(task->map, i);
 					Page* page = page_from_addr(phys);

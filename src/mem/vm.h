@@ -19,3 +19,5 @@ void vm_user_dealloc(Process* process, void* ptr, usize count);
 void* vm_user_alloc_backed(Process* process, usize count, PageFlags flags, void** kernel_mapping);
 void vm_user_dealloc_kernel(void* kernel_mapping, usize count);
 bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping);
+
+bool vm_user_verify(Process* process, void* ptr, size_t len);

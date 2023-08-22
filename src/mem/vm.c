@@ -192,3 +192,7 @@ bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kern
 	}
 	return true;
 }
+
+bool vm_user_verify(Process* process, void* ptr, size_t len) {
+	return process_is_mapped(process, (usize) ptr, len);
+}

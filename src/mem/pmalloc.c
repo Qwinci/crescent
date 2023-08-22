@@ -6,8 +6,8 @@
 #include "utils.h"
 #include "string.h"
 
-// 1 2 4 8 16 32 64 128 256 512 1024
-#define FREELIST_COUNT 11
+// 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192
+#define FREELIST_COUNT 14
 
 PRegion* pregions = NULL;
 PRegion* pregions_end = NULL;

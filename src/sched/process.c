@@ -6,54 +6,96 @@
 
 Process* ACTIVE_INPUT_PROCESS = NULL;
 
-bool process_add_mapping(Process* process, usize base, usize size) {
-	MemMapping* mapping = kmalloc(sizeof(MemMapping));
-	if (!mapping) {
-		return false;
+Mapping* process_find_mapping(Process* self, usize addr) {
+	Mapping* mapping = (Mapping*) self->mappings.hook.root;
+	while (mapping) {
+		if (addr < mapping->base) {
+			mapping = (Mapping*) mapping->hook.left;
+		}
+		else if (addr > mapping->base) {
+			mapping = (Mapping*) mapping->hook.right;
+		}
+		else {
+			return mapping;
+		}
 	}
-	mapping->next = NULL;
-	mapping->base = base;
-	mapping->size = size;
-	if (!process->mappings) {
-		process->mappings = mapping;
-		process->mappings_end = mapping;
-	}
-	else {
-		process->mappings_end->next = mapping;
-		process->mappings_end = mapping;
-	}
-	return true;
+	return NULL;
 }
 
-bool process_remove_mapping(Process* process, usize base) {
-	MemMapping* prev = NULL;
-	MemMapping* mapping = process->mappings;
+bool process_is_mapped(Process* self, usize start, usize size) {
+	usize end = start + size;
+
+	const Mapping* mapping = (const Mapping*) self->mappings.hook.root;
 	while (mapping) {
-		if (mapping->base == base) {
-			if (prev) {
-				prev->next = mapping->next;
-			}
-			else {
-				process->mappings = mapping->next;
-			}
-			if (process->mappings_end == mapping) {
-				process->mappings_end = prev;
-			}
-			kfree(mapping, sizeof(MemMapping));
+		usize mapping_start = mapping->base;
+		usize mapping_end = mapping_start + mapping->size;
+
+		if (start < mapping_end && mapping_start < end) {
 			return true;
 		}
-		prev = mapping;
-		mapping = mapping->next;
+
+		if (start < mapping->base) {
+			mapping = (const Mapping*) mapping->hook.left;
+		}
+		else if (start > mapping->base) {
+			mapping = (const Mapping*) mapping->hook.right;
+		}
 	}
 	return false;
 }
 
+bool process_add_mapping(Process* self, usize base, usize size) {
+	Mapping* mapping = kcalloc(sizeof(Mapping));
+	if (!mapping) {
+		return false;
+	}
+	mapping->base = base;
+	mapping->size = size;
+
+	Mapping* m = (Mapping*) self->mappings.hook.root;
+	if (!m) {
+		rb_tree_insert_root(&self->mappings.hook, &mapping->hook);
+		return true;
+	}
+
+	while (true) {
+		if (base < m->base) {
+			if (!m->hook.left) {
+				rb_tree_insert_left(&self->mappings.hook, &m->hook, &mapping->hook);
+				break;
+			}
+			m = (Mapping*) m->hook.left;
+		}
+		else if (base > m->base) {
+			if (!m->hook.right) {
+				rb_tree_insert_right(&self->mappings.hook, &m->hook, &mapping->hook);
+				break;
+			}
+			m = (Mapping*) m->hook.right;
+		}
+		else {
+			assert(false && "duplicate entry in process mappings");
+		}
+	}
+
+	return true;
+}
+
+bool process_remove_mapping(Process* self, usize base) {
+	Mapping* mapping = process_find_mapping(self, base);
+	if (!mapping) {
+		return false;
+	}
+	rb_tree_remove(&self->mappings.hook, &mapping->hook);
+	kfree(mapping, sizeof(Mapping));
+	return true;
+}
+
 Process* process_new_user() {
-	Process* process = kmalloc(sizeof(Process));
+	Process* process = kcalloc(sizeof(Process));
 	if (!process) {
 		return NULL;
 	}
-	memset(process, 0, sizeof(Process));
 	vm_user_init(process, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
 	process->map = arch_create_user_map();
 	return process;
