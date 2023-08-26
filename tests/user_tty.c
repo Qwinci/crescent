@@ -1,6 +1,7 @@
 #include "crescent/sys.h"
 #include "crescent/input.h"
 #include "crescent/fb.h"
+#include "crescent/dev.h"
 #include <stddef.h>
 #include <stdatomic.h>
 
@@ -81,8 +82,12 @@ int sys_close(Handle handle) {
 	return (int) syscall1(SYS_CLOSE, handle);
 }
 
-int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count) {
-	return (int) syscall2(SYS_ENUMERATE_FRAMEBUFFERS, (size_t) res, (size_t) count);
+int sys_devmsg(Handle handle, size_t msg, void* data) {
+	return (int) syscall3(SYS_DEVMSG, (size_t) handle, msg, (size_t) data);
+}
+
+int sys_devenum(DeviceType type, Handle* res, size_t* count) {
+	return (int) syscall3(SYS_DEVENUM, (size_t) type, (size_t) res, (size_t) count);
 }
 
 // clang-format off
@@ -214,7 +219,7 @@ _Noreturn void _start(void*) {
 		puts("user_tty didn't get power management access, F5 isn't going to work\n");
 	}
 
-	SysFramebuffer fb;
+	/*SysFramebuffer fb;
 	size_t count = 1;
 	int ret = sys_enumerate_framebuffers(&fb, &count);
 	if (ret == 0) {
@@ -231,7 +236,7 @@ _Noreturn void _start(void*) {
 	}
 	else if (ret == ERR_NO_PERMISSIONS) {
 		puts("no permissions to get a framebuffer\n");
-	}
+	}*/
 
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9

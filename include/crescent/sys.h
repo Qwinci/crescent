@@ -19,7 +19,8 @@ typedef enum {
 #define SYS_MMAP 10
 #define SYS_MUNMAP 11
 #define SYS_CLOSE 12
-#define SYS_ENUMERATE_FRAMEBUFFERS 13
+#define SYS_DEVMSG 13
+#define SYS_DEVENUM 14
 
 #define ERR_INVALID_ARG (-1)
 #define ERR_NO_PERMISSIONS (-2)

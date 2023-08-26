@@ -27,7 +27,6 @@ bool sys_request_cap(u32 cap);
 void* sys_mmap(size_t size, int protection);
 int sys_munmap(__user void* ptr, size_t size);
 int sys_close(Handle handle);
-int sys_enumerate_framebuffers(__user SysFramebuffer* res, __user size_t* count);
 
 __attribute__((used)) void* syscall_handlers[] = {
 	sys_create_thread,
@@ -47,7 +46,8 @@ __attribute__((used)) void* syscall_handlers[] = {
 	sys_munmap,
 
 	sys_close,
-	sys_enumerate_framebuffers
+	sys_devmsg,
+	sys_devenum
 };
 
 __attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
@@ -322,48 +322,9 @@ int sys_close(Handle handle) {
 			case HANDLE_TYPE_THREAD:
 				kfree(data, sizeof(ThreadHandle));
 				break;
+			case HANDLE_TYPE_GENERIC:
+				break;
 		}
 	}
-	return 0;
-}
-
-int sys_enumerate_framebuffers(__user SysFramebuffer* res, __user size_t* count) {
-	Task* self = arch_get_cur_task();
-	if (!(self->caps & CAP_DIRECT_FB_ACCESS)) {
-		return ERR_NO_PERMISSIONS;
-	}
-
-	// todo support more than one
-	if (primary_fb) {
-		if (count) {
-			size_t kernel_count = 1;
-			if (!mem_copy_to_user(count, &kernel_count, sizeof(size_t))) {
-				return ERR_FAULT;
-			}
-		}
-		if (count && res) {
-			usize size = primary_fb->height * primary_fb->pitch;
-			void* mem = vm_user_alloc(self->process, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
-			if (!mem) {
-				return ERR_NO_MEM;
-			}
-			for (usize i = 0; i < size; i += PAGE_SIZE) {
-				if (!arch_user_map_page(self->process, (usize) mem + i, to_phys(primary_fb->base) + i, PF_READ | PF_WRITE | PF_WC | PF_USER)) {
-					return ERR_NO_MEM;
-				}
-			}
-
-			SysFramebuffer kernel_res = *primary_fb;
-			kernel_res.base = mem;
-
-			if (!mem_copy_to_user(res, &kernel_res, sizeof(SysFramebuffer))) {
-				return ERR_FAULT;
-			}
-		}
-	}
-	else {
-		return 1;
-	}
-
 	return 0;
 }

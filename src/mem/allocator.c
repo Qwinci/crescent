@@ -5,6 +5,7 @@
 #include "string.h"
 #include "utils.h"
 #include "vm.h"
+#include "utils/math.h"
 
 typedef struct Node {
 	struct Node* prev;
@@ -165,4 +166,14 @@ void* kcalloc(usize size) {
 	}
 	memset(mem, 0, size);
 	return mem;
+}
+
+void* krealloc(void* ptr, usize old_size, usize new_size) {
+	void* new_ptr = kmalloc(new_size);
+	if (!new_ptr) {
+		return NULL;
+	}
+	memcpy(new_ptr, ptr, MIN(old_size, new_size));
+	kfree(ptr, old_size);
+	return new_ptr;
 }

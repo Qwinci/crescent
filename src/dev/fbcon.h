@@ -1,5 +1,5 @@
 #pragma once
 
-typedef struct SysFramebuffer SysFramebuffer;
+typedef struct FbDev FbDev;
 
-void fbcon_init(SysFramebuffer* fb, const void* font);
+void fbcon_init(FbDev* fb, const void* font);

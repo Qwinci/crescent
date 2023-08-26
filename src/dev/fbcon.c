@@ -16,7 +16,7 @@ typedef struct {
 
 typedef struct {
 	Con common;
-	SysFramebuffer* fb;
+	FbDev* fb;
 	const PsfFont* font;
 } FbCon;
 
@@ -35,31 +35,31 @@ static FbCon fbcon = {
 };
 
 static int fbcon_write(Con* self, char c) {
-	FbCon* fb = container_of(self, FbCon, common);
-	if ((self->column + 1) * fb->font->width >= fb->fb->width) {
+	FbCon* con = container_of(self, FbCon, common);
+	if ((self->column + 1) * con->font->width >= con->fb->info.width) {
 		self->column = 0;
 		self->line += 1;
 	}
-	if (self->line * fb->font->height >= fb->fb->height) {
+	if (self->line * con->font->height >= con->fb->info.height) {
 		/*
-		fb_clear(fb->fb, 0);
+		fb_clear(con->con, 0);
 		self->line = 0;
 		self->column = 0;*/
 		return 0;
 		// todo
 	}
 
-	u32 bytes_per_line = (fb->font->width + 7) / 8;
+	u32 bytes_per_line = (con->font->width + 7) / 8;
 
-	usize offset = sizeof(PsfFont) + (usize) c * fb->font->bytes_per_glyph;
-	const u8* font_c = offset(fb->font, const u8*, offset);
-	usize init_x = self->column * fb->font->width;
-	usize init_y = self->line * fb->font->height;
-	for (usize y = 0; y < fb->font->height; ++y) {
-		for (usize x = 0; x < fb->font->width; ++x) {
-			u32 shift = fb->font->width - 1 - x;
+	usize offset = sizeof(PsfFont) + (usize) c * con->font->bytes_per_glyph;
+	const u8* font_c = offset(con->font, const u8*, offset);
+	usize init_x = self->column * con->font->width;
+	usize init_y = self->line * con->font->height;
+	for (usize y = 0; y < con->font->height; ++y) {
+		for (usize x = 0; x < con->font->width; ++x) {
+			u32 shift = con->font->width - 1 - x;
 			u32 color = font_c[shift / 8] & (1 << (shift % 8)) ? self->fg : self->bg;
-			fb_set_pixel(fb->fb, init_x + x, init_y + y, color);
+			fb_set_pixel(con->fb, init_x + x, init_y + y, color);
 		}
 		font_c += bytes_per_line;
 	}
@@ -70,11 +70,11 @@ static int fbcon_write(Con* self, char c) {
 
 static int fbcon_write_at(Con* self, usize x, usize y, char c) {
 	FbCon* fb = container_of(self, FbCon, common);
-	if ((x + 1) * fb->font->width >= fb->fb->width) {
+	if ((x + 1) * fb->font->width >= fb->fb->info.width) {
 		x = 0;
 		y += 1;
 	}
-	if (y * fb->font->height >= fb->fb->height) {
+	if (y * fb->font->height >= fb->fb->info.height) {
 		return 0;
 	}
 
@@ -96,7 +96,7 @@ static int fbcon_write_at(Con* self, usize x, usize y, char c) {
 	return 1;
 }
 
-void fbcon_init(SysFramebuffer* fb, const void* font) {
+void fbcon_init(FbDev* fb, const void* font) {
 	fbcon.fb = fb;
 	fbcon.font = (const PsfFont*) font;
 	kernel_con = &fbcon.common;

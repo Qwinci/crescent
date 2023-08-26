@@ -6,14 +6,12 @@ typedef enum {
 	SYS_FB_FORMAT_BGRA32
 } SysFramebufferFormat;
 
-typedef struct SysFramebuffer {
-	void* base;
+typedef struct SysFramebufferInfo {
 	size_t width;
 	size_t height;
 	size_t pitch;
 	size_t bpp;
 	SysFramebufferFormat fmt;
-	bool primary;
-} SysFramebuffer;
+} SysFramebufferInfo;
 
 #endif

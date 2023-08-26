@@ -4,7 +4,8 @@
 #include "sched/mutex.h"
 
 typedef enum {
-	HANDLE_TYPE_THREAD
+	HANDLE_TYPE_THREAD,
+	HANDLE_TYPE_GENERIC
 } HandleType;
 
 typedef struct {
