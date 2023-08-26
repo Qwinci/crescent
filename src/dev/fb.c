@@ -1,7 +1,51 @@
 #include "fb.h"
 #include "assert.h"
-#include "sched/mutex.h"
-#include "string.h"
+#include "sys/utils.h"
+#include "mem/vm.h"
+#include "arch/cpu.h"
+#include "mem/utils.h"
+#include "mem/page.h"
+
+int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
+	switch (msg) {
+		case DEVMSG_FB_INFO:
+			if (!mem_copy_to_user(data, &self->info, sizeof(SysFramebufferInfo))) {
+				return ERR_FAULT;
+			}
+			return 0;
+		case DEVMSG_FB_MAP:
+		{
+			Task* task = arch_get_cur_task();
+			if (!(task->caps & CAP_DIRECT_FB_ACCESS)) {
+				return ERR_NO_PERMISSIONS;
+			}
+
+			usize size = self->info.height * self->info.pitch;
+			void* mem = vm_user_alloc(task->process, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+			if (!mem) {
+				return ERR_NO_MEM;
+			}
+			for (usize i = 0; i < size; i += PAGE_SIZE) {
+				if (!arch_user_map_page(task->process, (usize) mem + i, self->phys_base + i, PF_READ | PF_WRITE | PF_WC | PF_USER)) {
+					for (usize j = 0; j < i; j += PAGE_SIZE) {
+						arch_user_unmap_page(task->process, (usize) mem + j, true);
+					}
+					vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+					return ERR_NO_MEM;
+				}
+			}
+
+			if (!mem_copy_to_user(data, &mem, sizeof(void*))) {
+				for (usize i = 0; i < size; i += PAGE_SIZE) {
+					arch_user_unmap_page(task->process, (usize) mem + i, true);
+				}
+				vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+				return ERR_FAULT;
+			}
+			return 0;
+		}
+	}
+}
 
 void fb_set_pixel(FbDev* self, usize x, usize y, u32 color) {
 	assert(self);

@@ -5,12 +5,15 @@
 #include "string.h"
 #include "mem/user.h"
 #include "utils/math.h"
+#include "dev/fb.h"
 
 DeviceList DEVICES[DEVICE_TYPE_MAX] = {};
 
 void dev_add(GenericDevice* device, DeviceType type) {
 	DeviceList* list = &DEVICES[type];
 	mutex_lock(&list->lock);
+
+	device->type = type;
 
 	if (list->len == list->cap) {
 		usize new_cap = list->cap < 8 ? 8 : list->cap + list->cap / 2;
@@ -39,7 +42,21 @@ void dev_remove(GenericDevice* device, DeviceType type) {
 }
 
 int sys_devmsg(Handle handle, size_t msg, __user void* data) {
-	return ERR_INVALID_ARG;
+	Task* task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
+	if (!entry) {
+		return ERR_INVALID_ARG;
+	}
+	GenericDevice* device = (GenericDevice*) entry->data;
+
+	switch (device->type) {
+		case DEVICE_TYPE_FB:
+			return fbdev_devmsg(container_of(device, FbDev, generic), msg, data);
+		case DEVICE_TYPE_MAX:
+			return ERR_INVALID_ARG;
+	}
+
+	return 0;
 }
 
 int sys_devenum(DeviceType type, __user Handle* res, __user size_t* count) {

@@ -34,5 +34,6 @@ Process* process_new_user();
 bool process_add_mapping(Process* self, usize base, usize size, bool rw);
 bool process_remove_mapping(Process* self, usize base);
 bool process_is_mapped(Process* self, const void* start, usize size, bool rw);
+Mapping* process_get_mapping_for_range(Process* self, const void* start, usize size);
 void process_add_thread(Process* self, Task* task);
 void process_remove_thread(Process* self, Task* task);

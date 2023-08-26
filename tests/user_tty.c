@@ -219,24 +219,37 @@ _Noreturn void _start(void*) {
 		puts("user_tty didn't get power management access, F5 isn't going to work\n");
 	}
 
-	/*SysFramebuffer fb;
+	Handle fb;
 	size_t count = 1;
-	int ret = sys_enumerate_framebuffers(&fb, &count);
+	int ret = sys_devenum(DEVICE_TYPE_FB, &fb, &count);
 	if (ret == 0) {
-		puts("got a framebuffer\n");
-
-		for (size_t y = 0; y < 20; ++y) {
-			for (size_t x = fb.width - 20; x < fb.width; ++x) {
-				*(uint32_t*) ((uintptr_t) fb.base + y * fb.pitch + x * (fb.bpp / 8)) = 0x0000FF;
+		SysFramebufferInfo info;
+		ret = sys_devmsg(fb, DEVMSG_FB_INFO, &info);
+		if (ret != 0) {
+			puts("failed to get fb info\n");
+		}
+		void* base;
+		ret = sys_devmsg(fb, DEVMSG_FB_MAP, &base);
+		if (ret == 0) {
+			for (size_t y = 0; y < 20; ++y) {
+				for (size_t x = info.width - 20; x < info.width; ++x) {
+					*(uint32_t*) ((uintptr_t) base + y * info.pitch + x * (info.bpp / 8)) = 0x0000FF;
+				}
 			}
 		}
+		else if (ret == ERR_NO_PERMISSIONS) {
+			puts("no permissions to map framebuffer\n");
+		}
+		else if (ret == ERR_NO_MEM) {
+			puts("no memory for framebuffer mapping\n");
+		}
+		else {
+			puts("unknown error while mapping framebuffer\n");
+		}
 	}
-	else if (ret == ERR_NO_MEM) {
-		puts("no memory for framebuffer mappings\n");
+	else {
+		puts("failed to enumerate framebuffers\n");
 	}
-	else if (ret == ERR_NO_PERMISSIONS) {
-		puts("no permissions to get a framebuffer\n");
-	}*/
 
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9

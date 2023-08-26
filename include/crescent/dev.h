@@ -2,17 +2,10 @@
 #define CRESCENT_DEV_H
 
 typedef enum {
-	DEVICE_TYPE_SOUND,
 	DEVICE_TYPE_FB,
-	DEVICE_TYPE_STORAGE,
 	DEVICE_TYPE_MAX
 } DeviceType;
 
 #define DEVMSG_INFO 0
-
-#define DEVMSG_SND_MAP 1
-
-#define DEVMSG_FB_INFO 1
-#define DEVMSG_FB_MAP 2
 
 #endif

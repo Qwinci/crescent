@@ -5,6 +5,7 @@
 #include "mem/allocator.h"
 #include "assert.h"
 #include "string.h"
+#include "mem/utils.h"
 
 static volatile struct limine_framebuffer_request FB_REQUEST = {
 	.id = LIMINE_FRAMEBUFFER_REQUEST
@@ -17,6 +18,7 @@ void x86_init_con() {
 		struct limine_framebuffer* limine_fb = FB_REQUEST.response->framebuffers[0];
 		memcpy(x86_boot_fb.generic.name, "fb#0", sizeof("fb#0"));
 		x86_boot_fb.base = limine_fb->address;
+		x86_boot_fb.phys_base = to_phys(limine_fb->address);
 		x86_boot_fb.info.width = limine_fb->width;
 		x86_boot_fb.info.height = limine_fb->height;
 		x86_boot_fb.info.pitch = limine_fb->pitch;
@@ -50,6 +52,7 @@ void x86_init_fbs() {
 			memcpy(fb->generic.name + 3, ptr, buf + 21 - ptr);
 
 			fb->base = limine_fb->address;
+			fb->phys_base = to_phys(limine_fb->address);
 			fb->info.width = limine_fb->width;
 			fb->info.height = limine_fb->height;
 			fb->info.pitch = limine_fb->pitch;

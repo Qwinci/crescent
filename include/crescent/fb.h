@@ -14,4 +14,9 @@ typedef struct SysFramebufferInfo {
 	SysFramebufferFormat fmt;
 } SysFramebufferInfo;
 
+typedef enum {
+	DEVMSG_FB_INFO,
+	DEVMSG_FB_MAP
+} DevMsgFb;
+
 #endif

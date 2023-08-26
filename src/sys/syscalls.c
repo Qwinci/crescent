@@ -9,7 +9,6 @@
 #include "string.h"
 #include "mem/vm.h"
 #include "mem/page.h"
-#include "crescent/fb.h"
 #include "dev/fb.h"
 #include "crescent/sys.h"
 #include "mem/user.h"
@@ -292,9 +291,9 @@ int sys_munmap(__user void* ptr, size_t size) {
 		return ERR_INVALID_ARG;
 	}
 
-	// todo use process mappings instead of size
 	Task* self = arch_get_cur_task();
-	if (!process_is_mapped(self->process, (const void*) ptr, size, false)) {
+	Mapping* mapping = process_get_mapping_for_range(self->process, (const void*) ptr, 0);
+	if (!mapping || mapping->size != size) {
 		return ERR_INVALID_ARG;
 	}
 

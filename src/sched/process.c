@@ -44,6 +44,28 @@ bool process_is_mapped(Process* self, const void* start, usize size, bool rw) {
 	return false;
 }
 
+Mapping* process_get_mapping_for_range(Process* self, const void* start, usize size) {
+	usize end = (usize) start + size;
+
+	Mapping* mapping = (Mapping*) self->mappings.hook.root;
+	while (mapping) {
+		usize mapping_start = mapping->base;
+		usize mapping_end = mapping_start + mapping->size;
+
+		if ((usize) start < mapping_end && mapping_start < end) {
+			return mapping;
+		}
+
+		if ((usize) start < mapping->base) {
+			mapping = (Mapping*) mapping->hook.left;
+		}
+		else if ((usize) start > mapping->base) {
+			mapping = (Mapping*) mapping->hook.right;
+		}
+	}
+	return NULL;
+}
+
 bool process_add_mapping(Process* self, usize base, usize size, bool rw) {
 	Mapping* mapping = kcalloc(sizeof(Mapping));
 	if (!mapping) {
