@@ -1,6 +1,6 @@
 #pragma once
 #include "types.h"
-#include "crescent/sys.h"
+#include "crescent/handle.h"
 #include "sched/mutex.h"
 
 typedef enum {
@@ -21,8 +21,6 @@ typedef struct {
 	HandleEntry* freelist;
 	Mutex lock;
 } HandleTable;
-
-#define INVALID_HANDLE ((Handle) -1)
 
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type);
 HandleEntry* handle_tab_get(HandleTable* self, Handle handle);

@@ -6,6 +6,7 @@ target_sources(crescent PRIVATE
         mod.c
         mem/map.c
         mem/mem.c
+		mem/misc.S
         interrupts/interrupts.c
         interrupts/idt.c
 		interrupts/int_stubs.S

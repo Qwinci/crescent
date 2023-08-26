@@ -18,10 +18,16 @@ typedef struct X86Task {
 	bool user;
 } X86Task;
 
+#define X86TASK_COMMON_OFF 72
+#define TASK_HANDLER_IP_OFF 296
+#define TASK_HANDLER_SP_OFF 304
+
 #include "usermode.inc"
-static_assert(offsetof(X86Task, common) + offsetof(Task, inside_syscall) == X86TASK_INSIDE_SYSCALL_OFFSET);
-static_assert(offsetof(Task, inside_syscall) == 308);
-static_assert(offsetof(X86Task, common) == 72);
+static_assert(offsetof(X86Task, common) == X86TASK_COMMON_OFF);
+static_assert(offsetof(Task, handler_ip) == TASK_HANDLER_IP_OFF);
+static_assert(offsetof(Task, handler_sp) == TASK_HANDLER_SP_OFF);
+static_assert(X86TASK_COMMON_OFF + TASK_HANDLER_IP_OFF == X86TASK_HANDLER_IP_OFF);
+static_assert(X86TASK_COMMON_OFF + TASK_HANDLER_SP_OFF == X86TASK_HANDLER_SP_OFF);
 
 void x86_task_add_map_page(X86Task* task, struct Page* page);
 void x86_task_remove_map_page(X86Task* task, struct Page* page);

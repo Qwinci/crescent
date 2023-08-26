@@ -40,13 +40,14 @@ typedef struct Task {
 	struct Task* signal_waiters;
 	Mutex signal_waiters_lock;
 	EventQueue event_queue;
+	void* handler_ip;
+	void* handler_sp;
 	TaskStatus status;
 	u32 caps;
 	u8 level;
 	u8 priority;
 	bool pin_level;
 	bool pin_cpu;
-	bool inside_syscall;
 	atomic_bool killed;
 } Task;
 

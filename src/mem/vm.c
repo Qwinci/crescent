@@ -106,7 +106,7 @@ void* vm_user_alloc_backed(Process* process, usize count, PageFlags flags, void*
 	}
 
 	mutex_lock(&process->mapping_lock);
-	if (!process_add_mapping(process, (usize) vm, count * PAGE_SIZE)) {
+	if (!process_add_mapping(process, (usize) vm, count * PAGE_SIZE, flags & PF_WRITE)) {
 		mutex_unlock(&process->mapping_lock);
 		vm_user_dealloc(process, vm, count);
 		if (kernel_vm) {
@@ -191,8 +191,4 @@ bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kern
 		vm_kernel_dealloc(kernel_mapping, count);
 	}
 	return true;
-}
-
-bool vm_user_verify(Process* process, void* ptr, size_t len) {
-	return process_is_mapped(process, (usize) ptr, len);
 }

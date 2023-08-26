@@ -10,7 +10,6 @@ set(FILES
         ${PROJECT_SOURCE_DIR}/limine.cfg
 		crescent
         user_tty
-		initramfs.tar
         )
 
 add_executable(crescent src/main.c)
@@ -26,7 +25,7 @@ target_compile_options(crescent PRIVATE
         -mgeneral-regs-only -mno-red-zone -mcmodel=kernel
         -fno-stack-protector -fno-exceptions -fno-rtti
         -fno-omit-frame-pointer
-        -fPIC -nostdlibinc -fno-builtin>)
+        -fPIC -nostdlibinc -Werror=switch -Werror=noderef>)
 target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:ASM>: -Wno-unused-command-line-argument>)
 target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld)
 

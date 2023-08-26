@@ -61,6 +61,14 @@ GENERIC_EX(security, "security exception")
 IrqStatus ex_pf(void* void_ctx, void*) {
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx;
 
+	Task* self = arch_get_cur_task();
+	if (self->handler_ip) {
+		ctx->ip = (usize) self->handler_ip;
+		ctx->sp = (usize) self->handler_sp;
+		self->handler_ip = 0;
+		return IRQ_ACK;
+	}
+
 	bool present = ctx->error & 1;
 	bool write = ctx->error & 1 << 1;
 	bool user = ctx->error & 1 << 2;
@@ -92,20 +100,10 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 	backtrace_display(false);
 	spinlock_unlock(&PRINT_LOCK);
 
-	Task* self = arch_get_cur_task();
 	if (ctx->cs == 0x2b) {
 		kprintf("killing user task '%s'\n", self->name);
 		__asm__ volatile("sti");
 		sched_kill_cur();
-	}
-	else if (self->inside_syscall) {
-		ctx->sp = ctx->rbp + 8;
-		ctx->rbp = *(const u64*) ctx->rbp;
-		ctx->ip = *(const u64*) ctx->sp;
-		ctx->sp += 8;
-		ctx->rax = ERR_FAULT;
-		kprintf("%" PRIfg, COLOR_RESET);
-		return IRQ_ACK;
 	}
 
 	lapic_ipi_all(LAPIC_MSG_PANIC);

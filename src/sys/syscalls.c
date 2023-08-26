@@ -11,22 +11,23 @@
 #include "mem/page.h"
 #include "crescent/fb.h"
 #include "dev/fb.h"
-#include "utils.h"
+#include "crescent/sys.h"
+#include "mem/user.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
 int sys_kill_thread(Handle handle);
-int sys_dprint(const char* msg, size_t len);
+int sys_dprint(__user const char* msg, size_t len);
 void sys_sleep(usize ms);
 int sys_wait_thread(Handle handle);
-int sys_wait_for_event(Event* res);
-int sys_poll_event(Event* res);
+int sys_wait_for_event(__user Event* res);
+int sys_poll_event(__user Event* res);
 int sys_shutdown(ShutdownType type);
 bool sys_request_cap(u32 cap);
 void* sys_mmap(size_t size, int protection);
-int sys_munmap(void* ptr, size_t size);
+int sys_munmap(__user void* ptr, size_t size);
 int sys_close(Handle handle);
-int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count);
+int sys_enumerate_framebuffers(__user SysFramebuffer* res, __user size_t* count);
 
 __attribute__((used)) void* syscall_handlers[] = {
 	sys_create_thread,
@@ -46,7 +47,6 @@ __attribute__((used)) void* syscall_handlers[] = {
 	sys_munmap,
 
 	sys_close,
-
 	sys_enumerate_framebuffers
 };
 
@@ -56,8 +56,6 @@ static const char* CAP_STRS[CAP_MAX] = {
 	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS",
 	[CAP_MANAGE_POWER] = "MANAGE_POWER"
 };
-
-#define VALIDATE_PTR(ptr) if ((usize) (ptr) >= HHDM_OFFSET) return ERR_INVALID_ARG
 
 bool sys_request_cap(u32 cap) {
 	if (cap >= CAP_MAX) {
@@ -111,25 +109,30 @@ int sys_shutdown(ShutdownType type) {
 	return ERR_INVALID_ARG;
 }
 
-int sys_wait_for_event(Event* res) {
-	VALIDATE_PTR(res);
-
+int sys_wait_for_event(__user Event* res) {
 	Task* self = arch_get_cur_task();
-	start_catch_faults();
-	if (!event_queue_get(&self->event_queue, res)) {
+
+	Event kernel_res;
+
+	if (!event_queue_get(&self->event_queue, &kernel_res)) {
 		sched_block(TASK_STATUS_WAITING);
-		event_queue_get(&self->event_queue, res);
+		event_queue_get(&self->event_queue, &kernel_res);
 	}
-	end_catch_faults();
+
+	if (!mem_copy_to_user(res, &kernel_res, sizeof(Event))) {
+		return ERR_FAULT;
+	}
+
 	return 0;
 }
 
-int sys_poll_event(Event* res) {
-	VALIDATE_PTR(res);
+int sys_poll_event(__user Event* res) {
 	Task* self = arch_get_cur_task();
-	start_catch_faults();
-	bool result = event_queue_get(&self->event_queue, res);
-	end_catch_faults();
+	Event kernel_res;
+	bool result = event_queue_get(&self->event_queue, &kernel_res);
+	if (!mem_copy_to_user(res, &kernel_res, sizeof(Event))) {
+		return ERR_FAULT;
+	}
 	return !result;
 }
 
@@ -191,11 +194,18 @@ void sys_sleep(usize ms) {
 	sched_sleep(ms * US_IN_MS);
 }
 
-int sys_dprint(const char* msg, size_t len) {
-	VALIDATE_PTR(msg);
-	start_catch_faults();
-	kputs(msg, len);
-	end_catch_faults();
+int sys_dprint(__user const char* msg, size_t len) {
+	char* buffer = kmalloc(len);
+	if (!buffer) {
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(buffer, msg, len)) {
+		kfree(buffer, len);
+		return ERR_FAULT;
+	}
+
+	kputs(buffer, len);
+	kfree(buffer, len);
 	return 0;
 }
 
@@ -277,14 +287,18 @@ void* sys_mmap(size_t size, int protection) {
 	return res;
 }
 
-int sys_munmap(void* ptr, size_t size) {
-	VALIDATE_PTR(ptr);
-
-	if (!ptr || !size || (size & (PAGE_SIZE - 1))) {
+int sys_munmap(__user void* ptr, size_t size) {
+	if (!size || (size & (PAGE_SIZE - 1))) {
 		return ERR_INVALID_ARG;
 	}
 
-	if (!vm_user_dealloc_backed(arch_get_cur_task()->process, ptr, size / PAGE_SIZE, NULL)) {
+	// todo use process mappings instead of size
+	Task* self = arch_get_cur_task();
+	if (!process_is_mapped(self->process, (const void*) ptr, size, false)) {
+		return ERR_INVALID_ARG;
+	}
+
+	if (!vm_user_dealloc_backed(self->process, (void*) ptr, size / PAGE_SIZE, NULL)) {
 		return ERR_INVALID_ARG;
 	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);
@@ -313,19 +327,19 @@ int sys_close(Handle handle) {
 	return 0;
 }
 
-int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count) {
+int sys_enumerate_framebuffers(__user SysFramebuffer* res, __user size_t* count) {
 	Task* self = arch_get_cur_task();
 	if (!(self->caps & CAP_DIRECT_FB_ACCESS)) {
 		return ERR_NO_PERMISSIONS;
 	}
 
-	VALIDATE_PTR(res);
-	VALIDATE_PTR(count);
-
 	// todo support more than one
 	if (primary_fb) {
 		if (count) {
-			*count = 1;
+			size_t kernel_count = 1;
+			if (!mem_copy_to_user(count, &kernel_count, sizeof(size_t))) {
+				return ERR_FAULT;
+			}
 		}
 		if (count && res) {
 			usize size = primary_fb->height * primary_fb->pitch;
@@ -339,12 +353,12 @@ int sys_enumerate_framebuffers(SysFramebuffer* res, size_t* count) {
 				}
 			}
 
-			SysFramebuffer safe_res = *primary_fb;
-			safe_res.base = mem;
+			SysFramebuffer kernel_res = *primary_fb;
+			kernel_res.base = mem;
 
-			start_catch_faults();
-			memcpy(res, &safe_res, sizeof(SysFramebuffer));
-			end_catch_faults();
+			if (!mem_copy_to_user(res, &kernel_res, sizeof(SysFramebuffer))) {
+				return ERR_FAULT;
+			}
 		}
 	}
 	else {

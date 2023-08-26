@@ -1,13 +1,16 @@
 name: It Compiles!
-on: [push]
+on: [push, workflow_dispatch]
 jobs:
   Compile:
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    #container: archlinux:latest
+    container: ubuntu:rolling
     steps:
       - name: Install dependencies
+        #run: >
+        #  pacman -Sy --noconfirm --needed glibc clang nasm lld cmake ninja xorriso git
         run: >
-          pacman -Sy --noconfirm --needed glibc clang nasm lld cmake ninja xorriso git
+          apt-get update && apt-get install clang lld cmake ninja-build xorriso git -y
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Configure source

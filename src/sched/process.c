@@ -22,35 +22,36 @@ Mapping* process_find_mapping(Process* self, usize addr) {
 	return NULL;
 }
 
-bool process_is_mapped(Process* self, usize start, usize size) {
-	usize end = start + size;
+bool process_is_mapped(Process* self, const void* start, usize size, bool rw) {
+	usize end = (usize) start + size;
 
 	const Mapping* mapping = (const Mapping*) self->mappings.hook.root;
 	while (mapping) {
 		usize mapping_start = mapping->base;
 		usize mapping_end = mapping_start + mapping->size;
 
-		if (start < mapping_end && mapping_start < end) {
-			return true;
+		if ((usize) start < mapping_end && mapping_start < end) {
+			return !rw || mapping->rw;
 		}
 
-		if (start < mapping->base) {
+		if ((usize) start < mapping->base) {
 			mapping = (const Mapping*) mapping->hook.left;
 		}
-		else if (start > mapping->base) {
+		else if ((usize) start > mapping->base) {
 			mapping = (const Mapping*) mapping->hook.right;
 		}
 	}
 	return false;
 }
 
-bool process_add_mapping(Process* self, usize base, usize size) {
+bool process_add_mapping(Process* self, usize base, usize size, bool rw) {
 	Mapping* mapping = kcalloc(sizeof(Mapping));
 	if (!mapping) {
 		return false;
 	}
 	mapping->base = base;
 	mapping->size = size;
+	mapping->rw = rw;
 
 	Mapping* m = (Mapping*) self->mappings.hook.root;
 	if (!m) {
