@@ -561,7 +561,7 @@ bool nvme_write(Storage* storage_self, void* buf, usize start_blk, usize count) 
 
 bool nvme_read(Storage* storage_self, void* buf, usize start_blk, usize count) {
 	NvmeNamespace* self = container_of(storage_self, NvmeNamespace, storage);
-	if (start_blk >= self->lba_count) {
+	if (start_blk + count > self->lba_count) {
 		return false;
 	}
 

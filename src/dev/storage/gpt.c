@@ -8,6 +8,7 @@
 #include "string.h"
 #include "types.h"
 #include "utils/math.h"
+#include "dev/storage/fs/ext2.h"
 
 typedef struct {
 	char signature[8];
@@ -118,8 +119,15 @@ bool gpt_enum_partitions(Storage* storage) {
 			kprintf("[kernel][fs][gpt]: gpt entry is invalid\n");
 			continue;
 		}
-
-		fat_enum_partition(storage, entry->start_lba, entry->end_lba);
+		if (ext2_enum_partition(storage, entry->start_lba, entry->end_lba)) {
+			continue;
+		}
+		else if (fat_enum_partition(storage, entry->start_lba, entry->end_lba)) {
+			continue;
+		}
+		else {
+			kprintf("[kernel][fs][gpt]: unknown filesystem\n");
+		}
 	}
 
 	kfree(partition_entries, ALIGNUP(gpt->num_of_partitions * gpt->partition_entry_size, storage->blk_size));

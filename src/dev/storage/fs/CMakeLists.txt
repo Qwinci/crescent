@@ -1,1 +1,1 @@
-target_sources(crescent PRIVATE fat.c)
+target_sources(crescent PRIVATE fat.c ext2.c)

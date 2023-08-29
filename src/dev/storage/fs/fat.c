@@ -4,8 +4,6 @@
 #include "mem/allocator.h"
 #include "mem/utils.h"
 #include "string.h"
-#include "types.h"
-#include "utils/math.h"
 
 typedef struct {
 	u8 bytes_per_sector[2];
@@ -212,11 +210,15 @@ static inline usize cluster_to_sector(const FatPartition* self, u32 cluster) {
 bool fat_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	PackedFatBootSector* packed_boot_sector = (PackedFatBootSector*) kmalloc(storage->blk_size);
 	assert(packed_boot_sector);
-	assert(storage->read(storage, packed_boot_sector, start_blk, 1));
+	if (!storage->read(storage, packed_boot_sector, start_blk, 1)) {
+		kfree(packed_boot_sector, storage->blk_size);
+		return false;
+	}
 
 	FatBpb bpb = {};
 	bool is_fat = fat_verify_bpb(packed_boot_sector, &bpb);
 	kprintf("is_fat: %s\n", is_fat ? "true" : "false");
+	kfree(packed_boot_sector, storage->blk_size);
 	if (!is_fat) {
 		return false;
 	}
