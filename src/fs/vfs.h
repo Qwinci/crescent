@@ -1,24 +1,41 @@
 #pragma once
 #include <stddef.h>
+#include "utils/str.h"
 
 typedef enum {
 	VNODE_FILE,
 	VNODE_DIR
 } VNodeType;
 
+typedef struct {
+	u16 name_len;
+	char name[256];
+} DirEntry;
+
+typedef struct {
+	usize size;
+} Stat;
+
 typedef struct VNode {
 	struct Vfs* vfs;
-	struct VNode* (*read_dir)(struct VNode* self);
-	struct VNode* (*lookup)(struct VNode* self, const char* component);
+	void* (*begin_read_dir)(struct VNode* self);
+	void (*end_read_dir)(struct VNode* self, void* state);
+	bool (*read_dir)(struct VNode* self, void* state, DirEntry* entry);
+	struct VNode* (*lookup)(struct VNode* self, Str component);
+	bool (*read)(struct VNode* self, void* data, usize off, usize size);
+	bool (*stat)(struct VNode* self, Stat* stat);
+	bool (*write)(struct VNode* self, const void* data, usize off, usize size);
 	void (*release)(struct VNode* self);
 
 	size_t cursor;
 	size_t refcount;
 	void* data;
+	void* inode;
 	VNodeType type;
 } VNode;
 
 typedef struct Vfs {
+	struct Vfs* prev;
 	struct Vfs* next;
 	VNode* (*get_root)(struct Vfs* self);
 	void* data;

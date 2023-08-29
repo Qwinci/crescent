@@ -13,10 +13,12 @@ void vfs_add(Vfs* vfs) {
 	vfs->next = NULL;
 
 	if (VFS_LIST) {
+		vfs->prev = VFS_LIST_END;
 		VFS_LIST_END->next = vfs;
 		VFS_LIST_END = vfs;
 	}
 	else {
+		vfs->prev = NULL;
 		VFS_LIST = vfs;
 		VFS_LIST_END = vfs;
 	}
@@ -40,6 +42,11 @@ VNode* vnode_alloc() {
 	}
 
 	mutex_unlock(&VNODE_LIST_MUTEX);
+
+	if (!node) {
+		return NULL;
+	}
+	memset(node, 0, sizeof(VNode));
 	return node;
 }
 
