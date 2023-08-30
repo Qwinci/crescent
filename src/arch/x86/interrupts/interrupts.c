@@ -47,6 +47,10 @@ IrqRemoveStatus arch_irq_remove(u32 irq, IrqHandler* persistent_handler) {
 }
 
 u32 arch_irq_alloc_generic(Ipl ipl, u32 count, IrqInstallFlags flags) {
+	if (!count) {
+		return 0;
+	}
+
 	bool can_be_shared = flags & IRQ_INSTALL_SHARED;
 	X86Ipl x86_ipl = X86_IPL_MAP[ipl];
 	for (u32 i = x86_ipl * 16; i < 256 - (count - 1); ++i) {

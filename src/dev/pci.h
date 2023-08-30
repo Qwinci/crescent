@@ -104,13 +104,6 @@ typedef struct {
 	volatile u32 pending;
 } PciMsiCap;
 
-void pci_msi_set(PciMsiCap* self, bool enable, u8 vec, Cpu* cpu);
-void pci_msix_set_entry(PciMsiXEntry* self, bool mask, u8 vec, Cpu* cpu);
-
-void pci_set_irq(PciHdr0* hdr, u8 num, u8 vec, Cpu* cpu);
-void pci_enable_irqs(PciHdr0* hdr);
-void pci_disable_irqs(PciHdr0* hdr);
-
 typedef struct {
 	PciHdr0* hdr0;
 	PciMsiCap* msi;
@@ -119,6 +112,10 @@ typedef struct {
 	usize irq_count;
 	bool irqs_shared;
 } PciDev;
+
+void pci_enable_irqs(PciDev* self);
+void pci_disable_irqs(PciDev* self);
+
 #define PCI_IRQ_ALLOC_MSI (1 << 0)
 #define PCI_IRQ_ALLOC_MSIX (1 << 1)
 #define PCI_IRQ_ALLOC_LEGACY (1 << 2)

@@ -15,7 +15,7 @@ static inline u16 in2(u16 port) {
 
 static inline u32 in4(u16 port) {
 	u32 value;
-	__asm__ volatile("ind %1, %0" : "=a"(value) : "Nd"(port));
+	__asm__ volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
 	return value;
 }
 
@@ -28,5 +28,5 @@ static inline void out2(u16 port, u16 value) {
 }
 
 static inline void out4(u16 port, u32 value) {
-	__asm__ volatile("outd %1, %0" : : "Nd"(port), "a"(value));
+	__asm__ volatile("outl %1, %0" : : "Nd"(port), "a"(value));
 }

@@ -42,20 +42,26 @@ static inline void pci_msi_enable(PciMsiCap* self, bool enable) {
 	}
 }
 
+void pci_msi_set(PciMsiCap* self, bool enable, u8 vec, Cpu* cpu);
+void pci_msix_set_entry(PciMsiXEntry* self, bool mask, u8 vec, Cpu* cpu);
+
 u32 pci_irq_alloc(PciDev* self, u32 min, u32 max, u32 flags) {
 	if (self->irq_count) {
 		return 0;
+	}
+	if (max == 0) {
+		max = UINT32_MAX;
 	}
 
 	bool use_msi = (flags & PCI_IRQ_ALLOC_MSI) && self->msi;
 	bool use_msix = (flags & PCI_IRQ_ALLOC_MSIX) && self->msix;
 
 	u32 count;
-	if (use_msi) {
-		count = self->msi->msg_control >> 1 & 0b111;
+	if (use_msix) {
+		count = (self->msix->msg_control & 0x7FF) + 1;
 	}
-	else if (use_msix) {
-		count = self->msix->msg_control & 0x7FF;
+	else if (use_msi) {
+		count = 1 << (self->msi->msg_control >> 1 & 0b111);
 	}
 	else {
 		panic("[kernel][pci]: legacy irqs are not supported\n");
@@ -69,7 +75,24 @@ u32 pci_irq_alloc(PciDev* self, u32 min, u32 max, u32 flags) {
 
 	self->irqs_shared = flags & PCI_IRQ_ALLOC_SHARED;
 	IrqInstallFlags irq_install_flags = self->irqs_shared ? IRQ_INSTALL_SHARED : IRQ_INSTALL_FLAG_NONE;
-	if (use_msi) {
+	if (use_msix) {
+		self->irqs = kmalloc(count * sizeof(u32));
+		assert(self->irqs);
+		self->irq_count = count;
+
+		u8 bar = pci_msix_get_table_bar(self->msix);
+		PciMsiXEntry* entries = (PciMsiXEntry*) to_virt(pci_map_bar(self->hdr0, bar) + pci_msix_get_table_offset(self->msix));
+		pci_msix_mask_all(self->msix, true);
+		pci_msix_enable(self->msix, true);
+
+		for (u32 i = 0; i < count; ++i) {
+			u32 irq = arch_irq_alloc_generic(IPL_DEV, 1, irq_install_flags);
+			assert(irq);
+			self->irqs[i] = irq;
+			pci_msix_set_entry(&entries[i], false, irq, arch_get_cpu(0));
+		}
+	}
+	else if (use_msi) {
 		u32 irqs = arch_irq_alloc_generic(IPL_DEV, count, irq_install_flags);
 		if (!irqs) {
 			return 0;
@@ -78,20 +101,10 @@ u32 pci_irq_alloc(PciDev* self, u32 min, u32 max, u32 flags) {
 		self->irqs = kmalloc(count * sizeof(u32));
 		assert(self->irqs);
 		self->irq_count = count;
+		pci_msi_set(self->msi, false, irqs, arch_get_cpu(0));
 
 		for (u32 i = 0; i < count; ++i) {
 			self->irqs[i] = irqs + i;
-		}
-	}
-	else if (use_msix) {
-		self->irqs = kmalloc(count * sizeof(u32));
-		assert(self->irqs);
-		self->irq_count = count;
-
-		for (u32 i = 0; i < count; ++i) {
-			u32 irq = arch_irq_alloc_generic(IPL_DEV, 1, irq_install_flags);
-			assert(irq);
-			self->irqs[i] = irq;
 		}
 	}
 
@@ -121,46 +134,24 @@ void pci_dev_destroy(PciDev* self) {
 	kfree(self, sizeof(PciDev));
 }
 
-void pci_set_irq(PciHdr0* hdr, u8 num, u8 vec, Cpu* cpu) {
-	PciMsiXCap* msix;
-	PciMsiCap* msi;
-	if ((msix = pci_get_cap(hdr, PCI_CAP_MSIX, 0))) {
-		u8 bar = pci_msix_get_table_bar(msix);
-		PciMsiXEntry* entries = (PciMsiXEntry*) to_virt(pci_map_bar(hdr, bar) + pci_msix_get_table_offset(msix));
-		pci_msix_set_entry(&entries[num], false, vec, arch_get_cpu(0));
-		pci_msix_mask_all(msix, true);
-		pci_msix_enable(msix, true);
+void pci_enable_irqs(PciDev* self) {
+	if (self->msix) {
+		pci_msix_mask_all(self->msix, false);
 	}
-	else if ((msi = pci_get_cap(hdr, PCI_CAP_MSI, 0))) {
-		pci_msi_set(msi, false, vec, arch_get_cpu(0));
+	else if (self->msi) {
+		pci_msi_enable(self->msi, true);
 	}
 	else {
 		panic("[kernel][pci]: legacy interrupts are not supported\n");
 	}
 }
 
-void pci_enable_irqs(PciHdr0* hdr) {
-	PciMsiXCap* msix;
-	PciMsiCap* msi;
-	if ((msix = pci_get_cap(hdr, PCI_CAP_MSIX, 0))) {
-		pci_msix_mask_all(msix, false);
+void pci_disable_irqs(PciDev* self) {
+	if (self->msix) {
+		pci_msix_mask_all(self->msix, true);
 	}
-	else if ((msi = pci_get_cap(hdr, PCI_CAP_MSI, 0))) {
-		pci_msi_enable(msi, true);
-	}
-	else {
-		panic("[kernel][pci]: legacy interrupts are not supported\n");
-	}
-}
-
-void pci_disable_irqs(PciHdr0* hdr) {
-	PciMsiXCap* msix;
-	PciMsiCap* msi;
-	if ((msix = pci_get_cap(hdr, PCI_CAP_MSIX, 0))) {
-		pci_msix_mask_all(msix, true);
-	}
-	else if ((msi = pci_get_cap(hdr, PCI_CAP_MSI, 0))) {
-		pci_msi_enable(msi, false);
+	else if (self->msi) {
+		pci_msi_enable(self->msi, false);
 	}
 	else {
 		panic("[kernel][pci]: legacy interrupts are not supported\n");
