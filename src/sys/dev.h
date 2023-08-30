@@ -9,7 +9,7 @@ int sys_devenum(DeviceType type, __user Handle* res, __user size_t* count);
 typedef struct {
 	DeviceType type;
 	usize refcount;
-	char name[64];
+	char name[128];
 } GenericDevice;
 
 void dev_add(GenericDevice* device, DeviceType type);

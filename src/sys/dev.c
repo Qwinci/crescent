@@ -52,6 +52,8 @@ int sys_devmsg(Handle handle, size_t msg, __user void* data) {
 	switch (device->type) {
 		case DEVICE_TYPE_FB:
 			return fbdev_devmsg(container_of(device, FbDev, generic), msg, data);
+		case DEVICE_TYPE_SND:
+			assert(0 && "not implemented");
 		case DEVICE_TYPE_MAX:
 			return ERR_INVALID_ARG;
 	}

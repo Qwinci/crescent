@@ -12,3 +12,4 @@ if(ARCH STREQUAL "x86_64")
 endif()
 
 add_subdirectory(storage)
+add_subdirectory(audio)

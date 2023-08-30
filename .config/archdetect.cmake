@@ -42,58 +42,58 @@ set(archdetect_c_code "
 ")
 
 function(target_arch output_var)
-    if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-        foreach(osx_arch ${CMAKE_OSX_ARCHITECTURES})
-            if("${osx_arch}" STREQUAL "ppc" AND ppc_support)
-                set(osx_arch_ppc TRUE)
-            elseif("${osx_arch}" STREQUAL "i386")
-                set(osx_arch_i386 TRUE)
-            elseif("${osx_arch}" STREQUAL "x86_64")
-                set(osx_arch_x86_64 TRUE)
-            elseif("${osx_arch}" STREQUAL "ppc64" AND ppc_support)
-                set(osx_arch_ppc64 TRUE)
-            else()
-                message(FATAL_ERROR "Invalid OS X arch name: ${osx_arch}")
-            endif()
-        endforeach()
+	if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+		foreach(osx_arch ${CMAKE_OSX_ARCHITECTURES})
+			if("${osx_arch}" STREQUAL "ppc" AND ppc_support)
+				set(osx_arch_ppc TRUE)
+			elseif("${osx_arch}" STREQUAL "i386")
+				set(osx_arch_i386 TRUE)
+			elseif("${osx_arch}" STREQUAL "x86_64")
+				set(osx_arch_x86_64 TRUE)
+			elseif("${osx_arch}" STREQUAL "ppc64" AND ppc_support)
+				set(osx_arch_ppc64 TRUE)
+			else()
+				message(FATAL_ERROR "Invalid OS X arch name: ${osx_arch}")
+			endif()
+		endforeach()
 
-        if(osx_arch_ppc)
-            list(APPEND ARCH ppc)
-        endif()
+		if(osx_arch_ppc)
+			list(APPEND ARCH ppc)
+		endif()
 
-        if(osx_arch_i386)
-            list(APPEND ARCH i386)
-        endif()
+		if(osx_arch_i386)
+			list(APPEND ARCH i386)
+		endif()
 
-        if(osx_arch_x86_64)
-            list(APPEND ARCH x86_64)
-        endif()
+		if(osx_arch_x86_64)
+			list(APPEND ARCH x86_64)
+		endif()
 
-        if(osx_arch_ppc64)
-            list(APPEND ARCH ppc64)
-        endif()
-    else()
-        file(WRITE "${CMAKE_BINARY_DIR}/arch.c" "${archdetect_c_code}")
+		if(osx_arch_ppc64)
+			list(APPEND ARCH ppc64)
+		endif()
+	else()
+		file(WRITE "${CMAKE_BINARY_DIR}/arch.c" "${archdetect_c_code}")
 
-        enable_language(C)
+		enable_language(C)
 
-        try_run(
-                run_result_unused
-                compile_result_unused
-                "${CMAKE_BINARY_DIR}"
-                "${CMAKE_BINARY_DIR}/arch.c"
-                COMPILE_OUTPUT_VARIABLE ARCH
-                CMAKE_FLAGS CMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
-        )
+		try_run(
+				run_result_unused
+				compile_result_unused
+				"${CMAKE_BINARY_DIR}"
+				"${CMAKE_BINARY_DIR}/arch.c"
+				COMPILE_OUTPUT_VARIABLE ARCH
+				CMAKE_FLAGS CMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
+		)
 
-        string(REGEX MATCH "cmake_ARCH ([a-zA-Z0-9_]+)" ARCH "${ARCH}")
+		string(REGEX MATCH "cmake_ARCH ([a-zA-Z0-9_]+)" ARCH "${ARCH}")
 
-        string(REPLACE "cmake_ARCH " "" ARCH "${ARCH}")
+		string(REPLACE "cmake_ARCH " "" ARCH "${ARCH}")
 
-        if(NOT ARCH)
-            set(ARCH unknown)
-        endif()
-    endif()
+		if(NOT ARCH)
+			set(ARCH unknown)
+		endif()
+	endif()
 
-    set(${output_var} "${ARCH}" PARENT_SCOPE)
+	set(${output_var} "${ARCH}" PARENT_SCOPE)
 endfunction()

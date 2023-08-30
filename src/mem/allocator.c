@@ -12,20 +12,20 @@ typedef struct Node {
 	struct Node* next;
 } Node;
 
-// 8 16 32 64 128 256 512 1024 2048
-#define FREELIST_COUNT 9
+// 16 32 64 128 256 512 1024 2048
+#define FREELIST_COUNT 8
 
 static Node* freelists[FREELIST_COUNT] = {};
 
 static usize index_to_size(usize index) {
-	return 8 << index;
+	return 16 << index;
 }
 
 static usize size_to_index(usize size) {
-	if (size < 8) {
+	if (size <= 16) {
 		return 0;
 	}
-	return sizeof(unsigned long long) * 8 - __builtin_clzll(size) - 1 - 3;
+	return sizeof(unsigned long long) * 8 - __builtin_clzll(size) - 5;
 }
 
 static void freelist_insert_nonrecursive(usize index, void* ptr) {
