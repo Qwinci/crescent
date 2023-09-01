@@ -169,7 +169,7 @@ typedef struct {
 	Widget* powers;
 	Widget* volume_knobs;
 	Widget* beep_generators;
-	WidgetNidTab nid_table;
+	WidgetNidTab nid_tables[16];
 	SignalPath* signal_paths;
 	usize signal_paths_len;
 	SignalPath* tmp_signal_path;
@@ -207,6 +207,7 @@ static RirbEntry hda_send_cmd_await(Controller* self, u8 data, u16 cmd, u8 nid, 
 
 #define CMD_SET_CONVERTER_FORMAT 0x2
 #define CMD_SET_AMP_GAIN_MUTE 0x3
+#define CMD_SET_SELECTED_CONNECTION 0x701
 #define CMD_SET_EAPD 0x70C
 #define CMD_GET_PARAMETER 0xF00
 #define CMD_GET_CONNECTION_LIST_ENTRY 0xF02
@@ -292,8 +293,10 @@ static void find_output_paths(Controller* self) {
 			}
 
 			u8 nid = cur_entry->con_range_i++;
-			assert(nid < self->nid_table.len);
-			Widget* assoc_widget = self->nid_table.data[nid];
+			assert(nid < self->nid_tables[pin->cid].len);
+			assert(pin->cid < 16);
+			assert(nid < self->nid_tables[pin->cid].len);
+			Widget* assoc_widget = self->nid_tables[pin->cid].data[nid];
 			// input-capable pin or an output
 			if ((assoc_widget->type == WIDGET_AUDIO_PIN_COMPLEX && assoc_widget->pin_caps & 1 << 5) ||
 				assoc_widget->type == WIDGET_AUDIO_OUT) {
@@ -312,7 +315,7 @@ static void find_output_paths(Controller* self) {
 					}
 				}
 				// don't save paths which are circular or over 20 widgets long
-				if (circular_path || stack_ptr < stack_mem + 20) {
+				if (circular_path || stack_ptr >= stack_mem + 20) {
 					continue;
 				}
 				*stack_ptr++ = (StackEntry) {.widget = assoc_widget, .con_i = 0, .con_range_i = 0xFF};
@@ -352,7 +355,7 @@ static void codec_enumerate(Controller* self, u8 num) {
 			res = hda_send_cmd_await(self, PARAM_AUDIO_WIDGET_CAPABILITIES, CMD_GET_PARAMETER, nid, num);
 
 			u8 type = res.response >> 20 & 0xF;
-			kprintf("nid %u type %X\n", nid, type);
+			//kprintf("nid %u type %X\n", nid, type);
 
 			Widget* widget = kmalloc(sizeof(Widget));
 			assert(widget);
@@ -409,7 +412,7 @@ static void codec_enumerate(Controller* self, u8 num) {
 				self->beep_generators = widget;
 			}
 
-			widget_nid_tab_insert(&self->nid_table, nid, widget);
+			widget_nid_tab_insert(&self->nid_tables[num], nid, widget);
 		}
 
 		find_output_paths(self);
@@ -519,84 +522,28 @@ static IrqStatus irq_handler(void*, void* void_self) {
 			AudioStream* audio_stream = &self->output_stream_infos[i - 1];
 			if (self->snd_dev.user_callback) {
 				if (audio_stream->write_to_end) {
-					audio_stream->write_to_end = false;
 					self->snd_dev.user_callback(
-						offset(audio_stream->buffer, void*, audio_stream->buffer_size / 2),
-						audio_stream->buffer_size / 2,
-						self->snd_dev.user_data);
+						offset(audio_stream->buffer, void*, audio_stream->single_buffer_size),
+						audio_stream->single_buffer_size, self->snd_dev.user_data);
+					audio_stream->write_to_end = false;
 				}
 				else {
+					self->snd_dev.user_callback(audio_stream->buffer, audio_stream->single_buffer_size, self->snd_dev.user_data);
 					audio_stream->write_to_end = true;
-					self->snd_dev.user_callback(
-						audio_stream->buffer,
-						audio_stream->buffer_size / 2,
-						self->snd_dev.user_data);
 				}
 			}
 		}
 	}
 
-	kprintf("hda irq\n");
+	//kprintf("hda irq\n");
 
 	return IRQ_ACK;
 }
 
-static bool snd_create_stream(SndDev* snd_self, AudioParams* params, AudioStream* res) {
-	Controller* self = container_of(snd_self, Controller, snd_dev);
-	u8 id = 0xFF;
-	for (usize i = 0; i < self->output_stream_count; ++i) {
-		if (!self->used_output_streams[i]) {
-			id = i;
-			self->used_output_streams[i] = true;
-			break;
-		}
+static AudioStream* snd_create_stream(SndDev* snd_self, AudioParams* params) {
+	if (!params->sample_rate || !params->format || !params->channels) {
+		return NULL;
 	}
-	if (id + 1 > 0xF || params->channels > 16) {
-		if (id != 0xFF) {
-			self->used_output_streams[id] = false;
-		}
-		return false;
-	}
-	StreamDesc* stream = &self->output_streams[id];
-
-	// todo choose
-	assert(self->signal_paths_len);
-	Widget* pin = self->signal_paths[0].widgets[0];
-	Widget* output = self->signal_paths[0].widgets[self->signal_paths[0].len - 1];
-
-	u32 out_amp_res = hda_send_cmd_await(self, PARAM_OUTPUT_AMP_CAPABILITIES, CMD_GET_PARAMETER, output->nid, output->cid).response;
-	u32 pin_amp_res = hda_send_cmd_await(self, PARAM_OUTPUT_AMP_CAPABILITIES, CMD_GET_PARAMETER, pin->nid, pin->cid).response;
-
-	u8 out_offset = out_amp_res & 0x7F;
-	u8 pin_offset = pin_amp_res & 0x7F;
-	u8 out_num_steps = out_amp_res >> 8 & 0x7F;
-	u8 out_step_size = out_amp_res >> 16 & 0x7F;
-
-	// set_output_amp | set_input_amp | set_left_amp | set_right_amp | 7bit_gain
-	u16 out_data = 1 << 15 | 1 << 14 | 1 << 13 | 1 << 12 | (out_offset);
-	u16 pin_data = 1 << 15 | 1 << 14 | 1 << 13 | 1 << 12 | (pin_offset);
-
-	u8 out_data_low = out_data & 0xFF;
-	u8 pin_data_low = pin_data & 0xFF;
-	u16 out_cmd = CMD_SET_AMP_GAIN_MUTE << 8 | (out_data >> 8);
-	u16 pin_cmd = CMD_SET_AMP_GAIN_MUTE << 8 | (pin_data >> 8);
-
-	hda_send_cmd_await(self, pin_data_low, pin_cmd, pin->nid, pin->cid);
-	hda_send_cmd_await(self, out_data_low, out_cmd, output->nid, output->cid);
-
-	memset(res, 0, sizeof(AudioStream));
-	res->id = id;
-	id += 1;
-
-	// set 4bit stream num
-	stream->ctl[2] &= 0x0F;
-	stream->ctl[2] |= id << 4;
-	// Interrupt On Completion Enable
-	stream->ctl[0] |= 1 << 2;
-
-	assert(params->sample_rate);
-	assert(params->format);
-	assert(params->channels);
 	if (params->preferred_buffer_size == 0) {
 		u8 sample_size;
 		switch (params->format) {
@@ -612,19 +559,133 @@ static bool snd_create_stream(SndDev* snd_self, AudioParams* params, AudioStream
 
 		params->preferred_buffer_size = params->sample_rate * params->channels * sample_size;
 	}
-	else if (params->preferred_buffer_size < PAGE_SIZE) {
-		params->preferred_buffer_size = PAGE_SIZE;
-	}
+	params->preferred_buffer_size = ALIGNUP(params->preferred_buffer_size, PAGE_SIZE);
+	params->preferred_buffer_size *= 2;
 	if (params->preferred_buffer_size > PAGE_SIZE * 256) {
 		params->preferred_buffer_size = PAGE_SIZE * 256;
 	}
+
+	void* buffer = kmalloc(params->preferred_buffer_size);
+	if (!buffer) {
+		return NULL;
+	}
+
+	Controller* self = container_of(snd_self, Controller, snd_dev);
+	u8 id = 0xFF;
+	for (usize i = 0; i < self->output_stream_count; ++i) {
+		if (!self->used_output_streams[i]) {
+			id = i;
+			self->used_output_streams[i] = true;
+			break;
+		}
+	}
+	if (id + 1 > 0xF || params->channels > 16) {
+		if (id != 0xFF) {
+			self->used_output_streams[id] = false;
+		}
+		kfree(buffer, params->preferred_buffer_size);
+		return NULL;
+	}
+	StreamDesc* stream = &self->output_streams[id];
+
+	kprintf("available output paths:\n");
+	for (usize i = 0; i < self->signal_paths_len; ++i) {
+		SignalPath* path = &self->signal_paths[i];
+		Widget* start = path->widgets[0];
+		assert(start->type == WIDGET_AUDIO_PIN_COMPLEX);
+		Widget* end = path->widgets[path->len - 1];
+		assert(end->type == WIDGET_AUDIO_OUT);
+		if (start->conf) {
+			u8 location = start->conf >> 24 & 0b111111;
+
+			u8 specific = location & 0b1111;
+			u8 where = location >> 4;
+
+			const char* specific_str;
+			if (specific == 0) {
+				specific_str = "N/A";
+			}
+			else if (specific == 1) {
+				specific_str = "Rear";
+			}
+			else if (specific == 2) {
+				specific_str = "Front";
+			}
+			else if (specific == 3) {
+				specific_str = "Left";
+			}
+			else if (specific == 4) {
+				specific_str = "Right";
+			}
+			else if (specific == 5) {
+				specific_str = "Top";
+			}
+			else if (specific == 6) {
+				specific_str = "Bottom";
+			}
+			else if (specific == 7) {
+				if (where == 0) {
+					specific_str = "Rear Panel";
+				}
+				else {
+					specific_str = "Specific";
+				}
+			}
+			else {
+				specific_str = "Unknown";
+			}
+
+			kprintf("%u: %s\n", i, specific_str);
+		}
+		else {
+			kprintf("unknown start\n");
+		}
+	}
+
+	// todo choose
+	assert(self->signal_paths_len);
+	usize index = 0;
+	assert(index < self->signal_paths_len);
+	Widget* pin = self->signal_paths[index].widgets[0];
+	assert(pin->type == WIDGET_AUDIO_PIN_COMPLEX);
+	Widget* output = self->signal_paths[index].widgets[self->signal_paths[index].len - 1];
+	assert(output->type == WIDGET_AUDIO_OUT);
+
+	kprintf("path len: %u, setting amp params\n", self->signal_paths[index].len);
+	for (usize i = 0; i < self->signal_paths[index].len; ++i) {
+		Widget* widget = self->signal_paths[index].widgets[i];
+		u32 amp_res = hda_send_cmd_await(self, PARAM_OUTPUT_AMP_CAPABILITIES, CMD_GET_PARAMETER, widget->nid, widget->cid).response;
+
+		u8 out_offset = amp_res & 0x7F;
+		u8 out_num_steps = amp_res >> 8 & 0x7F;
+		u8 out_step_size = amp_res >> 16 & 0x7F;
+
+		// set_output_amp | set_input_amp | set_left_amp | set_right_amp | 7bit_gain
+		u16 out_data = 1 << 15 | 1 << 14 | 1 << 13 | 1 << 12 | (out_offset);
+
+		u8 out_data_low = out_data & 0xFF;
+		u16 out_cmd = CMD_SET_AMP_GAIN_MUTE << 8 | (out_data >> 8);
+		hda_send_cmd_await(self, out_data_low, out_cmd, widget->nid, widget->cid);
+	}
+
+	AudioStream* res = &self->output_stream_infos[id];
+	memset(res, 0, sizeof(AudioStream));
+	res->id = id;
+	id += 1;
+
+	// set 4bit stream num
+	stream->ctl[2] &= 0x0F;
+	stream->ctl[2] |= id << 4;
+	// Interrupt On Completion Enable
+	stream->ctl[0] |= 1 << 2;
+
 	// total cyclic buffer size
 	stream->cbl = params->preferred_buffer_size;
 
+	res->single_buffer_size = params->preferred_buffer_size / 2;
 	res->buffer_size = params->preferred_buffer_size;
 
-	u16 entries = ALIGNUP(params->preferred_buffer_size, PAGE_SIZE) / PAGE_SIZE;
-	bool repeat_entry1 = entries == 1;
+	u16 entries = params->preferred_buffer_size / PAGE_SIZE;
 
 	// last valid index in the buffer descriptor list (1 == 2 entries) 8bit
 	stream->lvi &= ~0xFF;
@@ -743,28 +804,19 @@ static bool snd_create_stream(SndDev* snd_self, AudioParams* params, AudioStream
 	// power output on (D0)
 	hda_send_cmd_await(self, 0, CMD_SET_POWER_STATE, output->nid, output->cid);
 
-	void* buffer = kmalloc(params->preferred_buffer_size);
-	assert(buffer);
-
 	for (usize i = 0; i < entries; ++i) {
 		buffer_desc_list[i].addr = to_phys_generic(offset(buffer, void*, i * PAGE_SIZE));
 		buffer_desc_list[i].len = PAGE_SIZE;
 		buffer_desc_list[i].ioc = 0;
 	}
-	if (repeat_entry1) {
-		memcpy(&buffer_desc_list[1], &buffer_desc_list[0], sizeof(BufferDesc));
-		buffer_desc_list[0].ioc = 1;
-	}
-	else {
-		buffer_desc_list[entries / 2 - 1].ioc = 1;
-	}
+	buffer_desc_list[entries / 2].ioc = 1;
+	buffer_desc_list[entries - 1].ioc = 1;
 
+	res->write_to_end = false;
 	res->buffer = buffer;
 	res->write_ptr = buffer;
 
-	self->output_stream_infos[id - 1] = *res;
-
-	return true;
+	return res;
 }
 
 static bool snd_destroy_stream(SndDev* snd_self, AudioStream* snd_stream) {
@@ -783,6 +835,8 @@ static bool snd_destroy_stream(SndDev* snd_self, AudioStream* snd_stream) {
 
 static bool snd_play(SndDev* snd_self, AudioStream* snd_stream, bool play) {
 	Controller* self = container_of(snd_self, Controller, snd_dev);
+
+	self->snd_dev.user_callback(snd_stream->buffer, snd_stream->buffer_size, self->snd_dev.user_data);
 
 	StreamDesc* stream = &self->output_streams[snd_stream->id];
 
@@ -817,17 +871,13 @@ static void* sound_start = NULL;
 static void* sound_end = NULL;
 
 static void callback(void* ptr, usize len, void* userdata) {
-	if (sound_ptr < sound_end) {
-		usize remaining = sound_end - sound_ptr;
-		memcpy(ptr, sound_ptr, MIN(len, remaining));
-		sound_ptr = offset(sound_ptr, void*, len);
-	}
-	else {
+	if (sound_ptr >= sound_end) {
 		sound_ptr = sound_start;
-		usize remaining = sound_end - sound_ptr;
-		memcpy(ptr, sound_ptr, MIN(len, remaining));
-		sound_ptr = offset(sound_ptr, void*, len);
 	}
+
+	usize remaining = sound_end - sound_ptr;
+	memcpy(ptr, sound_ptr, MIN(len, remaining));
+	sound_ptr = offset(sound_ptr, void*, len);
 }
 
 static void hda_init(PciDev* dev) {
@@ -934,12 +984,12 @@ static void hda_init(PciDev* dev) {
 		}
 	}
 
-	assert(pci_irq_alloc(dev, 0, 0, PCI_IRQ_ALLOC_ALL));
+	assert(pci_irq_alloc(dev, 0, 0, PCI_IRQ_ALLOC_SHARED | PCI_IRQ_ALLOC_ALL));
 	u32 irq = pci_irq_get(dev, 0);
 
 	self->irq_handler.fn = irq_handler;
 	self->irq_handler.userdata = self;
-	assert(arch_irq_install(irq, &self->irq_handler, IRQ_INSTALL_FLAG_NONE) == IRQ_INSTALL_STATUS_SUCCESS);
+	assert(arch_irq_install(irq, &self->irq_handler, IRQ_INSTALL_SHARED) == IRQ_INSTALL_STATUS_SUCCESS);
 	pci_enable_irqs(dev);
 
 	// Global Interrupt Enable
@@ -970,16 +1020,15 @@ static void hda_init(PciDev* dev) {
 		.sample_rate = 44100,
 		.format = SND_PCM_16NE,
 		.channels = 2,
-		.preferred_buffer_size = UINT32_MAX
+		.preferred_buffer_size = 0
 	};
-	AudioStream stream;
-	assert(s->create_stream(s, &params, &stream));
+	AudioStream* stream = s->create_stream(s, &params);
 	s->user_callback = callback;
-	//assert(s->write(s, &stream, song_mod.base, MIN(song_mod.size, stream.buffer_size)));
-	sound_ptr = offset(song_mod.base, void*, MIN(song_mod.size, stream.buffer_size));
 	sound_start = song_mod.base;
+
+	sound_ptr = sound_start;
 	sound_end = offset(song_mod.base, void*, song_mod.size);
-	assert(s->play(s, &stream, true));
+	assert(s->play(s, stream, true));
 }
 
 static PciDriver pci_driver = {

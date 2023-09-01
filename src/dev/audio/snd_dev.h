@@ -20,13 +20,14 @@ typedef struct {
 	u32 buffer_size;
 	u32 id;
 	bool write_to_end;
+	u32 single_buffer_size;
 } AudioStream;
 
 typedef struct SndDev {
 	GenericDevice generic;
 	void (*user_callback)(void* ptr, size_t len, void* user_data);
 	void* user_data;
-	bool (*create_stream)(struct SndDev* self, AudioParams* params, AudioStream* res);
+	AudioStream* (*create_stream)(struct SndDev* self, AudioParams* params);
 	bool (*destroy_stream)(struct SndDev* self, AudioStream* stream);
 	bool (*play)(struct SndDev* self, AudioStream* stream, bool play);
 	bool (*write)(struct SndDev* self, AudioStream* stream, const void* data, usize len);
