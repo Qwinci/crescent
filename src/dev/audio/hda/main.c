@@ -116,6 +116,7 @@ typedef struct Widget {
 	u32 in_amp;
 	u32 out_amp;
 	u32 vol_caps;
+	u32 audio_caps;
 	u32 conf;
 	u8 con_list_len;
 	u8 nid;
@@ -360,6 +361,7 @@ static void codec_enumerate(Controller* self, u8 num) {
 			Widget* widget = kmalloc(sizeof(Widget));
 			assert(widget);
 
+			widget->audio_caps = res.response;
 			widget->pin_caps = hda_send_cmd_await(self, PARAM_PIN_CAPABILITIES, CMD_GET_PARAMETER, nid, num).response;
 			widget->in_amp = hda_send_cmd_await(self, PARAM_INPUT_AMP_CAPABILITIES, CMD_GET_PARAMETER, nid, num).response;
 			widget->out_amp = hda_send_cmd_await(self, PARAM_OUTPUT_AMP_CAPABILITIES, CMD_GET_PARAMETER, nid, num).response;
@@ -373,6 +375,12 @@ static void codec_enumerate(Controller* self, u8 num) {
 			assert(!widget->con_list_len || widget->con_list);
 			for (u8 j = 0; j < widget->con_list_len; j += 4) {
 				u32 con_res = hda_send_cmd_await(self, j, CMD_GET_CONNECTION_LIST_ENTRY, nid, num).response;
+				if (!con_res) {
+					kfree(widget->con_list, widget->con_list_len);
+					widget->con_list = NULL;
+					widget->con_list_len = 0;
+					break;
+				}
 				for (u8 short_i = 0; short_i < (u8) MIN(widget->con_list_len - j, 4); ++short_i) {
 					widget->con_list[j + short_i] = con_res >> (short_i * 8) & 0xFF;
 				}
@@ -414,8 +422,6 @@ static void codec_enumerate(Controller* self, u8 num) {
 
 			widget_nid_tab_insert(&self->nid_tables[num], nid, widget);
 		}
-
-		find_output_paths(self);
 
 		/*u16 pin_connected_to_nid = self->pins->con_list[0] & 0x7FFF;
 		bool range_nids = self->pins->con_list[0] >> 15;
@@ -594,7 +600,9 @@ static AudioStream* snd_create_stream(SndDev* snd_self, AudioParams* params) {
 		Widget* start = path->widgets[0];
 		assert(start->type == WIDGET_AUDIO_PIN_COMPLEX);
 		Widget* end = path->widgets[path->len - 1];
-		assert(end->type == WIDGET_AUDIO_OUT);
+		if (end->type != WIDGET_AUDIO_OUT) {
+			continue;
+		}
 		if (start->conf) {
 			u8 location = start->conf >> 24 & 0b111111;
 
@@ -635,7 +643,8 @@ static AudioStream* snd_create_stream(SndDev* snd_self, AudioParams* params) {
 				specific_str = "Unknown";
 			}
 
-			kprintf("%u: %s\n", i, specific_str);
+			if (specific == 2)
+				kprintf("%u: %s\n", i, specific_str);
 		}
 		else {
 			kprintf("unknown start\n");
@@ -984,6 +993,8 @@ static void hda_init(PciDev* dev) {
 		}
 	}
 
+	find_output_paths(self);
+
 	assert(pci_irq_alloc(dev, 0, 0, PCI_IRQ_ALLOC_SHARED | PCI_IRQ_ALLOC_ALL));
 	u32 irq = pci_irq_get(dev, 0);
 
@@ -1011,7 +1022,7 @@ static void hda_init(PciDev* dev) {
 
 	dev_add(&self->snd_dev.generic, DEVICE_TYPE_SND);
 
-	Module song_mod = arch_get_module("output_raw");
+	/*Module song_mod = arch_get_module("output_raw");
 	assert(song_mod.base);
 
 	SndDev* s = &self->snd_dev;
@@ -1028,7 +1039,7 @@ static void hda_init(PciDev* dev) {
 
 	sound_ptr = sound_start;
 	sound_end = offset(song_mod.base, void*, song_mod.size);
-	assert(s->play(s, stream, true));
+	assert(s->play(s, stream, true));*/
 }
 
 static PciDriver pci_driver = {
