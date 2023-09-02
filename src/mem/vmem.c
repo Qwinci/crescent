@@ -74,6 +74,22 @@ static void freelist_remove(VMem* self, VMemSeg* seg) {
 	}
 }
 
+static void freelist_insert_nomerge(VMem* self, VMemSeg* seg) {
+	size_t list_index = LIST_INDEX_FOR_SIZE(seg->size);
+	VMemSeg* list = self->freelists[list_index];
+
+	seg->prev = NULL;
+	seg->type = VMEM_SEG_FREE;
+	if (!list) {
+		seg->next = NULL;
+	}
+	else {
+		seg->next = list;
+		list->prev = seg;
+	}
+	self->freelists[list_index] = seg;
+}
+
 static void freelist_insert(VMem* self, VMemSeg* seg) { // NOLINT(misc-no-recursion)
 	if (seg->seg_list_prev && seg->seg_list_prev->type == VMEM_SEG_FREE &&
 			(size_t) seg->seg_list_prev->base + seg->seg_list_prev->size == (size_t) seg->base) {
@@ -108,19 +124,7 @@ static void freelist_insert(VMem* self, VMemSeg* seg) { // NOLINT(misc-no-recurs
 		self->free_segs = next;
 	}
 
-	size_t list_index = LIST_INDEX_FOR_SIZE(seg->size);
-	VMemSeg* list = self->freelists[list_index];
-
-	seg->prev = NULL;
-	seg->type = VMEM_SEG_FREE;
-	if (!list) {
-		seg->next = NULL;
-	}
-	else {
-		seg->next = list;
-		list->prev = seg;
-	}
-	self->freelists[list_index] = seg;
+	freelist_insert_nomerge(self, seg);
 }
 
 static void hashtab_insert(VMem* self, VMemSeg* seg) {
@@ -246,6 +250,19 @@ static void split_seg(VMemSeg* seg, VMemSeg* alloc_seg, size_t size) {
 	seg->size -= size;
 }
 
+static void split_start(VMemSeg* seg, VMemSeg* alloc_seg, void* start) {
+	alloc_seg->base = seg->base;
+	alloc_seg->size = start - seg->base;
+	alloc_seg->seg_list_prev = seg->seg_list_prev;
+	seg->seg_list_prev->seg_list_next = alloc_seg;
+	alloc_seg->type = VMEM_SEG_FREE;
+	alloc_seg->seg_list_next = seg;
+
+	seg->seg_list_prev = alloc_seg;
+	seg->base = start;
+	seg->size -= alloc_seg->size;
+}
+
 static void seg_list_insert_after(VMemSeg** prev, VMemSeg* seg) {
 	if (*prev) {
 		VMemSeg* p = *prev;
@@ -275,11 +292,16 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 	assert(self);
 	size = ALIGNUP(size, self->quantum);
 
+	if (!max) {
+		max = (void*) UINTPTR_MAX;
+	}
+	else if (max == min) {
+		max = (void*) ((uintptr_t) min + size);
+	}
+
 	ASSERT(phase == 0 && "phase is not implemented");
 	ASSERT(align == 0 && "align is not implemented");
 	ASSERT(no_cross == 0 && "no_cross is not implemented");
-	ASSERT(min == NULL && "min is not implemented");
-	ASSERT(max == NULL && "max is not implemented");
 
 	size_t list_index = LIST_INDEX_FOR_SIZE(size);
 
@@ -300,6 +322,29 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 			}
 
 			if (list->size > size) {
+				void* start = MAX(list->base, min);
+				void* end = MIN((void*) ((uintptr_t) list->base + list->size), max);
+				if (start > end || (end - start) < size) {
+					self->freelists[i] = list;
+					if (list->next) {
+						list->next->prev = list;
+					}
+					continue;
+				}
+
+				if (start != list->base) {
+					VMemSeg* alloc_seg = seg_alloc(self);
+					if (!alloc_seg) {
+						self->freelists[i] = list;
+						if (list->next) {
+							list->next->prev = list;
+						}
+						return NULL;
+					}
+					split_start(list, alloc_seg, start);
+					freelist_insert_nomerge(self, alloc_seg);
+				}
+
 				VMemSeg* alloc_seg = seg_alloc(self);
 				if (!alloc_seg) {
 					self->freelists[i] = list;
@@ -326,6 +371,9 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 		}
 	}
 	else if ((flags & 0b11) == VM_BESTFIT) {
+		ASSERT(min == NULL && "min is not implemented for bestfit");
+		ASSERT(max == NULL && "max is not implemented for bestfit");
+
 		for (size_t i = list_index; i < VMEM_FREELIST_COUNT; ++i) {
 			VMemSeg* list = self->freelists[i];
 
@@ -401,6 +449,9 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 		}
 	}
 	else if ((flags & 0b11) == VM_NEXTFIT) {
+		ASSERT(min == NULL && "min is not implemented for nextfit");
+		ASSERT(max == NULL && "max is not implemented for nextfit");
+
 		VMemSeg* seg = self->last_alloc;
 
 		if (!seg) {

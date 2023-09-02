@@ -12,10 +12,10 @@
 #include "string.h"
 #ifdef CONFIG_TEST
 #include "utils/test.h"
+#endif
 #include "mem/allocator.h"
 #include "fs/tar.h"
-
-#endif
+#include "fs/vfs.h"
 
 [[noreturn]] void kmain() {
 	kprintf("[kernel]: entered main\n");
@@ -23,8 +23,41 @@
 #ifdef CONFIG_TEST
 	run_tests();
 #endif
-
 	pci_init();
+
+	Vfs* vfs = VFS_LIST;
+	if (vfs) {
+		VNode* root = vfs->get_root(vfs);
+		void* state = root->begin_read_dir(root);
+		DirEntry dir;
+		kprintf("---------------------\n");
+		while (root->read_dir(root, state, &dir)) {
+			kprintf("%s\n", dir.name);
+
+			VNode* entry = root->lookup(root, str_new_with_len(dir.name, dir.name_len));
+			assert(entry);
+
+			if (entry->type == VNODE_FILE) {
+				kprintf("content: \n");
+
+				Stat stat;
+				assert(entry->stat(entry, &stat));
+
+				char* buf = kmalloc(stat.size);
+				assert(buf);
+				assert(entry->read(entry, buf, 0, stat.size));
+
+				kprintf("\t%s\n", buf);
+				kfree(buf, stat.size);
+			}
+
+			entry->release(entry);
+		}
+		kprintf("---------------------\n");
+		root->end_read_dir(root, state);
+
+		root->release(root);
+	}
 
 	tar_initramfs_init();
 
@@ -39,6 +72,7 @@
 	void* mem;
 	void* user_mem = vm_user_alloc_backed(
 		test_user_process,
+		NULL,
 		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE,
 		PF_READ | PF_WRITE | PF_EXEC | PF_USER, &mem);
 	assert(user_mem);

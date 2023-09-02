@@ -77,9 +77,9 @@ void vm_user_free(Process* process) {
 	vmem_destroy(&process->vmem, false);
 }
 
-void* vm_user_alloc(Process* process, usize count) {
+void* vm_user_alloc(Process* process, void* at, usize count) {
 	mutex_lock(&process->vmem_lock);
-	void* res = vmem_alloc(&process->vmem, count * PAGE_SIZE, VM_INSTANTFIT);
+	void* res = vmem_xalloc(&process->vmem, count * PAGE_SIZE, 0, 0, 0, at, at, VM_INSTANTFIT);
 	mutex_unlock(&process->vmem_lock);
 	return res;
 }
@@ -90,8 +90,8 @@ void vm_user_dealloc(Process* process, void* ptr, usize count) {
 	mutex_unlock(&process->vmem_lock);
 }
 
-void* vm_user_alloc_backed(Process* process, usize count, PageFlags flags, void** kernel_mapping) {
-	void* vm = vm_user_alloc(process, count);
+void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags flags, void** kernel_mapping) {
+	void* vm = vm_user_alloc(process, at, count);
 	if (!vm) {
 		return NULL;
 	}

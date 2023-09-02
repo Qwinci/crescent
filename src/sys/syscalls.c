@@ -281,7 +281,7 @@ void* sys_mmap(size_t size, int protection) {
 		flags |= PF_READ | PF_EXEC;
 	}
 	Task* self = arch_get_cur_task();
-	void* res = vm_user_alloc_backed(self->process, size / PAGE_SIZE, flags, NULL);
+	void* res = vm_user_alloc_backed(self->process, NULL, size / PAGE_SIZE, flags, NULL);
 	arch_invalidate_mapping(arch_get_cur_task()->process);
 	return res;
 }

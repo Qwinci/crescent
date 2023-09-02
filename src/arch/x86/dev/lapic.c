@@ -54,7 +54,7 @@ IrqStatus ipi_handler(void*, void*) {
 			atomic_store_explicit(&map_use_ack, true, memory_order_relaxed);
 			break;
 		case LAPIC_MSG_PANIC:
-			panic("received panic msg on cpu %u\n", cpu->apic_id);
+			panic("received panic msg on cpu %u (apic id %u)\n", cpu->common.id, cpu->apic_id);
 	}
 	return IRQ_ACK;
 }

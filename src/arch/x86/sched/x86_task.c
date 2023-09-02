@@ -67,7 +67,7 @@ Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*
 	task->kernel_stack_base = (usize) kernel_stack;
 
 	u8* stack;
-	u8* user_stack = (u8*) vm_user_alloc_backed(process, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);
+	u8* user_stack = (u8*) vm_user_alloc_backed(process, NULL, USER_STACK_SIZE / PAGE_SIZE, PF_READ | PF_WRITE | PF_USER, (void**) &stack);
 	if (!user_stack) {
 		kprintf("[kernel][x86]: failed to allocate user stack (out of memory)\n");
 		kfree(kernel_stack, KERNEL_STACK_SIZE);

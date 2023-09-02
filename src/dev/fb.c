@@ -21,7 +21,7 @@ int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 			}
 
 			usize size = self->info.height * self->info.pitch;
-			void* mem = vm_user_alloc(task->process, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+			void* mem = vm_user_alloc(task->process, NULL, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
 			if (!mem) {
 				return ERR_NO_MEM;
 			}
