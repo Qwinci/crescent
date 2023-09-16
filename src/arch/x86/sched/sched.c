@@ -13,6 +13,7 @@ void arch_sched_switch_from(Task*, Task* self) {
 	cpu->tss.rsp0_high = x86_self->kernel_rsp >> 32;
 
 	arch_ipl_set(IPL_NORMAL);
+	__asm__ volatile("sti");
 }
 
 void arch_switch_task(Task* self, Task* new_task) {
