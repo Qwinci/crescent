@@ -6,6 +6,7 @@
 #include "fs/vfs.h"
 #include "mem/utils.h"
 #include "assert.h"
+#include "sys/fs.h"
 
 typedef struct {
 	u32 s_inodes_count;
@@ -114,6 +115,7 @@ typedef struct {
 typedef struct {
 	Storage* owner;
 	Vfs vfs;
+	PartitionDev partition_dev;
 	void* tmp_block_mem;
 	usize start_blk;
 	usize device_blks_in_ext_blk;
@@ -310,6 +312,7 @@ static bool ext2_vfs_read_dir(VNode* self, void* state, DirEntry* entry) {
 	memcpy(entry->name, desc->name, desc->name_len);
 	entry->name_len = desc->name_len;
 	entry->name[entry->name_len] = 0;
+	entry->type = desc->file_type == 2 ? FS_ENTRY_TYPE_DIR : FS_ENTRY_TYPE_FILE;
 	return true;
 }
 
@@ -490,6 +493,11 @@ bool ext2_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 
 	self->vfs = ext2_create_vfs(self);
 	vfs_add(&self->vfs);
+	self->partition_dev.vfs = &self->vfs;
+	// todo name
+	memcpy(self->partition_dev.generic.name, "ext2 partition", sizeof("ext2 partition"));
+	self->partition_dev.generic.refcount = 0;
+	dev_add(&self->partition_dev.generic, DEVICE_TYPE_PARTITION);
 
 	return true;
 }

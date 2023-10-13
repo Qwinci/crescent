@@ -4,10 +4,12 @@ set(QEMU_FLAGS -m 2G -machine q35 -smp 1
 		-device nvme,serial=deadbeef,drive=nvm -M smm=off
 		-trace pci_nvme_err*
 		-device qemu-xhci
+		#-device usb-kbd
 		-netdev user,id=mynet0 -device virtio-net-pci-non-transitional,netdev=mynet0
 		-device ich9-intel-hda,bus=pcie.0,addr=0x1B,debug=3
 		-device hda-output,audiodev=hda,debug=3
 		-audiodev pa,id=hda
+		#-device vfio-pci,host=00:1f.3
 )
 
 if(NOT EXISTS ${PROJECT_BINARY_DIR}/limine)

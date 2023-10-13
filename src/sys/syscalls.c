@@ -12,6 +12,7 @@
 #include "dev/fb.h"
 #include "crescent/sys.h"
 #include "mem/user.h"
+#include "fs/vfs.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
@@ -283,6 +284,10 @@ void* sys_mmap(size_t size, int protection) {
 	Task* self = arch_get_cur_task();
 	void* res = vm_user_alloc_backed(self->process, NULL, size / PAGE_SIZE, flags, NULL);
 	arch_invalidate_mapping(arch_get_cur_task()->process);
+	if (!res) {
+		return NULL;
+	}
+	memset(res, 0xCA, size);
 	return res;
 }
 
@@ -310,7 +315,7 @@ int sys_close(Handle handle) {
 	}
 	Process* process = arch_get_cur_task()->process;
 	HandleEntry* entry = handle_tab_get(&process->handle_table, handle);
-	if (!entry) {
+	if (!entry || entry->type == HANDLE_TYPE_KERNEL_GENERIC) {
 		return ERR_INVALID_ARG;
 	}
 	HandleType type = entry->type;
@@ -321,8 +326,14 @@ int sys_close(Handle handle) {
 			case HANDLE_TYPE_THREAD:
 				kfree(data, sizeof(ThreadHandle));
 				break;
-			case HANDLE_TYPE_GENERIC:
+			case HANDLE_TYPE_DEVICE:
+				((GenericDevice*) data)->refcount -= 1;
 				break;
+			case HANDLE_TYPE_VNODE:
+				((VNode*) data)->release((VNode*) data);
+				break;
+			case HANDLE_TYPE_KERNEL_GENERIC:
+				panic("kernel generic handle shouldn't ever get closed");
 		}
 	}
 	return 0;

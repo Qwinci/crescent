@@ -1,3 +1,4 @@
 target_sources(crescent PRIVATE
 		syscalls.c
-		dev.c)
+		dev.c
+		fs.c)

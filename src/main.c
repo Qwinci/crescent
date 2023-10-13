@@ -70,9 +70,10 @@
 	assert(test_user);
 
 	void* mem;
+	void* base = info.relocatable ? (void*) 0x400000 : (void*) info.base;
 	void* user_mem = vm_user_alloc_backed(
 		test_user_process,
-		NULL,
+		base,
 		ALIGNUP(info.mem_size, PAGE_SIZE) / PAGE_SIZE,
 		PF_READ | PF_WRITE | PF_EXEC | PF_USER, &mem);
 	assert(user_mem);

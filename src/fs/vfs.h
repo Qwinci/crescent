@@ -1,16 +1,12 @@
 #pragma once
 #include <stddef.h>
 #include "utils/str.h"
+#include "crescent/fs.h"
 
 typedef enum {
 	VNODE_FILE,
 	VNODE_DIR
 } VNodeType;
-
-typedef struct {
-	u16 name_len;
-	char name[256];
-} DirEntry;
 
 typedef struct {
 	usize size;

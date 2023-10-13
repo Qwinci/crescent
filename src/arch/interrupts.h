@@ -8,15 +8,6 @@ typedef enum {
 
 typedef IrqStatus (*IrqHandlerFn)(void* ctx, void* userdata);
 
-typedef struct IrqHandler {
-	IrqHandlerFn fn;
-	void* userdata;
-
-	bool can_be_shared;
-	struct IrqHandler* prev;
-	struct IrqHandler* next;
-} IrqHandler;
-
 typedef enum : u8 {
 	IPL_NORMAL,
 	IPL_DEV,
@@ -24,6 +15,16 @@ typedef enum : u8 {
 	IPL_INTER_CPU,
 	IPL_CRITICAL
 } Ipl;
+
+typedef struct IrqHandler {
+	IrqHandlerFn fn;
+	void* userdata;
+
+	struct IrqHandler* prev;
+	struct IrqHandler* next;
+	bool can_be_shared;
+	Ipl ipl;
+} IrqHandler;
 
 typedef enum {
 	IRQ_INSTALL_STATUS_SUCCESS,

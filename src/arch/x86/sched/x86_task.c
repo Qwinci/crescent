@@ -169,6 +169,8 @@ void arch_destroy_task(Task* task) {
 				mapping = next;
 			}
 
+			// todo release handles
+
 			vm_user_free(task->process);
 			kfree(process, sizeof(Process));
 		}

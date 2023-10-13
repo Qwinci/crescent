@@ -4,6 +4,7 @@
 typedef enum {
 	DEVICE_TYPE_FB,
 	DEVICE_TYPE_SND,
+	DEVICE_TYPE_PARTITION,
 	DEVICE_TYPE_MAX
 } DeviceType;
 

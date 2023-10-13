@@ -6,6 +6,7 @@
 #include "mem/user.h"
 #include "utils/math.h"
 #include "dev/fb.h"
+#include "fs.h"
 
 DeviceList DEVICES[DEVICE_TYPE_MAX] = {};
 
@@ -54,6 +55,8 @@ int sys_devmsg(Handle handle, size_t msg, __user void* data) {
 			return fbdev_devmsg(container_of(device, FbDev, generic), msg, data);
 		case DEVICE_TYPE_SND:
 			assert(0 && "not implemented");
+		case DEVICE_TYPE_PARTITION:
+			return partition_dev_devmsg(container_of(device, PartitionDev, generic), msg, data);
 		case DEVICE_TYPE_MAX:
 			return ERR_INVALID_ARG;
 	}
@@ -91,7 +94,7 @@ int sys_devenum(DeviceType type, __user Handle* res, __user size_t* count) {
 		GenericDevice* ptr = list->devices[i];
 		// todo support removing devices
 		ptr->refcount += 1;
-		Handle handle = handle_tab_insert(&task->process->handle_table, ptr, HANDLE_TYPE_GENERIC);
+		Handle handle = handle_tab_insert(&task->process->handle_table, ptr, HANDLE_TYPE_DEVICE);
 		if (!mem_copy_to_user(res + i, &handle, sizeof(Handle))) {
 			mutex_unlock(&list->lock);
 			return ERR_FAULT;

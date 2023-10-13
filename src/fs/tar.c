@@ -5,6 +5,7 @@
 #include "mem/allocator.h"
 #include "mem/utils.h"
 #include "assert.h"
+#include "sys/fs.h"
 
 typedef struct {
 	char filename[100];
@@ -110,6 +111,7 @@ static bool tar_vfs_read_dir(VNode* self, void*, DirEntry* entry) {
 	entry->name_len = len - (dir_len + 1) - (next_hdr->filename[len - 1] == '/' ? 1 : 0);
 	memcpy(entry->name, next_hdr->filename + dir_len + 1, entry->name_len);
 	entry->name[entry->name_len] = 0;
+	entry->type = next_hdr->typeflag == '5' ? FS_ENTRY_TYPE_DIR : FS_ENTRY_TYPE_FILE;
 
 	return true;
 }
@@ -204,4 +206,11 @@ void tar_initramfs_init() {
 	tar_vfs->data = initramfs_mod.base;
 
 	vfs_add(tar_vfs);
+
+	PartitionDev* dev = kcalloc(sizeof(PartitionDev));
+	assert(dev);
+
+	memcpy(dev->generic.name, "initramfs", sizeof("initramfs"));
+
+	dev_add(&dev->generic, DEVICE_TYPE_PARTITION);
 }

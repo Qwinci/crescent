@@ -1,3 +1,4 @@
+#include "crescent/fs.h"
 #include "crescent/sys.h"
 #include "crescent/input.h"
 #include "crescent/fb.h"
@@ -175,6 +176,7 @@ size_t strlen(const char* str) {
 
 void puts(const char* str) {
 	sys_dprint(str, strlen(str));
+	sys_dprint("\n", 1);
 }
 
 void another_thread(void* arg) {
@@ -250,6 +252,53 @@ _Noreturn void _start(void*) {
 	else {
 		puts("failed to enumerate framebuffers\n");
 	}
+
+	size_t par_count = 1;
+	Handle handle;
+	sys_devenum(DEVICE_TYPE_PARTITION, &handle, &par_count);
+	FsOpenData open_data = {
+		.handle = INVALID_HANDLE
+	};
+	sys_devmsg(handle, DEVMSG_FS_OPEN, &open_data);
+
+	Handle root = open_data.handle;
+	FsReadDirData readdir_data;
+	readdir_data.handle = root;
+	while (sys_devmsg(handle, DEVMSG_FS_READDIR, &readdir_data) != ERR_NOT_EXISTS) {
+		puts(readdir_data.entry.name);
+		if (readdir_data.entry.type != FS_ENTRY_TYPE_FILE) {
+			continue;
+		}
+
+		open_data = (FsOpenData) {
+			.handle = root,
+			.component = readdir_data.entry.name,
+			.component_len = readdir_data.entry.name_len
+		};
+		sys_devmsg(handle, DEVMSG_FS_OPEN, &open_data);
+		// open_data.handle now points to opened file (or dir but this code assumes a file)
+		Handle file_handle = open_data.handle;
+		FsStatData stat_data = {
+			.handle = file_handle
+		};
+		sys_devmsg(handle, DEVMSG_FS_STAT, &stat_data);
+
+		char* buffer = (char*) sys_mmap((stat_data.size + 1 + 0xFFF) & ~0xFFF, PROT_READ | PROT_WRITE);
+		FsReadData read_data = {
+			.handle = file_handle,
+			.buffer = buffer,
+			.len = stat_data.size
+		};
+		sys_devmsg(handle, DEVMSG_FS_READ, &read_data);
+		buffer[stat_data.size] = 0;
+		puts(buffer);
+
+		sys_close(file_handle);
+		sys_munmap(buffer, (stat_data.size + 1 + 0xFFF) & ~0xFFF);
+	}
+
+	sys_close(root);
+	sys_close(handle);
 
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9

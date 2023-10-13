@@ -13,3 +13,4 @@ endif()
 
 add_subdirectory(storage)
 add_subdirectory(audio)
+add_subdirectory(usb)

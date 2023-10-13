@@ -26,6 +26,7 @@ typedef enum {
 #define ERR_NO_PERMISSIONS (-2)
 #define ERR_NO_MEM (-3)
 #define ERR_FAULT (-4)
+#define ERR_NOT_EXISTS (-5)
 
 #define PROT_READ (1 << 0)
 #define PROT_WRITE (1 << 1)
