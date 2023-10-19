@@ -2,8 +2,6 @@
 #include "mem/allocator.h"
 #include "string.h"
 
-#define FREED_HANDLE (1ULL << (sizeof(usize) * 8 - 1))
-
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 	mutex_lock(&self->lock);
 
@@ -40,6 +38,11 @@ Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 		mutex_unlock(&self->lock);
 		return id;
 	}
+}
+
+void handle_tab_destroy(HandleTable* self) {
+	kfree(self->table, self->cap * sizeof(HandleEntry));
+	*self = (HandleTable) {};
 }
 
 HandleEntry* handle_tab_get(HandleTable* self, Handle handle) {

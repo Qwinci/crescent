@@ -25,7 +25,10 @@ typedef struct {
 	Mutex lock;
 } HandleTable;
 
+#define FREED_HANDLE (1ULL << (sizeof(usize) * 8 - 1))
+
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type);
 HandleEntry* handle_tab_get(HandleTable* self, Handle handle);
 bool handle_tab_close(HandleTable* self, Handle handle);
 void* handle_tab_open(HandleTable* self, Handle handle);
+void handle_tab_destroy(HandleTable* self);

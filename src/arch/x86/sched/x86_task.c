@@ -10,6 +10,8 @@
 #include "sched/sched_internals.h"
 #include "string.h"
 #include "sched/process.h"
+#include "sys/dev.h"
+#include "fs/vfs.h"
 
 typedef struct {
 	u64 r15, r14, r13, r12, rbp, rbx;
@@ -169,8 +171,30 @@ void arch_destroy_task(Task* task) {
 				mapping = next;
 			}
 
-			// todo release handles
+			for (size_t i = 0; i < task->process->handle_table.cap; ++i) {
+				HandleEntry* entry = &task->process->handle_table.table[i];
+				if (entry->handle & FREED_HANDLE) {
+					continue;
+				}
+				HandleType type = entry->type;
+				void* data = entry->data;
 
+				switch (type) {
+					case HANDLE_TYPE_THREAD:
+						kfree(data, sizeof(ThreadHandle));
+						break;
+					case HANDLE_TYPE_DEVICE:
+						((GenericDevice*) data)->refcount -= 1;
+						break;
+					case HANDLE_TYPE_VNODE:
+						((VNode*) data)->release((VNode*) data);
+						break;
+					case HANDLE_TYPE_KERNEL_GENERIC:
+						continue;
+				}
+			}
+
+			handle_tab_destroy(&task->process->handle_table);
 			vm_user_free(task->process);
 			kfree(process, sizeof(Process));
 		}
