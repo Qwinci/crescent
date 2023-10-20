@@ -271,23 +271,21 @@ void* sys_mmap(size_t size, int protection) {
 		return NULL;
 	}
 
-	PageFlags flags = PF_USER;
+	MappingFlags flags = 0;
 	if (protection & PROT_READ) {
-		flags |= PF_READ;
+		flags |= MAPPING_FLAG_R;
 	}
 	if (protection & PROT_WRITE) {
-		flags |= PF_READ | PF_WRITE;
+		flags |= MAPPING_FLAG_W;
 	}
 	if (protection & PROT_EXEC) {
-		flags |= PF_READ | PF_EXEC;
+		flags |= MAPPING_FLAG_X;
 	}
 	Task* self = arch_get_cur_task();
-	void* res = vm_user_alloc_backed(self->process, NULL, size / PAGE_SIZE, flags, NULL);
-	arch_invalidate_mapping(arch_get_cur_task()->process);
+	void* res = vm_user_alloc_on_demand(self->process, NULL, size / PAGE_SIZE, flags, NULL);
 	if (!res) {
 		return NULL;
 	}
-	memset(res, 0xCA, size);
 	return res;
 }
 
@@ -302,7 +300,7 @@ int sys_munmap(__user void* ptr, size_t size) {
 		return ERR_INVALID_ARG;
 	}
 
-	if (!vm_user_dealloc_backed(self->process, (void*) ptr, size / PAGE_SIZE, NULL)) {
+	if (!vm_user_dealloc_on_demand(self->process, (void*) ptr, size / PAGE_SIZE, NULL)) {
 		return ERR_INVALID_ARG;
 	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);

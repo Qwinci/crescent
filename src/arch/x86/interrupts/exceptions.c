@@ -69,6 +69,13 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 		return IRQ_ACK;
 	}
 
+	u64 addr;
+	__asm__ volatile("mov %%cr2, %0" : "=r"(addr));
+
+	if (process_handle_fault(self->process, addr)) {
+		return IRQ_ACK;
+	}
+
 	bool present = ctx->error & 1;
 	bool write = ctx->error & 1 << 1;
 	bool user = ctx->error & 1 << 2;
@@ -77,9 +84,6 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 	bool pk = ctx->error & 1 << 5;
 	bool ss = ctx->error & 1 << 6;
 	bool sgx = ctx->error & 1 << 15;
-
-	u64 addr;
-	__asm__ volatile("mov %%cr2, %0" : "=r"(addr));
 
 	spinlock_lock(&PRINT_LOCK);
 	kprintf_nolock("%fgpage fault caused by ", COLOR_RED);

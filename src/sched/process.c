@@ -3,6 +3,7 @@
 #include "string.h"
 #include "mem/vm.h"
 #include "task.h"
+#include "mem/pmalloc.h"
 
 Process* ACTIVE_INPUT_PROCESS = NULL;
 
@@ -31,7 +32,7 @@ bool process_is_mapped(Process* self, const void* start, usize size, bool rw) {
 		usize mapping_end = mapping_start + mapping->size;
 
 		if ((usize) start < mapping_end && mapping_start < end) {
-			return !rw || mapping->rw;
+			return !rw || mapping->flags & MAPPING_FLAG_W;
 		}
 
 		if ((usize) start < mapping->base) {
@@ -62,18 +63,21 @@ Mapping* process_get_mapping_for_range(Process* self, const void* start, usize s
 		else if ((usize) start > mapping->base) {
 			mapping = (Mapping*) mapping->hook.right;
 		}
+		else {
+			return mapping;
+		}
 	}
 	return NULL;
 }
 
-bool process_add_mapping(Process* self, usize base, usize size, bool rw) {
+bool process_add_mapping(Process* self, usize base, usize size, MappingFlags flags) {
 	Mapping* mapping = kcalloc(sizeof(Mapping));
 	if (!mapping) {
 		return false;
 	}
 	mapping->base = base;
 	mapping->size = size;
-	mapping->rw = rw;
+	mapping->flags = flags;
 
 	Mapping* m = (Mapping*) self->mappings.hook.root;
 	if (!m) {
@@ -147,4 +151,44 @@ void process_remove_thread(Process* process, Task* task) {
 	}
 	process->thread_count -= 1;
 	mutex_unlock(&process->threads_lock);
+}
+
+static PageFlags flags_to_pf(MappingFlags flags) {
+	PageFlags ret = PF_USER;
+	if (flags & MAPPING_FLAG_R) {
+		ret |= PF_READ;
+	}
+	if (flags & MAPPING_FLAG_W) {
+		ret |= PF_READ | PF_WRITE;
+	}
+	if (flags & MAPPING_FLAG_X) {
+		ret |= PF_READ | PF_EXEC;
+	}
+	return ret;
+}
+
+bool process_handle_fault(Process* process, usize addr) {
+	Mapping* mapping = process_get_mapping_for_range(process, (const void*) addr, 0);
+	if (!mapping || !((mapping->flags & MAPPING_FLAG_COW) | (mapping->flags & MAPPING_FLAG_ON_DEMAND))) {
+		return false;
+	}
+
+	assert(addr >= mapping->base);
+	if (mapping->flags & MAPPING_FLAG_ON_DEMAND) {
+		Page* page = pmalloc(1);
+		if (!page) {
+			// todo oom
+			return false;
+		}
+
+		PageFlags flags = flags_to_pf(mapping->flags);
+
+		arch_user_map_page(process, addr & ~(PAGE_SIZE - 1), page->phys, flags);
+		arch_invalidate_mapping(process);
+	}
+	else {
+		assert(!"cow is not implemented");
+	}
+
+	return true;
 }
