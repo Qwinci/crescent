@@ -1,6 +1,8 @@
 #include "handle.h"
 #include "mem/allocator.h"
 #include "string.h"
+#include "sys/dev.h"
+#include "fs/vfs.h"
 
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 	mutex_lock(&self->lock);
@@ -117,5 +119,30 @@ bool handle_tab_duplicate(HandleTable* self, HandleTable* ret) {
 		ret_entry->data = ret->freelist;
 		ret->freelist = ret_entry;
 	}
+
+	for (size_t i = 0; i < ret->cap; ++i) {
+		HandleEntry* entry = &ret->table[i];
+		if (entry->handle & FREED_HANDLE) {
+			continue;
+		}
+		HandleType type = entry->type;
+		void* data = entry->data;
+
+		switch (type) {
+			case HANDLE_TYPE_THREAD:
+				//kfree(data, sizeof(ThreadHandle));
+				// todo refcount
+				break;
+			case HANDLE_TYPE_DEVICE:
+				((GenericDevice*) data)->refcount += 1;
+				break;
+			case HANDLE_TYPE_VNODE:
+				((VNode*) data)->refcount += 1;
+				break;
+			case HANDLE_TYPE_KERNEL_GENERIC:
+				continue;
+		}
+	}
+
 	return true;
 }
