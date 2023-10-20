@@ -32,3 +32,4 @@ HandleEntry* handle_tab_get(HandleTable* self, Handle handle);
 bool handle_tab_close(HandleTable* self, Handle handle);
 void* handle_tab_open(HandleTable* self, Handle handle);
 void handle_tab_destroy(HandleTable* self);
+bool handle_tab_duplicate(HandleTable* self, HandleTable* ret);

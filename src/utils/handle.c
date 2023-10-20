@@ -99,3 +99,23 @@ void* handle_tab_open(HandleTable* self, Handle handle) {
 	mutex_unlock(&self->lock);
 	return data;
 }
+
+bool handle_tab_duplicate(HandleTable* self, HandleTable* ret) {
+	memset(ret, 0, sizeof(HandleTable));
+	ret->table = (HandleEntry*) kmalloc(self->cap * sizeof(HandleEntry));
+	if (!ret->table) {
+		return false;
+	}
+	memcpy(ret->table, self->table, self->cap * sizeof(HandleEntry));
+	ret->cap = self->cap;
+	ret->size = self->size;
+	for (HandleEntry* entry = self->freelist; entry; entry = (HandleEntry*) entry->data) {
+		size_t index = ((usize) entry - (usize) self->table) / sizeof(HandleEntry);
+
+		HandleEntry* ret_entry = &ret->table[index];
+		ret_entry->handle = FREED_HANDLE;
+		ret_entry->data = ret->freelist;
+		ret->freelist = ret_entry;
+	}
+	return true;
+}
