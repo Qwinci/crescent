@@ -20,12 +20,16 @@ arch_mem_copy_to_user:
 
 	call memcpy
 
+	xor %edi, %edi
+	mov %rdi, %gs:X86TASK_HANDLER_IP_OFF
+
 	pop %rbp
 	mov $1, %eax
 	ret
 1:
-	pop %rbp
 	xor %eax, %eax
+	mov %rax, %gs:X86TASK_HANDLER_IP_OFF
+	pop %rbp
 	ret
 
 .type arch_mem_copy_to_kernel, @function
@@ -42,10 +46,14 @@ arch_mem_copy_to_kernel:
 
 	call memcpy
 
+	xor %edi, %edi
+	mov %rdi, %gs:X86TASK_HANDLER_IP_OFF
+
 	pop %rbp
 	mov $1, %eax
 	ret
 1:
-	pop %rbp
 	xor %eax, %eax
+	mov %rax, %gs:X86TASK_HANDLER_IP_OFF
+	pop %rbp
 	ret
