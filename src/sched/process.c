@@ -4,6 +4,7 @@
 #include "mem/vm.h"
 #include "task.h"
 #include "mem/pmalloc.h"
+#include "mem/utils.h"
 
 Process* ACTIVE_INPUT_PROCESS = NULL;
 
@@ -172,23 +173,28 @@ bool process_handle_fault(Process* process, usize addr) {
 	if (!mapping || !((mapping->flags & MAPPING_FLAG_COW) | (mapping->flags & MAPPING_FLAG_ON_DEMAND))) {
 		return false;
 	}
+	if (!(mapping->flags & MAPPING_FLAG_R)) {
+		return false;
+	}
 
 	assert(addr >= mapping->base);
-	if (mapping->flags & MAPPING_FLAG_ON_DEMAND) {
-		Page* page = pmalloc(1);
-		if (!page) {
-			// todo oom
-			return false;
-		}
-
-		PageFlags flags = flags_to_pf(mapping->flags);
-
-		arch_user_map_page(process, addr & ~(PAGE_SIZE - 1), page->phys, flags);
-		arch_invalidate_mapping(process);
+	Page* page = pmalloc(1);
+	if (!page) {
+		// todo oom
+		return false;
 	}
-	else {
-		assert(!"cow is not implemented");
+
+	if (mapping->flags & MAPPING_FLAG_COW) {
+		memcpy(to_virt(page->phys), (void*) ALIGNDOWN(addr, PAGE_SIZE), PAGE_SIZE);
+		usize orig_addr = arch_virt_to_phys(process->map, ALIGNDOWN(addr, PAGE_SIZE));
+		Page* orig_page = page_from_addr(orig_addr);
+		assert(orig_page->refs > 0);
+		orig_page->refs -= 1;
 	}
+
+	PageFlags flags = flags_to_pf(mapping->flags);
+	arch_user_map_page(process, ALIGNDOWN(addr, PAGE_SIZE), page->phys, flags);
+	arch_invalidate_mapping(process);
 
 	return true;
 }

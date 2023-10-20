@@ -6,6 +6,7 @@
 #include "sched/process.h"
 #include "vmem.h"
 #include "string.h"
+#include "utils.h"
 
 static VMem kernel_vmem = {};
 static Mutex KERNEL_VM_LOCK = {};
@@ -164,6 +165,47 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 	return vm;
 }
 
+void* vm_user_create_cow(Process* process, void* original_map, Mapping* original, void* at) {
+	usize pages = ALIGNUP(original->size, PAGE_SIZE) / PAGE_SIZE;
+	void* vm = vm_user_alloc(process, at, pages);
+	if (!vm) {
+		return NULL;
+	}
+
+	PageFlags page_flags = PF_USER;
+	if ((original->flags & MAPPING_FLAG_R) || (original->flags & MAPPING_FLAG_W)) {
+		page_flags |= PF_READ;
+	}
+	if (original->flags & MAPPING_FLAG_X) {
+		page_flags |= PF_EXEC;
+	}
+
+	for (usize i = 0; i < pages; ++i) {
+		usize phys = arch_virt_to_phys(original_map, (usize) original->base + i * PAGE_SIZE);
+		if (phys) {
+			Page* page = page_from_addr(phys);
+			page->refs += 1;
+			arch_map_page(process->map, (usize) vm + i * PAGE_SIZE, phys, page_flags);
+		}
+	}
+
+	MappingFlags flags = original->flags | MAPPING_FLAG_COW;
+
+	mutex_lock(&process->mapping_lock);
+	if (!process_add_mapping(process, (usize) vm, original->size, flags)) {
+		mutex_unlock(&process->mapping_lock);
+
+		for (usize i = 0; i < pages; ++i) {
+			arch_unmap_page(process->map, (usize) vm + i * PAGE_SIZE, true);
+		}
+
+		vm_user_dealloc(process, vm, pages);
+		return NULL;
+	}
+	mutex_unlock(&process->mapping_lock);
+	return vm;
+}
+
 void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFlags flags, void** kernel_mapping) {
 	void* vm = vm_user_alloc(process, at, count);
 	if (!vm) {
@@ -245,5 +287,29 @@ bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, void* k
 	if (kernel_mapping) {
 		vm_kernel_dealloc(kernel_mapping, count);
 	}
+	return true;
+}
+
+bool vm_user_dealloc_cow(Process* process, void* ptr, usize count) {
+	if (!process_remove_mapping(process, (usize) ptr)) {
+		return false;
+	}
+	for (usize i = 0; i < count; ++i) {
+		usize virt = (usize) ptr + i * PAGE_SIZE;
+		usize phys = arch_virt_to_phys(process->map, virt);
+		if (!phys) {
+			continue;
+		}
+		arch_user_unmap_page(process, virt, true);
+
+		Page* page = page_from_addr(phys);
+		if (page->refs == 0) {
+			pfree(page, 1);
+		}
+		else {
+			page->refs -= 1;
+		}
+	}
+	vm_user_dealloc(process, ptr, count);
 	return true;
 }

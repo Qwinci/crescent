@@ -22,3 +22,6 @@ void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFl
 void vm_user_dealloc_kernel(void* kernel_mapping, usize count);
 bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping);
 bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, void* kernel_mapping);
+
+void* vm_user_create_cow(Process* process, void* original_map, Mapping* original, void* at);
+bool vm_user_dealloc_cow(Process* process, void* ptr, usize count);
