@@ -5,6 +5,9 @@
 #include "task.h"
 #include "mem/pmalloc.h"
 #include "mem/utils.h"
+#include "sys/dev.h"
+#include "fs/vfs.h"
+#include "sys/fs.h"
 
 Process* ACTIVE_INPUT_PROCESS = NULL;
 
@@ -126,7 +129,58 @@ Process* process_new_user() {
 	}
 	vm_user_init(process, 0xFF000, 0x7FFFFFFFE000 - 0xFF000);
 	process->map = arch_create_user_map();
+	if (!process->map) {
+		kfree(process, sizeof(Process));
+		return NULL;
+	}
 	return process;
+}
+
+void process_destroy(Process* process) {
+	for (Mapping* mapping = (Mapping*) process->mappings.hook.root; mapping;) {
+		Mapping* next = (Mapping*) mapping->hook.successor;
+		for (usize i = mapping->base; i < mapping->base + mapping->size; i += PAGE_SIZE) {
+			usize phys = arch_virt_to_phys(process->map, i);
+			Page* page = page_from_addr(phys);
+			pfree(page, 1);
+		}
+		process_remove_mapping(process, (usize) mapping->base);
+		mapping = next;
+	}
+
+	for (size_t i = 0; i < process->handle_table.cap; ++i) {
+		HandleEntry* entry = &process->handle_table.table[i];
+		if (entry->handle & FREED_HANDLE) {
+			continue;
+		}
+		HandleType type = entry->type;
+		void* data = entry->data;
+
+		switch (type) {
+			case HANDLE_TYPE_THREAD:
+				kfree(data, sizeof(ThreadHandle));
+				break;
+			case HANDLE_TYPE_DEVICE:
+				((GenericDevice*) data)->refcount -= 1;
+				break;
+			case HANDLE_TYPE_VNODE:
+				((VNode*) data)->ops.release((VNode*) data);
+				break;
+			case HANDLE_TYPE_KERNEL_GENERIC:
+				continue;
+			case HANDLE_TYPE_FILE:
+			{
+				FileData* f = (FileData*) data;
+				f->node->ops.release(f->node);
+				kfree(f, sizeof(FileData));
+				break;
+			}
+		}
+	}
+
+	handle_tab_destroy(&process->handle_table);
+	vm_user_free(process);
+	kfree(process, sizeof(Process));
 }
 
 void process_add_thread(Process* process, Task* task) {

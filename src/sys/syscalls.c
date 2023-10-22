@@ -14,13 +14,17 @@
 #include "mem/user.h"
 #include "fs/vfs.h"
 #include "fs.h"
+#include "exe/elf_loader.h"
 
 void sys_exit(int status);
+int sys_create_process(__user const char* path, size_t path_len, __user Handle* ret);
+int sys_kill_process(Process* process);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
 int sys_kill_thread(Handle handle);
 int sys_dprint(__user const char* msg, size_t len);
 void sys_sleep(usize ms);
 int sys_wait_thread(Handle handle);
+int sys_wait_process(Handle handle);
 int sys_wait_for_event(__user Event* res);
 int sys_poll_event(__user Event* res);
 int sys_shutdown(ShutdownType type);
@@ -30,32 +34,35 @@ int sys_munmap(__user void* ptr, size_t size);
 int sys_close(Handle handle);
 
 __attribute__((used)) void* syscall_handlers[] = {
-	sys_create_thread,
-	sys_kill_thread,
-	sys_wait_thread,
-	sys_exit,
-	sys_sleep,
+	[SYS_CREATE_PROCESS] = sys_create_process,
+	[SYS_KILL_PROCESS] = sys_kill_process,
+	[SYS_WAIT_PROCESS] = sys_wait_process,
+	[SYS_CREATE_THREAD] = sys_create_thread,
+	[SYS_KILL_THREAD] = sys_kill_thread,
+	[SYS_WAIT_THREAD] = sys_wait_thread,
+	[SYS_EXIT] = sys_exit,
+	[SYS_SLEEP] = sys_sleep,
 
-	sys_wait_for_event,
-	sys_poll_event,
+	[SYS_WAIT_FOR_EVENT] = sys_wait_for_event,
+	[SYS_POLL_EVENT] = sys_poll_event,
 
-	sys_dprint,
-	sys_shutdown,
-	sys_request_cap,
+	[SYS_DPRINT] = sys_dprint,
+	[SYS_SHUTDOWN] = sys_shutdown,
+	[SYS_REQUEST_CAP] = sys_request_cap,
 
-	sys_mmap,
-	sys_munmap,
+	[SYS_MMAP] = sys_mmap,
+	[SYS_MUNMAP] = sys_munmap,
 
-	sys_close,
-	sys_devmsg,
-	sys_devenum,
+	[SYS_CLOSE] = sys_close,
+	[SYS_DEVMSG] = sys_devmsg,
+	[SYS_DEVENUM] = sys_devenum,
 
-	sys_open,
-	sys_read,
-	sys_stat,
-	sys_opendir,
-	sys_readdir,
-	sys_closedir
+	[SYS_OPEN] = sys_open,
+	[SYS_READ] = sys_read,
+	[SYS_STAT] = sys_stat,
+	[SYS_OPENDIR] = sys_opendir,
+	[SYS_READDIR] = sys_readdir,
+	[SYS_CLOSEDIR] = sys_closedir
 };
 
 __attribute__((used)) const usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
@@ -260,6 +267,84 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	mutex_unlock(&process->threads_lock);
 	arch_ipl_set(old);
 	return id;
+}
+
+int sys_create_process(__user const char* path, size_t path_len, __user Handle* ret) {
+	char* buf = kmalloc(path_len + 1);
+	if (!buf) {
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(buf, path, path_len)) {
+		kfree(buf, path_len + 1);
+		return ERR_FAULT;
+	}
+	buf[path_len] = 0;
+
+	VNode* node;
+	int status = kernel_fs_open(buf, &node);
+	if (status != 0) {
+		kfree(buf, path_len + 1);
+		return status;
+	}
+
+	Process* process = process_new_user();
+	if (!process) {
+		kfree(buf, path_len + 1);
+		node->ops.release(node);
+		return ERR_NO_MEM;
+	}
+
+	const char* process_name = buf + path_len - 1;
+	for (; process_name > buf && *process_name != '/'; --process_name);
+
+	Task* thread = arch_create_user_task(process, process_name, NULL, NULL);
+	kfree(buf, path_len + 1);
+	if (!thread) {
+		node->ops.release(node);
+		process_destroy(process);
+		return ERR_NO_MEM;
+	}
+
+	LoadedElf res;
+	status = elf_load_from_file(thread, node, &res);
+	node->ops.release(node);
+	if (status != 0) {
+		arch_destroy_task(thread);
+		return status;
+	}
+
+	void (*user_fn)(void*) = (void (*)(void*)) res.entry;
+	arch_set_user_task_fn(thread, user_fn);
+
+	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));
+	if (!h) {
+		arch_destroy_task(thread);
+		return ERR_NO_MEM;
+	}
+	h->task = thread;
+	h->exited = false;
+	memset(&h->lock, 0, sizeof(Mutex));
+	Handle handle = handle_tab_insert(&process->handle_table, h, HANDLE_TYPE_THREAD);
+
+	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
+		arch_destroy_task(thread);
+		handle_tab_close(&process->handle_table, handle);
+		kfree(h, sizeof(ThreadHandle));
+		return ERR_FAULT;
+	}
+
+	process_add_thread(process, thread);
+
+	Ipl old = arch_ipl_set(IPL_CRITICAL);
+	sched_queue_task(thread);
+	arch_ipl_set(old);
+
+	return 0;
+}
+
+int sys_wait_process(Handle handle) {
+	// todo implement
+	return ERR_OPERATION_NOT_SUPPORTED;
 }
 
 int sys_kill_process(Process* process) {

@@ -5,6 +5,7 @@
 #include "mem/utils.h"
 #include "string.h"
 #include "utils/elf.h"
+#include "crescent/sys.h"
 
 typedef struct {
 	void* base;
@@ -149,4 +150,9 @@ void elf_protect(ElfInfo info, void* load_base, void* map, bool user) {
 			}
 		}
 	}
+}
+
+int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
+	// todo implement
+	return ERR_OPERATION_NOT_SUPPORTED;
 }

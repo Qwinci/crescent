@@ -161,50 +161,7 @@ void arch_destroy_task(Task* task) {
 		Process* process = task->process;
 
 		if (process->thread_count == 0) {
-			for (Mapping* mapping = (Mapping*) process->mappings.hook.root; mapping;) {
-				Mapping* next = (Mapping*) mapping->hook.successor;
-				for (usize i = mapping->base; i < mapping->base + mapping->size; i += PAGE_SIZE) {
-					usize phys = arch_virt_to_phys(task->map, i);
-					Page* page = page_from_addr(phys);
-					pfree(page, 1);
-				}
-				process_remove_mapping(process, (usize) mapping->base);
-				mapping = next;
-			}
-
-			for (size_t i = 0; i < task->process->handle_table.cap; ++i) {
-				HandleEntry* entry = &task->process->handle_table.table[i];
-				if (entry->handle & FREED_HANDLE) {
-					continue;
-				}
-				HandleType type = entry->type;
-				void* data = entry->data;
-
-				switch (type) {
-					case HANDLE_TYPE_THREAD:
-						kfree(data, sizeof(ThreadHandle));
-						break;
-					case HANDLE_TYPE_DEVICE:
-						((GenericDevice*) data)->refcount -= 1;
-						break;
-					case HANDLE_TYPE_VNODE:
-						((VNode*) data)->ops.release((VNode*) data);
-						break;
-					case HANDLE_TYPE_KERNEL_GENERIC:
-						continue;
-					case HANDLE_TYPE_FILE:
-					{
-						FileData* f = (FileData*) data;
-						f->node->ops.release(f->node);
-						kfree(f, sizeof(FileData));
-						break;
-					}
-				}
-			}
-
-			handle_tab_destroy(&task->process->handle_table);
-			vm_user_free(task->process);
-			kfree(process, sizeof(Process));
+			process_destroy(process);
 		}
 
 		arch_destroy_map(x86_task->common.map);

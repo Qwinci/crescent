@@ -23,3 +23,8 @@ ElfInfo elf_get_info(const void* data);
 LoadedElf elf_load(ElfInfo info, void* load_base, void* run_base);
 
 void elf_protect(ElfInfo info, void* load_base, void* map, bool user);
+
+typedef struct Task Task;
+typedef struct VNode VNode;
+
+int elf_load_from_file(Task* task, VNode* node, LoadedElf* res);

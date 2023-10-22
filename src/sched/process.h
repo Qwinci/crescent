@@ -46,3 +46,4 @@ Mapping* process_get_mapping_for_range(Process* self, const void* start, usize s
 void process_add_thread(Process* self, Task* task);
 void process_remove_thread(Process* self, Task* task);
 bool process_handle_fault(Process* process, usize addr);
+void process_destroy(Process* process);
