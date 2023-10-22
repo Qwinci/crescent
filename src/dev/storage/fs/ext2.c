@@ -7,6 +7,7 @@
 #include "mem/utils.h"
 #include "assert.h"
 #include "sys/fs.h"
+#include "crescent/sys.h"
 
 typedef struct {
 	u32 s_inodes_count;
@@ -249,29 +250,15 @@ static usize ext4_inode_data_read_helper(Ext2Partition* self, Ext4ExtentHeader* 
 	return read;
 }
 
-bool ext4_inode_data_read(Ext2Partition* self, InodeDesc* inode, usize off, void* data, usize size) {
+int ext4_inode_data_read(Ext2Partition* self, InodeDesc* inode, usize off, void* data, usize size) {
 	assert(inode->i_flags & 0x80000);
 	if (off >= inode->i_size) {
-		return false;
+		return ERR_INVALID_ARG;
 	}
 
 	Ext4ExtentHeader* extent_hdr = (Ext4ExtentHeader*) inode->i_block;
 	ext4_inode_data_read_helper(self, extent_hdr, off, data, size);
-	return true;
-}
-
-typedef struct {
-	usize off;
-} ReadDirData;
-
-static void* ext2_vfs_begin_read_dir(VNode*) {
-	ReadDirData* data = kcalloc(sizeof(ReadDirData));
-	assert(data);
-	return data;
-}
-
-static void ext2_vfs_end_read_dir(VNode*, void* state) {
-	kfree(state, sizeof(ReadDirData));
+	return 0;
 }
 
 static usize ext2_vfs_read_dir_internal(VNode* self, usize off, LinkedDirEntryDesc** dir) {
@@ -292,59 +279,66 @@ static usize ext2_vfs_read_dir_internal(VNode* self, usize off, LinkedDirEntryDe
 	return off;
 }
 
-static bool ext2_vfs_read_dir(VNode* self, void* state, DirEntry* entry) {
+static int ext2_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry) {
 	if (self->type != VNODE_DIR) {
-		return false;
+		return ERR_NOT_DIR;
 	}
 
-	ReadDirData* real_state = (ReadDirData*) state;
 	LinkedDirEntryDesc* desc;
-	usize new_off = ext2_vfs_read_dir_internal(self, real_state->off, &desc);
+	usize new_off = ext2_vfs_read_dir_internal(self, *offset, &desc);
 
 	if (!new_off) {
-		return false;
+		return ERR_NOT_EXISTS;
 	}
-	real_state->off = new_off;
+	*offset = new_off;
 
 	if (!desc->name_len) {
-		return false;
+		return ERR_NOT_EXISTS;
 	}
 	memcpy(entry->name, desc->name, desc->name_len);
 	entry->name_len = desc->name_len;
 	entry->name[entry->name_len] = 0;
 	entry->type = desc->file_type == 2 ? FS_ENTRY_TYPE_DIR : FS_ENTRY_TYPE_FILE;
-	return true;
+	return 0;
 }
 
-static VNode* ext2_vfs_lookup(VNode* self, Str component);
+static int ext2_vfs_lookup(VNode* self, Str component, VNode** ret);
 static void ext2_vfs_release(VNode* self);
-static bool ext2_vfs_read(VNode* self, void* data, usize off, usize size);
-static bool ext2_vfs_stat(VNode* self, Stat* stat);
+static int ext2_vfs_read(VNode* self, void* data, usize off, usize size);
+static int ext2_vfs_stat(VNode* self, Stat* stat);
 
 static VNode* ext2_populate_vnode(Vfs* vfs, VNodeType type, void* data, const InodeDesc* inode) {
 	VNode* node = vnode_alloc();
-	assert(node);
+	if (!node) {
+		return NULL;
+	}
 
 	node->vfs = vfs;
-	node->begin_read_dir = ext2_vfs_begin_read_dir;
-	node->end_read_dir = ext2_vfs_end_read_dir;
-	node->read_dir = ext2_vfs_read_dir;
-	node->lookup = ext2_vfs_lookup;
-	node->read = ext2_vfs_read;
-	node->stat = ext2_vfs_stat;
-	node->release = ext2_vfs_release;
+
+	VNodeOps ops = {
+		.read_dir = ext2_vfs_read_dir,
+		.lookup = ext2_vfs_lookup,
+		.read = ext2_vfs_read,
+		.stat = ext2_vfs_stat,
+		.release = ext2_vfs_release
+	};
+
+	node->ops = ops;
 	node->data = data;
 	node->inode = kmalloc(sizeof(InodeDesc));
-	assert(node->inode);
+	if (!node->inode) {
+		vnode_free(node);
+		return NULL;
+	}
 	*(InodeDesc*) node->inode = *inode;
 	node->type = type;
 	node->refcount = 1;
 	return node;
 }
 
-static VNode* ext2_vfs_lookup(VNode* self, Str component) {
+static int ext2_vfs_lookup(VNode* self, Str component, VNode** ret) {
 	if (self->type != VNODE_DIR) {
-		return NULL;
+		return ERR_NOT_DIR;
 	}
 
 	usize off = 0;
@@ -357,23 +351,27 @@ static VNode* ext2_vfs_lookup(VNode* self, Str component) {
 
 			if (entry->file_type == 2) {
 				void* data = kmalloc(inode.i_size);
-				assert(data);
+				if (!data) {
+					return ERR_NO_MEM;
+				}
 				ext4_inode_data_read(partition, &inode, 0, data, inode.i_size);
 
-				return ext2_populate_vnode(self->vfs, VNODE_DIR, data, &inode);
+				*ret = ext2_populate_vnode(self->vfs, VNODE_DIR, data, &inode);
+				return *ret ? 0 : ERR_NO_MEM;
 			}
 			else {
-				return ext2_populate_vnode(self->vfs, VNODE_FILE, NULL, &inode);
+				*ret = ext2_populate_vnode(self->vfs, VNODE_FILE, NULL, &inode);
+				return *ret ? 0 : ERR_NO_MEM;
 			}
 		}
 	}
 
-	return NULL;
+	return ERR_NOT_EXISTS;
 }
 
-static bool ext2_vfs_read(VNode* self, void* data, usize off, usize size) {
+static int ext2_vfs_read(VNode* self, void* data, usize off, usize size) {
 	if (self->type != VNODE_FILE) {
-		return false;
+		return ERR_OPERATION_NOT_SUPPORTED;
 	}
 
 	InodeDesc* inode = (InodeDesc*) self->inode;
@@ -382,10 +380,10 @@ static bool ext2_vfs_read(VNode* self, void* data, usize off, usize size) {
 	return ext4_inode_data_read(partition, inode, off, data, size);
 }
 
-static bool ext2_vfs_stat(VNode* self, Stat* stat) {
+static int ext2_vfs_stat(VNode* self, Stat* stat) {
 	InodeDesc* inode = (InodeDesc*) self->inode;
 	stat->size = inode->i_size;
-	return true;
+	return 0;
 }
 
 static void ext2_vfs_release(VNode* self) {
@@ -406,7 +404,9 @@ static VNode* ext2_vfs_get_root(Vfs* vfs) {
 	InodeDesc root_inode = ext2_inode_read(self, 2);
 
 	void* data = kmalloc(root_inode.i_size);
-	assert(data);
+	if (!data) {
+		return NULL;
+	}
 	ext4_inode_data_read(self, &root_inode, 0, data, root_inode.i_size);
 
 	VNode* node = ext2_populate_vnode(vfs, VNODE_DIR, data, &root_inode);
@@ -420,6 +420,8 @@ Vfs ext2_create_vfs(Ext2Partition* self) {
 		.data = self
 	};
 }
+
+static int NUMBER = 0;
 
 bool ext2_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	usize total_blks = end_blk - start_blk;
@@ -494,8 +496,7 @@ bool ext2_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	self->vfs = ext2_create_vfs(self);
 	vfs_add(&self->vfs);
 	self->partition_dev.vfs = &self->vfs;
-	// todo name
-	memcpy(self->partition_dev.generic.name, "ext2 partition", sizeof("ext2 partition"));
+	snprintf(self->partition_dev.generic.name, 128, "ext2_n%d", NUMBER++);
 	self->partition_dev.generic.refcount = 0;
 	dev_add(&self->partition_dev.generic, DEVICE_TYPE_PARTITION);
 

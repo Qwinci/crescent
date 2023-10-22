@@ -6,232 +6,197 @@
 #include "mem/allocator.h"
 #include "arch/cpu.h"
 
-typedef struct {
-	Handle handle;
-	__user const char* component;
-	usize component_len;
-} KernelFsOpenData;
+int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
+	char* buf = kmalloc(path_len + 1);
+	if (!buf) {
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(buf, path, path_len)) {
+		kfree(buf, path_len + 1);
+		return ERR_FAULT;
+	}
+	buf[path_len] = 0;
 
-typedef struct {
-	Handle handle;
-	Handle state;
-	DirEntry entry;
-} KernelFsReadDirData;
+	char* ptr = buf;
+	for (; *ptr && *ptr != '/'; ++ptr);
+	usize dev_len = ptr - buf;
 
-typedef struct {
-	Handle handle;
-	__user void* buffer;
-	usize len;
-} KernelFsReadData;
+	DeviceList* list = &DEVICES[DEVICE_TYPE_PARTITION];
+	mutex_lock(&list->lock);
 
-typedef struct {
-	Handle handle;
-	__user const void* buffer;
-	usize len;
-} KernelFsWriteData;
-
-int partition_dev_devmsg(PartitionDev* self, DevMsgFs msg, __user void* data) {
-	switch (msg) {
-		case DEVMSG_FS_OPEN:
-		{
-			Task* task = arch_get_cur_task();
-			KernelFsOpenData open_data;
-			if (!mem_copy_to_kernel(&open_data, data, sizeof(KernelFsOpenData))) {
-				return ERR_FAULT;
-			}
-
-			if (open_data.handle == INVALID_HANDLE) {
-				VNode* node = self->vfs->get_root(self->vfs);
-				if (!node) {
-					return ERR_NO_MEM;
-				}
-				Handle handle = handle_tab_insert(&task->process->handle_table, node, HANDLE_TYPE_VNODE);
-				if (handle == INVALID_HANDLE) {
-					node->release(node);
-				}
-				open_data.handle = handle;
-			}
-			else {
-				HandleEntry* node_entry = handle_tab_get(&task->process->handle_table, open_data.handle);
-				if (!node_entry) {
-					return ERR_INVALID_ARG;
-				}
-				VNode* node = (VNode*) node_entry->data;
-
-				char* buffer = kmalloc(open_data.component_len);
-				if (!buffer) {
-					return ERR_NO_MEM;
-				}
-				if (!mem_copy_to_kernel(buffer, open_data.component, open_data.component_len)) {
-					kfree(buffer, open_data.component_len);
-					return ERR_FAULT;
-				}
-
-				Str str = str_new_with_len(buffer, open_data.component_len);
-				VNode* new_node = node->lookup(node, str);
-				kfree(buffer, open_data.component_len);
-				// todo separate no mem and no file
-				if (!new_node) {
-					return ERR_INVALID_ARG;
-				}
-
-				Handle handle = handle_tab_insert(&task->process->handle_table, new_node, HANDLE_TYPE_VNODE);
-				if (handle == INVALID_HANDLE) {
-					new_node->release(new_node);
-				}
-				open_data.handle = handle;
-			}
-
-			if (!mem_copy_to_user(data, &open_data, sizeof(KernelFsOpenData))) {
-				HandleEntry* entry = handle_tab_get(&task->process->handle_table, open_data.handle);
-				if (entry) {
-					VNode* node = (VNode*) entry->data;
-					node->release(node);
-					handle_tab_close(&task->process->handle_table, open_data.handle);
-				}
-				return ERR_FAULT;
-			}
-
-			return 0;
-		}
-		case DEVMSG_FS_READDIR:
-		{
-			Task* task = arch_get_cur_task();
-			KernelFsReadDirData readdir_data;
-			if (!mem_copy_to_kernel(&readdir_data, data, sizeof(KernelFsReadDirData))) {
-				return ERR_FAULT;
-			}
-
-			HandleEntry* entry = handle_tab_get(&task->process->handle_table, readdir_data.handle);
-			if (!entry) {
-				return ERR_INVALID_ARG;
-			}
-			VNode* node = (VNode*) entry->data;
-
-			HandleEntry* state_entry = readdir_data.state ? handle_tab_get(&task->process->handle_table, readdir_data.state) : NULL;
-			void* state;
-			if (state_entry) {
-				state = state_entry->data;
-			}
-			else {
-				state = node->begin_read_dir(node);
-				readdir_data.state = handle_tab_insert(&task->process->handle_table, state, HANDLE_TYPE_KERNEL_GENERIC);
-			}
-
-			if (!node->read_dir(node, state, &readdir_data.entry)) {
-				handle_tab_close(&task->process->handle_table, readdir_data.state);
-				node->end_read_dir(node, state);
-				return ERR_NOT_EXISTS;
-			}
-
-			if (!mem_copy_to_user(data, &readdir_data, sizeof(KernelFsReadDirData))) {
-				handle_tab_close(&task->process->handle_table, readdir_data.state);
-				node->end_read_dir(node, state);
-				return ERR_FAULT;
-			}
-			return 0;
-		}
-		case DEVMSG_FS_READ:
-		{
-			Task* task = arch_get_cur_task();
-			KernelFsReadData read_data;
-			if (!mem_copy_to_kernel(&read_data, data, sizeof(KernelFsReadData))) {
-				return ERR_FAULT;
-			}
-
-			HandleEntry* entry = handle_tab_get(&task->process->handle_table, read_data.handle);
-			if (!entry) {
-				return ERR_INVALID_ARG;
-			}
-			VNode* node = (VNode*) entry->data;
-
-			void* buffer = kmalloc(read_data.len);
-			if (!buffer) {
-				return ERR_NO_MEM;
-			}
-			if (!node->read(node, buffer, node->cursor, read_data.len)) {
-				read_data.len = 0;
-				if (!mem_copy_to_user(data, &read_data, sizeof(KernelFsReadData))) {
-					kfree(buffer, read_data.len);
-					return ERR_FAULT;
-				}
-			}
-			else {
-				node->cursor += read_data.len;
-			}
-
-			if (!mem_copy_to_user(read_data.buffer, buffer, read_data.len)) {
-				kfree(buffer, read_data.len);
-				return ERR_FAULT;
-			}
-			kfree(buffer, read_data.len);
-
-			return 0;
-		}
-		case DEVMSG_FS_WRITE:
-		{
-			Task* task = arch_get_cur_task();
-			KernelFsWriteData write_data;
-			if (!mem_copy_to_kernel(&write_data, data, sizeof(KernelFsWriteData))) {
-				return ERR_FAULT;
-			}
-
-			HandleEntry* entry = handle_tab_get(&task->process->handle_table, write_data.handle);
-			if (!entry) {
-				return ERR_INVALID_ARG;
-			}
-			VNode* node = (VNode*) entry->data;
-
-			void* buffer = kmalloc(write_data.len);
-			if (!buffer) {
-				return ERR_NO_MEM;
-			}
-			if (!mem_copy_to_kernel(buffer, write_data.buffer, write_data.len)) {
-				kfree(buffer, write_data.len);
-				return ERR_FAULT;
-			}
-
-			if (!node->write(node, buffer, node->cursor, write_data.len)) {
-				write_data.len = 0;
-				if (!mem_copy_to_user(data, &write_data, sizeof(KernelFsWriteData))) {
-					kfree(buffer, write_data.len);
-					return ERR_FAULT;
-				}
-			}
-			else {
-				node->cursor += write_data.len;
-			}
-
-			kfree(buffer, write_data.len);
-
-			return 0;
-		}
-		case DEVMSG_FS_STAT:
-		{
-			Task* task = arch_get_cur_task();
-			FsStatData stat_data;
-			if (!mem_copy_to_kernel(&stat_data, data, sizeof(FsStatData))) {
-				return ERR_FAULT;
-			}
-
-			HandleEntry* entry = handle_tab_get(&task->process->handle_table, stat_data.handle);
-			if (!entry) {
-				return ERR_INVALID_ARG;
-			}
-			VNode* node = (VNode*) entry->data;
-
-			Stat stat;
-			if (!node->stat(node, &stat)) {
-				// todo better error
-				return ERR_INVALID_ARG;
-			}
-
-			stat_data.size = stat.size;
-			if (!mem_copy_to_user(data, &stat_data, sizeof(FsStatData))) {
-				return ERR_FAULT;
-			}
-
-			return 0;
+	GenericDevice* dev = NULL;
+	for (usize dev_i = 0; dev_i < list->len; ++dev_i) {
+		GenericDevice* d = list->devices[dev_i];
+		if (strncmp(d->name, buf, dev_len) == 0) {
+			dev = d;
+			break;
 		}
 	}
+
+	if (!dev) {
+		mutex_unlock(&list->lock);
+		kfree(buf, path_len + 1);
+		return ERR_NOT_EXISTS;
+	}
+
+	PartitionDev* d = container_of(dev, PartitionDev, generic);
+	VNode* root = d->vfs->get_root(d->vfs);
+	if (!root) {
+		mutex_unlock(&list->lock);
+		kfree(buf, path_len + 1);
+		return ERR_NO_MEM;
+	}
+	if (!*ptr) {
+		mutex_unlock(&list->lock);
+		kfree(buf, path_len + 1);
+
+		Task* task = arch_get_cur_task();
+
+		FileData* data = kmalloc(sizeof(FileData));
+		if (!data) {
+			root->ops.release(root);
+			return ERR_NO_MEM;
+		}
+		data->node = root;
+		data->cursor = 0;
+		Handle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
+		if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
+			root->ops.release(root);
+			handle_tab_close(&task->process->handle_table, handle);
+			kfree(data, sizeof(FileData));
+			return ERR_FAULT;
+		}
+		return 0;
+	}
+	++ptr;
+
+	VNode* node = root;
+	while (true) {
+		const char* start = ptr;
+		for (; *ptr && *ptr != '/'; ++ptr);
+		usize len = ptr - start;
+		if (len == 0) {
+			mutex_unlock(&list->lock);
+			kfree(buf, path_len + 1);
+			node->ops.release(node);
+
+			return ERR_INVALID_ARG;
+		}
+		VNode* ret_node;
+		int ret_status = node->ops.lookup(node, str_new_with_len(start, len), &ret_node);
+		if (ret_status != 0) {
+			mutex_unlock(&list->lock);
+			kfree(buf, path_len + 1);
+
+			node->ops.release(node);
+			return ret_status;
+		}
+		node->ops.release(node);
+		node = ret_node;
+		if (!*ptr) {
+			break;
+		}
+		++ptr;
+	}
+
+	mutex_unlock(&list->lock);
+	kfree(buf, path_len + 1);
+
+	Task* task = arch_get_cur_task();
+	FileData* data = kmalloc(sizeof(FileData));
+	if (!data) {
+		node->ops.release(node);
+		return ERR_NO_MEM;
+	}
+	data->node = node;
+	data->cursor = 0;
+
+	Handle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
+	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
+		handle_tab_close(&task->process->handle_table, handle);
+		node->ops.release(node);
+		kfree(data, sizeof(FileData));
+		return ERR_FAULT;
+	}
+	return 0;
+}
+
+int sys_read(Handle handle, __user void* buffer, size_t size) {
+	Task* task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
+	if (!entry || entry->type != HANDLE_TYPE_FILE) {
+		return ERR_INVALID_ARG;
+	}
+	FileData* data = (FileData*) entry->data;
+
+	char* buf = kmalloc(size);
+	if (!buf) {
+		return ERR_NO_MEM;
+	}
+
+	int ret = data->node->ops.read(data->node, buf, data->cursor, size);
+	if (ret == 0) {
+		data->cursor += size;
+	}
+	if (!mem_copy_to_user(buffer, buf, size)) {
+		kfree(buf, size);
+		return ERR_FAULT;
+	}
+	kfree(buf, size);
+	return ret;
+}
+
+int sys_stat(Handle handle, __user Stat* stat) {
+	Task* task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
+	if (!entry || entry->type != HANDLE_TYPE_FILE) {
+		return ERR_INVALID_ARG;
+	}
+	FileData* data = (FileData*) entry->data;
+
+	Stat s = {};
+	int ret = data->node->ops.stat(data->node, &s);
+
+	if (!mem_copy_to_user(stat, &s, sizeof(s))) {
+		return ERR_FAULT;
+	}
+	return ret;
+}
+
+int sys_opendir(__user const char* path, size_t path_len, __user Dir** ret) {
+	int status = sys_open(path, path_len, (__user Handle*) ret);
+	return status;
+}
+
+int sys_closedir(__user Dir* dir) {
+	Task* task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, (Handle) dir);
+	if (!entry || entry->type != HANDLE_TYPE_FILE) {
+		return ERR_INVALID_ARG;
+	}
+	FileData* data = (FileData*) entry->data;
+
+	data->node->ops.release(data->node);
+	handle_tab_close(&task->process->handle_table, (Handle) dir);
+	kfree(data, sizeof(FileData));
+	return 0;
+}
+
+int sys_readdir(__user Dir* dir, __user DirEntry* entry) {
+	Task* task = arch_get_cur_task();
+	HandleEntry* handle = handle_tab_get(&task->process->handle_table, (Handle) dir);
+	if (!handle || handle->type != HANDLE_TYPE_FILE) {
+		return ERR_INVALID_ARG;
+	}
+	FileData* data = (FileData*) handle->data;
+
+	DirEntry kernel_entry;
+	int ret = data->node->ops.read_dir(data->node, &data->cursor, &kernel_entry);
+	if (ret != 0) {
+		return ret;
+	}
+	if (!mem_copy_to_user(entry, &kernel_entry, sizeof(kernel_entry))) {
+		return ERR_FAULT;
+	}
+	return 0;
 }

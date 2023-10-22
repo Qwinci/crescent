@@ -13,6 +13,7 @@
 #include "crescent/sys.h"
 #include "mem/user.h"
 #include "fs/vfs.h"
+#include "fs.h"
 
 void sys_exit(int status);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
@@ -47,10 +48,17 @@ __attribute__((used)) void* syscall_handlers[] = {
 
 	sys_close,
 	sys_devmsg,
-	sys_devenum
+	sys_devenum,
+
+	sys_open,
+	sys_read,
+	sys_stat,
+	sys_opendir,
+	sys_readdir,
+	sys_closedir
 };
 
-__attribute__((used)) usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
+__attribute__((used)) const usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
 
 static const char* CAP_STRS[CAP_MAX] = {
 	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS",
@@ -328,10 +336,17 @@ int sys_close(Handle handle) {
 				((GenericDevice*) data)->refcount -= 1;
 				break;
 			case HANDLE_TYPE_VNODE:
-				((VNode*) data)->release((VNode*) data);
+				((VNode*) data)->ops.release((VNode*) data);
 				break;
 			case HANDLE_TYPE_KERNEL_GENERIC:
 				panic("kernel generic handle shouldn't ever get closed");
+			case HANDLE_TYPE_FILE:
+			{
+				FileData* f = (FileData*) data;
+				f->node->ops.release(f->node);
+				kfree(f, sizeof(FileData));
+				break;
+			}
 		}
 	}
 	return 0;

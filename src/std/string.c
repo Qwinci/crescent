@@ -198,7 +198,7 @@ int vsnprintf(char* restrict buffer, size_t size, const char* restrict fmt, va_l
 		}
 
 		if (!*fmt) {
-			return written;
+			break;
 		}
 		++fmt;
 
@@ -260,31 +260,56 @@ int vsnprintf(char* restrict buffer, size_t size, const char* restrict fmt, va_l
 					written += 1;
 					value *= -1;
 				}
-				written += print_int((uintmax_t) value, ptr, size, width);
+				int count = print_int((uintmax_t) value, ptr, size, width);
+				written += count;
+				ptr += count;
+				if (size >= (size_t) count) {
+					size -= count;
+				}
 				break;
 			}
 			case 'u':
 			{
 				unsigned int value = va_arg(ap, unsigned int);
-				written += print_int(value, ptr, size, width);
+				int count = print_int((uintmax_t) value, ptr, size, width);
+				written += count;
+				ptr += count;
+				if (size >= (size_t) count) {
+					size -= count;
+				}
 				break;
 			}
 			case 'x':
 			{
 				uintmax_t value = va_arg(ap, uintmax_t);
-				written += print_hex(value, ptr, size, width);
+				int count = print_hex(value, ptr, size, width);
+				written += count;
+				ptr += count;
+				if (size >= (size_t) count) {
+					size -= count;
+				}
 				break;
 			}
 			case 'b':
 			{
 				uintmax_t value = va_arg(ap, uintmax_t);
-				written += print_binary(value, ptr, size, width);
+				int count = print_binary(value, ptr, size, width);
+				written += count;
+				ptr += count;
+				if (size >= (size_t) count) {
+					size -= count;
+				}
 				break;
 			}
 			case 'p':
 			{
 				void* value = va_arg(ap, void*);
-				written += print_binary((uintmax_t) value, ptr, size, width);
+				int count = print_binary((uintmax_t) value, ptr, size, width);
+				written += count;
+				ptr += count;
+				if (size >= (size_t) count) {
+					size -= count;
+				}
 				break;
 			}
 			default:
@@ -297,6 +322,14 @@ int vsnprintf(char* restrict buffer, size_t size, const char* restrict fmt, va_l
 		}
 		++fmt;
 	}
+
+	if (buffer && size) {
+		*ptr = 0;
+	}
+	else if (buffer) {
+		ptr[-1] = 0;
+	}
+	return written;
 }
 
 int snprintf(char* restrict buffer, size_t size, const char* restrict fmt, ...) {

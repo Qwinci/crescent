@@ -87,8 +87,32 @@ int sys_devmsg(Handle handle, size_t msg, void* data) {
 	return (int) syscall3(SYS_DEVMSG, (size_t) handle, msg, (size_t) data);
 }
 
-int sys_devenum(DeviceType type, Handle* res, size_t* count) {
+int sys_devenum(DeviceType type, DeviceInfo* res, size_t* count) {
 	return (int) syscall3(SYS_DEVENUM, (size_t) type, (size_t) res, (size_t) count);
+}
+
+int sys_open(const char* path, size_t path_len, Handle* ret) {
+	return (int) syscall3(SYS_OPEN, (size_t) path, path_len, (size_t) ret);
+}
+
+int sys_read(Handle handle, void* buffer, size_t size) {
+	return (int) syscall3(SYS_READ, handle, (size_t) buffer, size);
+}
+
+int sys_stat(Handle handle, Stat* stat) {
+	return (int) syscall2(SYS_STAT, handle, (size_t) stat);
+}
+
+int sys_opendir(const char* path, size_t path_len, Dir** ret) {
+	return (int) syscall3(SYS_OPENDIR, (size_t) path, path_len, (size_t) ret);
+}
+
+int sys_closedir(Dir* dir) {
+	return (int) syscall1(SYS_CLOSEDIR, (size_t) dir);
+}
+
+int sys_readdir(Dir* dir, DirEntry* entry) {
+	return (int) syscall2(SYS_READDIR, (size_t) dir, (size_t) entry);
 }
 
 // clang-format off
@@ -180,31 +204,40 @@ void puts(const char* str) {
 }
 
 void another_thread(void* arg) {
-	puts("hello from another thread\n");
+	puts("hello from another thread");
 	if (arg == (void*) 0xCAFE) {
-		puts("cafe received from thread 1!\n");
+		puts("cafe received from thread 1!");
 	}
 	else {
-		puts("didn't receive cafe from thread 1\n");
+		puts("didn't receive cafe from thread 1");
 	}
 	sys_exit(0xCAFE);
+}
+
+void* memcpy(void* restrict dest, const void* restrict src, size_t len) {
+	char* dest_ptr = (char*) dest;
+	const char* src_ptr = (const char*) src;
+	for (size_t i = 0; i < len; ++i) {
+		*dest_ptr++ = *src_ptr++;
+	}
+	return dest;
 }
 
 _Noreturn void _start(void*) {
 	Handle another = sys_create_thread(another_thread, (void*) 0xCAFE);
 	if (another == INVALID_HANDLE) {
-		puts("sys_create_thread failed to create thread\n");
+		puts("sys_create_thread failed to create thread");
 	}
 	//puts("waiting for thread 2 to exit in thread1\n");
 	int status = sys_wait_thread(another);
 	if (sys_close(another)) {
-		puts("failed to close thread handle\n");
+		puts("failed to close thread handle");
 	}
 	if (status == 0xCAFE) {
 		//puts("thread 2 exited with status 0xCAFE\n");
 	}
 	else {
-		puts("thread 2 didn't exit with status 0xCAFE\n");
+		puts("thread 2 didn't exit with status 0xCAFE");
 	}
 
 	if (sys_request_cap(CAP_DIRECT_FB_ACCESS)) {
@@ -215,23 +248,23 @@ _Noreturn void _start(void*) {
 	}
 
 	if (sys_request_cap(CAP_MANAGE_POWER)) {
-		puts("user_tty got power management access\n");
+		puts("user_tty got power management access");
 	}
 	else {
-		puts("user_tty didn't get power management access, F5 isn't going to work\n");
+		puts("user_tty didn't get power management access, F5 isn't going to work");
 	}
 
-	Handle fb;
+	DeviceInfo fb;
 	size_t count = 1;
 	int ret = sys_devenum(DEVICE_TYPE_FB, &fb, &count);
 	if (ret == 0) {
 		SysFramebufferInfo info;
-		ret = sys_devmsg(fb, DEVMSG_FB_INFO, &info);
+		ret = sys_devmsg(fb.handle, DEVMSG_FB_INFO, &info);
 		if (ret != 0) {
-			puts("failed to get fb info\n");
+			puts("failed to get fb info");
 		}
 		void* base;
-		ret = sys_devmsg(fb, DEVMSG_FB_MAP, &base);
+		ret = sys_devmsg(fb.handle, DEVMSG_FB_MAP, &base);
 		if (ret == 0) {
 			for (size_t y = 0; y < 20; ++y) {
 				for (size_t x = info.width - 20; x < info.width; ++x) {
@@ -240,65 +273,66 @@ _Noreturn void _start(void*) {
 			}
 		}
 		else if (ret == ERR_NO_PERMISSIONS) {
-			puts("no permissions to map framebuffer\n");
+			puts("no permissions to map framebuffer");
 		}
 		else if (ret == ERR_NO_MEM) {
-			puts("no memory for framebuffer mapping\n");
+			puts("no memory for framebuffer mapping");
 		}
 		else {
-			puts("unknown error while mapping framebuffer\n");
+			puts("unknown error while mapping framebuffer");
 		}
 	}
 	else {
-		puts("failed to enumerate framebuffers\n");
+		puts("failed to enumerate framebuffers");
 	}
 
 	size_t par_count = 1;
-	Handle handle;
-	sys_devenum(DEVICE_TYPE_PARTITION, &handle, &par_count);
-	FsOpenData open_data = {
-		.handle = INVALID_HANDLE
-	};
-	sys_devmsg(handle, DEVMSG_FS_OPEN, &open_data);
+	DeviceInfo info;
+	sys_devenum(DEVICE_TYPE_PARTITION, &info, &par_count);
+	sys_close(info.handle);
 
-	Handle root = open_data.handle;
-	FsReadDirData readdir_data;
-	readdir_data.handle = root;
-	while (sys_devmsg(handle, DEVMSG_FS_READDIR, &readdir_data) != ERR_NOT_EXISTS) {
-		puts(readdir_data.entry.name);
-		if (readdir_data.entry.type != FS_ENTRY_TYPE_FILE) {
+	Dir* dir;
+	sys_opendir(info.name, strlen(info.name), &dir);
+
+	DirEntry entry;
+	while (sys_readdir(dir, &entry) == 0) {
+		puts(entry.name);
+		if (entry.type != FS_ENTRY_TYPE_FILE) {
 			continue;
 		}
 
-		open_data = (FsOpenData) {
-			.handle = root,
-			.component = readdir_data.entry.name,
-			.component_len = readdir_data.entry.name_len
-		};
-		sys_devmsg(handle, DEVMSG_FS_OPEN, &open_data);
-		// open_data.handle now points to opened file (or dir but this code assumes a file)
-		Handle file_handle = open_data.handle;
-		FsStatData stat_data = {
-			.handle = file_handle
-		};
-		sys_devmsg(handle, DEVMSG_FS_STAT, &stat_data);
+		char name[256];
+		memcpy(name, info.name, strlen(info.name));
+		name[strlen(info.name)] = '/';
+		memcpy(name + strlen(info.name) + 1, entry.name, entry.name_len);
+		name[strlen(info.name) + 1 + entry.name_len] = 0;
 
-		char* buffer = (char*) sys_mmap((stat_data.size + 1 + 0xFFF) & ~0xFFF, PROT_READ | PROT_WRITE);
-		FsReadData read_data = {
-			.handle = file_handle,
-			.buffer = buffer,
-			.len = stat_data.size
-		};
-		sys_devmsg(handle, DEVMSG_FS_READ, &read_data);
-		buffer[stat_data.size] = 0;
+		Handle handle;
+		ret = sys_open(name, strlen(name), &handle);
+		Stat stat;
+		ret = sys_stat(handle, &stat);
+
+		char* buffer = (char*) sys_mmap((stat.size + 1 + 0xFFF) & ~0xFFF, PROT_READ | PROT_WRITE);
+		ret = sys_read(handle, buffer, stat.size);
+		buffer[stat.size] = 0;
 		puts(buffer);
 
-		sys_close(file_handle);
-		sys_munmap(buffer, (stat_data.size + 1 + 0xFFF) & ~0xFFF);
+		sys_close(handle);
+		sys_munmap(buffer, (stat.size + 1 + 0xFFF) & ~0xFFF);
 	}
 
-	sys_close(root);
-	sys_close(handle);
+	// try mapping 100gb
+	void* huge_test = sys_mmap(1024ULL * 1024 * 1024 * 100, PROT_READ | PROT_WRITE);
+	if (huge_test) {
+		puts("100gb map successful");
+		puts("trying to write to the first and last pages");
+		*(int*) huge_test = 0xCAFE;
+		puts("first");
+		*(int*) ((uintptr_t) huge_test + 1024ULL * 1024 * 1024 * 100 - 4) = 0xCAFE;
+		if (*(int*) huge_test == 0xCAFE && *(int*) ((uintptr_t) huge_test + 1024ULL * 1024 * 1024 * 100 - 4) == 0xCAFE) {
+			puts("works");
+		}
+	}
 
 	// num arg0 arg1 arg2 arg3 arg4 arg5
 	// rdi rax  rsi  rdx  r10  r8   r9
@@ -310,7 +344,7 @@ _Noreturn void _start(void*) {
 		if (event.type == EVENT_KEY && event.key.pressed) {
 			if (event.key.key == SCAN_F5) {
 				if (sys_shutdown(SHUTDOWN_TYPE_REBOOT) == ERR_NO_PERMISSIONS) {
-					puts("no permissions to perform the reboot\n");
+					puts("no permissions to perform the reboot");
 				}
 			}
 

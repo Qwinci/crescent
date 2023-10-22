@@ -3,6 +3,7 @@
 #include "string.h"
 #include "sys/dev.h"
 #include "fs/vfs.h"
+#include "sys/fs.h"
 
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 	mutex_lock(&self->lock);
@@ -141,6 +142,11 @@ bool handle_tab_duplicate(HandleTable* self, HandleTable* ret) {
 				break;
 			case HANDLE_TYPE_KERNEL_GENERIC:
 				continue;
+			case HANDLE_TYPE_FILE:
+			{
+				((FileData*) data)->node->refcount += 1;
+				break;
+			}
 		}
 	}
 

@@ -22,11 +22,11 @@ add_executable(user_tty tests/user_tty.c)
 target_include_directories(user_tty PRIVATE include)
 
 target_compile_options(crescent PRIVATE
-		$<$<COMPILE_LANGUAGE:C>: -Wall
+		$<$<COMPILE_LANGUAGE:C>: -Wall -Wextra
 		-mgeneral-regs-only -mno-red-zone -mcmodel=kernel
 		-fno-stack-protector -fno-exceptions -fno-rtti
 		-fno-omit-frame-pointer
-		-fPIC -nostdlibinc -Werror=switch -Werror=noderef
+		-fPIC -nostdlibinc -Werror=switch -Werror=noderef -Werror=return-type
 		-Wframe-larger-than=8192 -Werror=frame-larger-than>)
 target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:ASM>: -Wno-unused-command-line-argument>)
 target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld)

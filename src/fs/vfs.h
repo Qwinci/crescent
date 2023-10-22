@@ -8,22 +8,22 @@ typedef enum {
 	VNODE_DIR
 } VNodeType;
 
+typedef struct VNode VNode;
+typedef struct Dir Dir;
+
 typedef struct {
-	usize size;
-} Stat;
+	int (*read_dir)(VNode* self, usize* offset, DirEntry* entry);
+	int (*lookup)(VNode* self, Str component, VNode** ret);
+	int (*read)(VNode* self, void* data, usize off, usize size);
+	int (*stat)(VNode* self, Stat* stat);
+	int (*write)(VNode* self, const void* data, usize off, usize size);
+	void (*release)(VNode* self);
+} VNodeOps;
 
 typedef struct VNode {
 	struct Vfs* vfs;
-	void* (*begin_read_dir)(struct VNode* self);
-	void (*end_read_dir)(struct VNode* self, void* state);
-	bool (*read_dir)(struct VNode* self, void* state, DirEntry* entry);
-	struct VNode* (*lookup)(struct VNode* self, Str component);
-	bool (*read)(struct VNode* self, void* data, usize off, usize size);
-	bool (*stat)(struct VNode* self, Stat* stat);
-	bool (*write)(struct VNode* self, const void* data, usize off, usize size);
-	void (*release)(struct VNode* self);
+	VNodeOps ops;
 
-	size_t cursor;
 	size_t refcount;
 	void* data;
 	void* inode;

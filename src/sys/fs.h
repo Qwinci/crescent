@@ -9,4 +9,14 @@ typedef struct {
 	Vfs* vfs;
 } PartitionDev;
 
-int partition_dev_devmsg(PartitionDev* self, DevMsgFs msg, __user void* data);
+typedef struct {
+	struct VNode* node;
+	usize cursor;
+} FileData;
+
+int sys_open(__user const char* path, size_t path_len, __user Handle* ret);
+int sys_read(Handle handle, __user void* buffer, size_t size);
+int sys_stat(Handle handle, __user Stat* stat);
+int sys_opendir(__user const char* path, size_t path_len, __user Dir** ret);
+int sys_closedir(__user Dir* dir);
+int sys_readdir(__user Dir* dir, __user DirEntry* entry);

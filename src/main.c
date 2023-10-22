@@ -25,7 +25,7 @@
 #endif
 	pci_init();
 
-	Vfs* vfs = VFS_LIST;
+	/*Vfs* vfs = VFS_LIST;
 	if (vfs) {
 		VNode* root = vfs->get_root(vfs);
 		void* state = root->begin_read_dir(root);
@@ -57,7 +57,7 @@
 		root->end_read_dir(root, state);
 
 		root->release(root);
-	}
+	}*/
 
 	tar_initramfs_init();
 

@@ -28,6 +28,25 @@ void dev_add(GenericDevice* device, DeviceType type) {
 	mutex_unlock(&list->lock);
 }
 
+GenericDevice* dev_get(const char* name, usize name_len) {
+	for (usize i = 0; i < DEVICE_TYPE_MAX; ++i) {
+		DeviceList* list = &DEVICES[i];
+		mutex_lock(&list->lock);
+
+		for (usize dev_i = 0; dev_i < list->len; ++dev_i) {
+			GenericDevice* dev = list->devices[dev_i];
+			if (strncmp(dev->name, name, name_len) == 0) {
+				mutex_unlock(&list->lock);
+				return dev;
+			}
+		}
+
+		mutex_unlock(&list->lock);
+	}
+
+	return NULL;
+}
+
 void dev_remove(GenericDevice* device, DeviceType type) {
 	DeviceList* list = &DEVICES[type];
 	mutex_lock(&list->lock);
@@ -56,7 +75,7 @@ int sys_devmsg(Handle handle, size_t msg, __user void* data) {
 		case DEVICE_TYPE_SND:
 			assert(0 && "not implemented");
 		case DEVICE_TYPE_PARTITION:
-			return partition_dev_devmsg(container_of(device, PartitionDev, generic), msg, data);
+			assert(0 && "not implemented");
 		case DEVICE_TYPE_MAX:
 			return ERR_INVALID_ARG;
 	}
@@ -64,7 +83,7 @@ int sys_devmsg(Handle handle, size_t msg, __user void* data) {
 	return 0;
 }
 
-int sys_devenum(DeviceType type, __user Handle* res, __user size_t* count) {
+int sys_devenum(DeviceType type, __user DeviceInfo* res, __user size_t* count) {
 	if (type >= DEVICE_TYPE_MAX) {
 		return ERR_INVALID_ARG;
 	}
@@ -75,8 +94,8 @@ int sys_devenum(DeviceType type, __user Handle* res, __user size_t* count) {
 	if (!res) {
 		size_t kernel_count = list->len;
 
+		mutex_unlock(&list->lock);
 		if (!mem_copy_to_user(count, &kernel_count, sizeof(size_t))) {
-			mutex_unlock(&list->lock);
 			return ERR_FAULT;
 		}
 		return 0;
@@ -95,16 +114,21 @@ int sys_devenum(DeviceType type, __user Handle* res, __user size_t* count) {
 		// todo support removing devices
 		ptr->refcount += 1;
 		Handle handle = handle_tab_insert(&task->process->handle_table, ptr, HANDLE_TYPE_DEVICE);
-		if (!mem_copy_to_user(res + i, &handle, sizeof(Handle))) {
+		DeviceInfo info = {
+			.handle = handle
+		};
+		strncpy(info.name, ptr->name, sizeof(info.name));
+		if (!mem_copy_to_user(res + i, &info, sizeof(info))) {
 			mutex_unlock(&list->lock);
 			return ERR_FAULT;
 		}
 	}
 
+	mutex_unlock(&DEVICES[type].lock);
+
 	if (!mem_copy_to_user(count, &len, sizeof(size_t))) {
 		return ERR_FAULT;
 	}
 
-	mutex_unlock(&DEVICES[type].lock);
 	return 0;
 }

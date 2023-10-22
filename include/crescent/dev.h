@@ -1,6 +1,8 @@
 #ifndef CRESCENT_DEV_H
 #define CRESCENT_DEV_H
 
+#define DEV_NAME_MAX 128
+
 typedef enum {
 	DEVICE_TYPE_FB,
 	DEVICE_TYPE_SND,
@@ -8,6 +10,9 @@ typedef enum {
 	DEVICE_TYPE_MAX
 } DeviceType;
 
-#define DEVMSG_INFO 0
+typedef struct {
+	char name[DEV_NAME_MAX];
+	Handle handle;
+} DeviceInfo;
 
 #endif

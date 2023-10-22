@@ -6,6 +6,7 @@
 #include "mem/utils.h"
 #include "assert.h"
 #include "sys/fs.h"
+#include "crescent/sys.h"
 
 typedef struct {
 	char filename[100];
@@ -27,12 +28,10 @@ static u64 oct_to_int(const char* str) {
 	return value;
 }
 
-static void* tar_vfs_begin_read_dir(VNode* self);
-static void tar_vfs_end_read_dir(VNode*, void*);
-static bool tar_vfs_read_dir(VNode* self, void* state, DirEntry* entry);
-static VNode* tar_vfs_lookup(VNode* self, Str component);
-static bool tar_vfs_read(VNode* self, void* data, usize off, usize size);
-static bool tar_vfs_stat(VNode* self, Stat* stat);
+static int tar_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry);
+static int tar_vfs_lookup(VNode* self, Str component, VNode** ret);
+static int tar_vfs_read(VNode* self, void* data, usize off, usize size);
+static int tar_vfs_stat(VNode* self, Stat* stat);
 static void tar_vfs_release(VNode* self);
 
 static VNode* tar_populate_vnode(Vfs* vfs, void* data, VNodeType type) {
@@ -41,13 +40,16 @@ static VNode* tar_populate_vnode(Vfs* vfs, void* data, VNodeType type) {
 		return NULL;
 	}
 	node->vfs = vfs;
-	node->begin_read_dir = tar_vfs_begin_read_dir;
-	node->end_read_dir = tar_vfs_end_read_dir;
-	node->read_dir = tar_vfs_read_dir;
-	node->lookup = tar_vfs_lookup;
-	node->read = tar_vfs_read;
-	node->stat = tar_vfs_stat;
-	node->release = tar_vfs_release;
+
+	VNodeOps ops = {
+		.read_dir = tar_vfs_read_dir,
+		.lookup = tar_vfs_lookup,
+		.read = tar_vfs_read,
+		.stat = tar_vfs_stat,
+		.release = tar_vfs_release
+	};
+
+	node->ops = ops;
 	node->data = data;
 	node->type = type;
 	node->refcount = 1;
@@ -55,17 +57,9 @@ static VNode* tar_populate_vnode(Vfs* vfs, void* data, VNodeType type) {
 	return node;
 }
 
-static void* tar_vfs_begin_read_dir(VNode* self) {
-	if (self->type == VNODE_DIR) {
-		self->cursor = 0;
-	}
-	return NULL;
-}
-static void tar_vfs_end_read_dir(VNode*, void*) {}
-
-static bool tar_vfs_read_dir(VNode* self, void*, DirEntry* entry) {
+static int tar_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry) {
 	if (self->type != VNODE_DIR) {
-		return false;
+		return ERR_NOT_DIR;
 	}
 
 	const TarHeader* cur_hdr = (const TarHeader*) self->data;
@@ -77,7 +71,7 @@ static bool tar_vfs_read_dir(VNode* self, void*, DirEntry* entry) {
 	}
 	usize dir_len = dir_end - cur_hdr->filename;
 
-	const TarHeader* next_hdr = offset(cur_hdr, const TarHeader*, self->cursor + 512 + ALIGNUP(oct_to_int(cur_hdr->size), 512));
+	const TarHeader* next_hdr = offset(cur_hdr, const TarHeader*, *offset + 512 + ALIGNUP(oct_to_int(cur_hdr->size), 512));
 	if (!next_hdr->filename[0]) {
 		return false;
 	}
@@ -96,16 +90,16 @@ static bool tar_vfs_read_dir(VNode* self, void*, DirEntry* entry) {
 			break;
 		}
 		else {
-			self->cursor += 512 + ALIGNUP(oct_to_int(next_hdr->size), 512);
+			*offset += 512 + ALIGNUP(oct_to_int(next_hdr->size), 512);
 			next_hdr = offset(next_hdr, const TarHeader*, 512 + ALIGNUP(oct_to_int(next_hdr->size), 512));
 
 			if (!next_hdr->filename[0]) {
-				return false;
+				return ERR_NOT_EXISTS;
 			}
 		}
 	}
 
-	self->cursor += 512 + ALIGNUP(oct_to_int(next_hdr->size), 512);
+	*offset += 512 + ALIGNUP(oct_to_int(next_hdr->size), 512);
 
 	usize len = strlen(next_hdr->filename);
 	entry->name_len = len - (dir_len + 1) - (next_hdr->filename[len - 1] == '/' ? 1 : 0);
@@ -113,12 +107,12 @@ static bool tar_vfs_read_dir(VNode* self, void*, DirEntry* entry) {
 	entry->name[entry->name_len] = 0;
 	entry->type = next_hdr->typeflag == '5' ? FS_ENTRY_TYPE_DIR : FS_ENTRY_TYPE_FILE;
 
-	return true;
+	return 0;
 }
 
-static VNode* tar_vfs_lookup(VNode* self, Str component) {
+static int tar_vfs_lookup(VNode* self, Str component, VNode** ret) {
 	if (self->type != VNODE_DIR) {
-		return NULL;
+		return ERR_NOT_DIR;
 	}
 
 	const TarHeader* cur_hdr = (const TarHeader*) self->data;
@@ -151,30 +145,35 @@ static VNode* tar_vfs_lookup(VNode* self, Str component) {
 		else {
 			next_hdr = offset(next_hdr, const TarHeader*, 512 + ALIGNUP(oct_to_int(next_hdr->size), 512));
 			if (!next_hdr->filename[0]) {
-				return NULL;
+				return ERR_NOT_EXISTS;
 			}
 		}
 	}
 
 	VNodeType type = next_hdr->typeflag == '5' ? VNODE_DIR : VNODE_FILE;
-	return tar_populate_vnode(self->vfs, (void*) next_hdr, type);
+	*ret = tar_populate_vnode(self->vfs, (void*) next_hdr, type);
+	return 0;
 }
 
-static bool tar_vfs_read(VNode* self, void* data, usize off, usize size) {
+static int tar_vfs_read(VNode* self, void* data, usize off, usize size) {
 	const TarHeader* hdr = (const TarHeader*) self->data;
+	if (hdr->typeflag == '5') {
+		return ERR_OPERATION_NOT_SUPPORTED;
+	}
+
 	usize file_size = oct_to_int(hdr->size);
 	if (off + size > file_size) {
-		return false;
+		return ERR_INVALID_ARG;
 	}
 	memcpy(data, offset(hdr, void*, 512 + off), size);
 
-	return true;
+	return 0;
 }
 
-static bool tar_vfs_stat(VNode* self, Stat* stat) {
+static int tar_vfs_stat(VNode* self, Stat* stat) {
 	const TarHeader* hdr = (const TarHeader*) self->data;
 	stat->size = oct_to_int(hdr->size);
-	return true;
+	return 0;
 }
 
 static void tar_vfs_release(VNode* self) {

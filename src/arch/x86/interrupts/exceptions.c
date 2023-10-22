@@ -62,17 +62,18 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx;
 
 	Task* self = arch_get_cur_task();
-	if (self->handler_ip) {
-		ctx->ip = (usize) self->handler_ip;
-		ctx->sp = (usize) self->handler_sp;
-		self->handler_ip = 0;
-		return IRQ_ACK;
-	}
 
 	u64 addr;
 	__asm__ volatile("mov %%cr2, %0" : "=r"(addr));
 
 	if (process_handle_fault(self->process, addr)) {
+		return IRQ_ACK;
+	}
+
+	if (self->handler_ip) {
+		ctx->ip = (usize) self->handler_ip;
+		ctx->sp = (usize) self->handler_sp;
+		self->handler_ip = 0;
 		return IRQ_ACK;
 	}
 
@@ -99,6 +100,11 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 	else if (sgx) reason = "sgx violation";
 	else if (!present) reason = "non present page";
 	if (reason) kprintf_nolock("(%s)\n", reason);
+
+	kprintf_nolock("rax: %X rbx: %X rcx: %X rdx: %X rdi: %X rsi: %X rsp: %X rbp: %X\n"
+				   "r8: %X r9: %X r10: %X r11: %X r12: %X r13: %X r14: %X r15: %X\n",
+				   ctx->rax, ctx->rbx, ctx->rcx, ctx->rdx, ctx->rdi, ctx->rsi, ctx->sp, ctx->rbp,
+				   ctx->r8, ctx->r9, ctx->r10, ctx->r11, ctx->r12, ctx->r13, ctx->r14, ctx->r15);
 
 	kputs_nolock("backtrace:\n", sizeof("backtrace:\n") - 1);
 	backtrace_display(false);

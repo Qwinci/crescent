@@ -12,6 +12,7 @@
 #include "sched/process.h"
 #include "sys/dev.h"
 #include "fs/vfs.h"
+#include "sys/fs.h"
 
 typedef struct {
 	u64 r15, r14, r13, r12, rbp, rbx;
@@ -187,10 +188,17 @@ void arch_destroy_task(Task* task) {
 						((GenericDevice*) data)->refcount -= 1;
 						break;
 					case HANDLE_TYPE_VNODE:
-						((VNode*) data)->release((VNode*) data);
+						((VNode*) data)->ops.release((VNode*) data);
 						break;
 					case HANDLE_TYPE_KERNEL_GENERIC:
 						continue;
+					case HANDLE_TYPE_FILE:
+					{
+						FileData* f = (FileData*) data;
+						f->node->ops.release(f->node);
+						kfree(f, sizeof(FileData));
+						break;
+					}
 				}
 			}
 

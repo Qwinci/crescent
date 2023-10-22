@@ -53,7 +53,7 @@ x86_syscall_entry:
 	push %rbp
 
     cmp (syscall_handler_count), %rdi
-	jl 0f
+	jb 0f
 	mov $-1, %rax
 	jmp x86_syscall_entry_exit
 

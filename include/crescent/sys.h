@@ -22,11 +22,20 @@ typedef enum {
 #define SYS_DEVMSG 13
 #define SYS_DEVENUM 14
 
+#define SYS_OPEN 15
+#define SYS_READ 16
+#define SYS_STAT 17
+#define SYS_OPENDIR 18
+#define SYS_READDIR 19
+#define SYS_CLOSEDIR 20
+
 #define ERR_INVALID_ARG (-1)
 #define ERR_NO_PERMISSIONS (-2)
 #define ERR_NO_MEM (-3)
 #define ERR_FAULT (-4)
 #define ERR_NOT_EXISTS (-5)
+#define ERR_OPERATION_NOT_SUPPORTED (-6)
+#define ERR_NOT_DIR (-7)
 
 #define PROT_READ (1 << 0)
 #define PROT_WRITE (1 << 1)
