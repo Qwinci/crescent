@@ -6,20 +6,10 @@
 #include "mem/allocator.h"
 #include "arch/cpu.h"
 
-int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
-	char* buf = kmalloc(path_len + 1);
-	if (!buf) {
-		return ERR_NO_MEM;
-	}
-	if (!mem_copy_to_kernel(buf, path, path_len)) {
-		kfree(buf, path_len + 1);
-		return ERR_FAULT;
-	}
-	buf[path_len] = 0;
-
-	char* ptr = buf;
+int kernel_fs_open(const char* path, VNode** ret) {
+	const char* ptr = path;
 	for (; *ptr && *ptr != '/'; ++ptr);
-	usize dev_len = ptr - buf;
+	usize dev_len = ptr - path;
 
 	DeviceList* list = &DEVICES[DEVICE_TYPE_PARTITION];
 	mutex_lock(&list->lock);
@@ -27,7 +17,7 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 	GenericDevice* dev = NULL;
 	for (usize dev_i = 0; dev_i < list->len; ++dev_i) {
 		GenericDevice* d = list->devices[dev_i];
-		if (strncmp(d->name, buf, dev_len) == 0) {
+		if (strncmp(d->name, path, dev_len) == 0) {
 			dev = d;
 			break;
 		}
@@ -35,7 +25,6 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 
 	if (!dev) {
 		mutex_unlock(&list->lock);
-		kfree(buf, path_len + 1);
 		return ERR_NOT_EXISTS;
 	}
 
@@ -43,29 +32,11 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 	VNode* root = d->vfs->get_root(d->vfs);
 	if (!root) {
 		mutex_unlock(&list->lock);
-		kfree(buf, path_len + 1);
 		return ERR_NO_MEM;
 	}
 	if (!*ptr) {
 		mutex_unlock(&list->lock);
-		kfree(buf, path_len + 1);
-
-		Task* task = arch_get_cur_task();
-
-		FileData* data = kmalloc(sizeof(FileData));
-		if (!data) {
-			root->ops.release(root);
-			return ERR_NO_MEM;
-		}
-		data->node = root;
-		data->cursor = 0;
-		Handle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
-		if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
-			root->ops.release(root);
-			handle_tab_close(&task->process->handle_table, handle);
-			kfree(data, sizeof(FileData));
-			return ERR_FAULT;
-		}
+		*ret = root;
 		return 0;
 	}
 	++ptr;
@@ -77,7 +48,6 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 		usize len = ptr - start;
 		if (len == 0) {
 			mutex_unlock(&list->lock);
-			kfree(buf, path_len + 1);
 			node->ops.release(node);
 
 			return ERR_INVALID_ARG;
@@ -86,9 +56,8 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 		int ret_status = node->ops.lookup(node, str_new_with_len(start, len), &ret_node);
 		if (ret_status != 0) {
 			mutex_unlock(&list->lock);
-			kfree(buf, path_len + 1);
-
 			node->ops.release(node);
+
 			return ret_status;
 		}
 		node->ops.release(node);
@@ -100,7 +69,29 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 	}
 
 	mutex_unlock(&list->lock);
+
+	*ret = node;
+	return 0;
+}
+
+int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
+	char* buf = kmalloc(path_len + 1);
+	if (!buf) {
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(buf, path, path_len)) {
+		kfree(buf, path_len + 1);
+		return ERR_FAULT;
+	}
+	buf[path_len] = 0;
+
+	VNode* node;
+	int status = kernel_fs_open(buf, &node);
+
 	kfree(buf, path_len + 1);
+	if (status != 0) {
+		return status;
+	}
 
 	Task* task = arch_get_cur_task();
 	FileData* data = kmalloc(sizeof(FileData));

@@ -20,3 +20,5 @@ int sys_stat(Handle handle, __user Stat* stat);
 int sys_opendir(__user const char* path, size_t path_len, __user Dir** ret);
 int sys_closedir(__user Dir* dir);
 int sys_readdir(__user Dir* dir, __user DirEntry* entry);
+
+int kernel_fs_open(const char* path, struct VNode** ret);
