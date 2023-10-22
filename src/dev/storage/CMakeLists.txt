@@ -4,5 +4,3 @@ target_sources(crescent PRIVATE
 
         gpt.c
         )
-
-add_subdirectory(fs)

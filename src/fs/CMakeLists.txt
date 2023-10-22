@@ -1,1 +1,1 @@
-target_sources(crescent PRIVATE vfs.c tar.c)
+target_sources(crescent PRIVATE vfs.c tar.c ext2.c fat.c)

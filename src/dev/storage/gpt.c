@@ -1,6 +1,6 @@
 #include "gpt.h"
 #include "assert.h"
-#include "dev/storage/fs/fat.h"
+#include "fs/fat.h"
 #include "mbr.h"
 #include "mem/allocator.h"
 #include "mem/utils.h"
@@ -8,7 +8,7 @@
 #include "string.h"
 #include "types.h"
 #include "utils/math.h"
-#include "dev/storage/fs/ext2.h"
+#include "fs/ext2.h"
 
 typedef struct {
 	char signature[8];

@@ -889,6 +889,8 @@ static void callback(void* ptr, usize len, void* userdata) {
 	sound_ptr = offset(sound_ptr, void*, len);
 }
 
+static int NUMBER = 0;
+
 static void hda_init(PciDev* dev) {
 	kprintf("hda init\n");
 
@@ -1012,7 +1014,7 @@ static void hda_init(PciDev* dev) {
 
 	kprintf("controller ready\n");
 
-	// todo
+	snprintf(self->snd_dev.generic.name, sizeof(self->snd_dev.generic.name), "hda#%d", NUMBER++);
 	memcpy(self->snd_dev.generic.name, "hda#unknown", sizeof("hda#unknown"));
 
 	self->snd_dev.create_stream = snd_create_stream;
