@@ -246,12 +246,14 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 
 	ThreadHandle* handle = kmalloc(sizeof(ThreadHandle));
 	if (!handle) {
+		mutex_unlock(&process->threads_lock);
 		return INVALID_HANDLE;
 	}
 
 	Task* task = arch_create_user_task(self->process, "user thread", fn, arg);
 	if (!task) {
 		kfree(handle, sizeof(ThreadHandle));
+		mutex_unlock(&process->threads_lock);
 		return INVALID_HANDLE;
 	}
 
