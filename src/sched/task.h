@@ -27,6 +27,12 @@ typedef struct {
 	Mutex lock;
 } ThreadHandle;
 
+typedef struct {
+	Process* process;
+	bool exited;
+	Mutex lock;
+} ProcessHandle;
+
 typedef struct Task {
 	char name[128];
 	struct Task* next;

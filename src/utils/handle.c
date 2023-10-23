@@ -106,7 +106,7 @@ void* handle_tab_open(HandleTable* self, Handle handle) {
 bool handle_tab_duplicate(HandleTable* self, HandleTable* ret) {
 	memset(ret, 0, sizeof(HandleTable));
 	ret->table = (HandleEntry*) kmalloc(self->cap * sizeof(HandleEntry));
-	if (!ret->table) {
+	if (self->cap && !ret->table) {
 		return false;
 	}
 	memcpy(ret->table, self->table, self->cap * sizeof(HandleEntry));
@@ -144,9 +144,18 @@ bool handle_tab_duplicate(HandleTable* self, HandleTable* ret) {
 				continue;
 			case HANDLE_TYPE_FILE:
 			{
-				((FileData*) data)->node->refcount += 1;
+				FileData* copy = kmalloc(sizeof(FileData));
+				if (!copy) {
+					// todo free memory
+					return false;
+				}
+				*copy = *(FileData*) data;
+				copy->node->refcount += 1;
 				break;
 			}
+			case HANDLE_TYPE_PROCESS:
+				// todo refcount
+				break;
 		}
 	}
 

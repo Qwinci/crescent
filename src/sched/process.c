@@ -141,7 +141,14 @@ void process_destroy(Process* process) {
 		Mapping* next = (Mapping*) mapping->hook.successor;
 		for (usize i = mapping->base; i < mapping->base + mapping->size; i += PAGE_SIZE) {
 			usize phys = arch_virt_to_phys(process->map, i);
+			if (!phys) {
+				continue;
+			}
 			Page* page = page_from_addr(phys);
+			if (page->refs != 0) {
+				page->refs -= 1;
+				continue;
+			}
 			pfree(page, 1);
 		}
 		process_remove_mapping(process, (usize) mapping->base);
@@ -175,6 +182,9 @@ void process_destroy(Process* process) {
 				kfree(f, sizeof(FileData));
 				break;
 			}
+			case HANDLE_TYPE_PROCESS:
+				kfree(data, sizeof(ProcessHandle));
+				break;
 		}
 	}
 

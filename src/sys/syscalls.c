@@ -18,7 +18,7 @@
 
 void sys_exit(int status);
 int sys_create_process(__user const char* path, size_t path_len, __user Handle* ret);
-int sys_kill_process(Process* process);
+int sys_kill_process(Handle process_handle);
 Handle sys_create_thread(void (*fn)(void*), void* arg);
 int sys_kill_thread(Handle handle);
 int sys_dprint(__user const char* msg, size_t len);
@@ -318,20 +318,21 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	void (*user_fn)(void*) = (void (*)(void*)) res.entry;
 	arch_set_user_task_fn(thread, user_fn);
 
-	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));
+	ProcessHandle* h = kmalloc(sizeof(ProcessHandle));
 	if (!h) {
 		arch_destroy_task(thread);
 		return ERR_NO_MEM;
 	}
-	h->task = thread;
+	h->process = process;
 	h->exited = false;
 	memset(&h->lock, 0, sizeof(Mutex));
-	Handle handle = handle_tab_insert(&process->handle_table, h, HANDLE_TYPE_THREAD);
+	Task* task = arch_get_cur_task();
+	Handle handle = handle_tab_insert(&task->process->handle_table, h, HANDLE_TYPE_PROCESS);
 
 	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
+		handle_tab_close(&task->process->handle_table, handle);
 		arch_destroy_task(thread);
-		handle_tab_close(&process->handle_table, handle);
-		kfree(h, sizeof(ThreadHandle));
+		kfree(h, sizeof(ProcessHandle));
 		return ERR_FAULT;
 	}
 
@@ -349,7 +350,20 @@ int sys_wait_process(Handle handle) {
 	return ERR_OPERATION_NOT_SUPPORTED;
 }
 
-int sys_kill_process(Process* process) {
+int sys_kill_process(Handle process_handle) {
+	Task* this_task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&this_task->process->handle_table, process_handle);
+	if (!entry || entry->type != HANDLE_TYPE_PROCESS) {
+		return ERR_INVALID_ARG;
+	}
+	ProcessHandle* h = (ProcessHandle*) entry->data;
+	if (h->exited) {
+		return 0;
+	}
+
+	mutex_lock(&h->lock);
+	Process* process = h->process;
+
 	mutex_lock(&process->threads_lock);
 	atomic_store_explicit(&process->killed, true, memory_order_release);
 
@@ -358,6 +372,7 @@ int sys_kill_process(Process* process) {
 	}
 
 	mutex_unlock(&process->threads_lock);
+	mutex_unlock(&h->lock);
 	return 0;
 }
 
@@ -434,6 +449,9 @@ int sys_close(Handle handle) {
 				kfree(f, sizeof(FileData));
 				break;
 			}
+			case HANDLE_TYPE_PROCESS:
+				kfree(data, sizeof(ProcessHandle));
+				break;
 		}
 	}
 	return 0;
