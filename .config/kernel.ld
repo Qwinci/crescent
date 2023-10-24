@@ -11,16 +11,6 @@ SECTIONS {
 	.rodata : { *(.rodata .rodata.*) }
 	.eh_frame_hdr : { *(.eh_frame_hdr) }
 	.eh_frame : { KEEP(*(.eh_frame)) }
-	.drivers : {
-	    DRIVERS_START = .;
-	    KEEP(*(.drivers))
-	    DRIVERS_END = .;
-	}
-	.tests : {
-	    TEST_START = .;
-	    KEEP(*(.tests))
-	    TEST_END = .;
-	}
 
 	. = ALIGN(CONSTANT(MAXPAGESIZE));
 	PROVIDE(RODATA_END = .);
@@ -64,6 +54,16 @@ SECTIONS {
 	.got : { *(.got) *(.igot) }
 	.got.plt : { *(.got.plt) *(.igot.plt) }
 	.data : { *(.data .data.*) }
+	.drivers : {
+        DRIVERS_START = .;
+        KEEP(*(.drivers))
+        DRIVERS_END = .;
+    }
+    .tests : {
+        TEST_START = .;
+        KEEP(*(.tests))
+        TEST_END = .;
+    }
 	.bss : { *(COMMON) *(.dynbss) *(.bss .bss.*) }
 
 	. = DATA_SEGMENT_END(.);
