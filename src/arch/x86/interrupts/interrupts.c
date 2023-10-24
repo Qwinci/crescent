@@ -166,7 +166,7 @@ void backtrace_display(bool lock) {
 	}
 }
 
-void x86_int_handler(InterruptCtx* ctx) {
+void x86_int_handler(InterruptCtx* ctx, u64 num) {
 	if (ctx->cs == 0x2b) {
 		__asm__ volatile("swapgs");
 	}
@@ -174,14 +174,14 @@ void x86_int_handler(InterruptCtx* ctx) {
 	lapic_eoi();
 
 	bool handled = false;
-	for (IrqHandler* handler = handlers[ctx->vec]; handler; handler = handler->next) {
+	for (IrqHandler* handler = handlers[num]; handler; handler = handler->next) {
 		if (handler->fn(ctx, handler->userdata) == IRQ_ACK) {
 			handled = true;
 			break;
 		}
 	}
 	if (!handled) {
-		kprintf("[kernel][x86]: unhandled interrupt 0x%x\n", ctx->vec);
+		kprintf("[kernel][x86]: unhandled interrupt 0x%x\n", num);
 
 		backtrace_display(true);
 	}
