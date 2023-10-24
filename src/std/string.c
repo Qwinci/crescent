@@ -202,7 +202,7 @@ int vsnprintf(char* restrict buffer, size_t size, const char* restrict fmt, va_l
 		}
 		++fmt;
 
-		int width;
+		int width = 0;
 		if (isdigit(*fmt)) {
 			width = (int) strtoumax(fmt, &start, 10);
 			fmt = start;
