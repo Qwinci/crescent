@@ -39,6 +39,18 @@ int sys_dprint(const char* msg, size_t len) {
 	return (int) syscall2(SYS_DPRINT, (size_t) msg, len);
 }
 
+int sys_create_process(const char* path, size_t path_len, Handle* ret) {
+	return (int) syscall3(SYS_CREATE_PROCESS, (size_t) path, (size_t) path_len, (size_t) ret);
+}
+
+int sys_kill_process(Handle handle) {
+	return (int) syscall1(SYS_KILL_PROCESS, handle);
+}
+
+int sys_wait_process(Handle handle) {
+	return (int) syscall1(SYS_WAIT_PROCESS, handle);
+}
+
 Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	return (Handle) syscall2(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg);
 }
