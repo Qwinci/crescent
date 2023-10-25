@@ -311,6 +311,7 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	status = elf_load_from_file(thread, node, &res);
 	node->ops.release(node);
 	if (status != 0) {
+		thread->process->thread_count = 0;
 		arch_destroy_task(thread);
 		return status;
 	}
