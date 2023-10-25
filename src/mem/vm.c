@@ -139,7 +139,7 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 		}
 
 		if (kernel_vm) {
-			arch_map_page(KERNEL_MAP, (usize) kernel_vm + i * PAGE_SIZE, page->phys, flags);
+			arch_map_page(KERNEL_MAP, (usize) kernel_vm + i * PAGE_SIZE, page->phys, PF_READ | PF_WRITE);
 		}
 		if (!arch_user_map_page(process, (usize) vm + i * PAGE_SIZE, page->phys, flags)) {
 			for (usize j = 0; j < i; ++j) {
