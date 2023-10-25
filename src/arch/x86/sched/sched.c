@@ -26,7 +26,16 @@ void arch_switch_task(Task* self, Task* new_task) {
 	}
 	x86_set_cpu_local(x86_new);
 
+	x86_self->state.generic.gs = x86_get_msr(MSR_KERNELGSBASE);
+	x86_self->state.generic.fs = x86_get_msr(MSR_FSBASE);
+
+	x86_set_msr(MSR_KERNELGSBASE, x86_new->state.generic.gs);
+	x86_set_msr(MSR_FSBASE, x86_new->state.generic.fs);
+
 	X86Task* prev = x86_switch_task(x86_self, x86_new);
+
+	x86_set_msr(MSR_KERNELGSBASE, x86_self->state.generic.gs);
+	x86_set_msr(MSR_FSBASE, x86_self->state.generic.fs);
 
 	x86_set_cpu_local(x86_self);
 	if (prev->common.map != x86_self->common.map) {

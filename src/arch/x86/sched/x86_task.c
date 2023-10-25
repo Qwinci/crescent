@@ -172,24 +172,3 @@ void arch_destroy_task(Task* task) {
 
 	kfree(x86_task, sizeof(X86Task));
 }
-
-void x86_task_add_map_page(X86Task* task, struct Page* page) {
-	page->prev = NULL;
-	page->next = task->map_pages;
-	if (page->next) {
-		page->next->prev = page;
-	}
-	task->map_pages = page;
-}
-
-void x86_task_remove_map_page(X86Task* task, struct Page* page) {
-	if (page->prev) {
-		page->prev->next = page->next;
-	}
-	else {
-		task->map_pages = page->next;
-	}
-	if (page->next) {
-		page->next->prev = page->prev;
-	}
-}
