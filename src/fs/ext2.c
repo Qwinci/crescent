@@ -204,6 +204,8 @@ static usize ext4_inode_data_read_helper(Ext2Partition* self, Ext4ExtentHeader* 
 			}
 
 			for (u16 j = real_skip; j < num_blocks; ++j) {
+				assert(ptr < offset(data, void*, max_read));
+
 				void* data_ptr = ext2_block_read(self, start_block + j);
 				if (max_read - read >= self->block_size) {
 					if (skip_bytes) {
@@ -252,7 +254,7 @@ static usize ext4_inode_data_read_helper(Ext2Partition* self, Ext4ExtentHeader* 
 
 int ext4_inode_data_read(Ext2Partition* self, InodeDesc* inode, usize off, void* data, usize size) {
 	assert(inode->i_flags & 0x80000);
-	if (off >= inode->i_size) {
+	if (off + size > inode->i_size) {
 		return ERR_INVALID_ARG;
 	}
 
