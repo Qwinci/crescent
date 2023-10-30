@@ -249,6 +249,7 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 		mutex_unlock(&process->threads_lock);
 		return INVALID_HANDLE;
 	}
+	handle->refcount = 1;
 
 	Task* task = arch_create_user_task(self->process, "user thread", fn, arg);
 	if (!task) {
@@ -433,8 +434,13 @@ int sys_close(Handle handle) {
 	if (handle_tab_close(&arch_get_cur_task()->process->handle_table, handle)) {
 		switch (type) {
 			case HANDLE_TYPE_THREAD:
-				kfree(data, sizeof(ThreadHandle));
+			{
+				ThreadHandle* h = (ThreadHandle*) data;
+				if (--h->refcount == 0) {
+					kfree(data, sizeof(ThreadHandle));
+				}
 				break;
+			}
 			case HANDLE_TYPE_DEVICE:
 				((GenericDevice*) data)->refcount -= 1;
 				break;

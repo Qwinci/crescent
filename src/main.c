@@ -92,6 +92,7 @@
 
 	ACTIVE_INPUT_TASK = test_user;
 	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));
+	h->refcount = 1;
 	h->task = test_user;
 	h->exited = false;
 	memset(&h->lock, 0, sizeof(Mutex));

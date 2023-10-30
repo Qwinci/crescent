@@ -165,8 +165,13 @@ void process_destroy(Process* process) {
 
 		switch (type) {
 			case HANDLE_TYPE_THREAD:
-				kfree(data, sizeof(ThreadHandle));
+			{
+				ThreadHandle* h = (ThreadHandle*) data;
+				if (--h->refcount == 0) {
+					kfree(data, sizeof(ThreadHandle));
+				}
 				break;
+			}
 			case HANDLE_TYPE_DEVICE:
 				((GenericDevice*) data)->refcount -= 1;
 				break;

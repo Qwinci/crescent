@@ -4,6 +4,7 @@
 #include "sys/dev.h"
 #include "fs/vfs.h"
 #include "sys/fs.h"
+#include "sched/task.h"
 
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 	mutex_lock(&self->lock);
@@ -131,9 +132,13 @@ bool handle_tab_duplicate(HandleTable* self, HandleTable* ret) {
 
 		switch (type) {
 			case HANDLE_TYPE_THREAD:
-				//kfree(data, sizeof(ThreadHandle));
-				// todo refcount
+			{
+				ThreadHandle* h = (ThreadHandle*) data;
+				if (--h->refcount == 0) {
+					kfree(data, sizeof(ThreadHandle));
+				}
 				break;
+			}
 			case HANDLE_TYPE_DEVICE:
 				((GenericDevice*) data)->refcount += 1;
 				break;

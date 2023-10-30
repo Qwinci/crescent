@@ -23,8 +23,9 @@ typedef struct {
 		Task* task;
 		int status;
 	};
-	bool exited;
 	Mutex lock;
+	usize refcount;
+	bool exited;
 } ThreadHandle;
 
 typedef struct {
