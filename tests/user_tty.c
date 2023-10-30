@@ -451,6 +451,15 @@ _Noreturn void _start(void*) {
 
 	Dir* dir;
 	sys_opendir(info.name, strlen(info.name), &dir);
+	puts("opening device:");
+	puts(info.name);
+
+	/*char buffer[256];
+	memcpy(buffer, info.name, strlen(info.name));
+	buffer[strlen(info.name)] = '/';
+	memcpy(buffer + strlen(info.name) + 1, "user_tty", sizeof("user_tty"));
+	Handle proc_handle;
+	int process_create_status = sys_create_process(buffer, strlen(buffer), &proc_handle);*/
 
 	DirEntry entry;
 	while (sys_readdir(dir, &entry) == 0) {
@@ -485,7 +494,6 @@ _Noreturn void _start(void*) {
 		puts("100gb map successful");
 		puts("trying to write to the first and last pages");
 		*(int*) huge_test = 0xCAFE;
-		puts("first");
 		*(int*) ((uintptr_t) huge_test + 1024ULL * 1024 * 1024 * 100 - 4) = 0xCAFE;
 		if (*(int*) huge_test == 0xCAFE && *(int*) ((uintptr_t) huge_test + 1024ULL * 1024 * 1024 * 100 - 4) == 0xCAFE) {
 			puts("works");

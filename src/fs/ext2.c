@@ -178,77 +178,81 @@ typedef struct {
 	u32 ee_start_lo;
 } Ext4Extent;
 
+static Ext4ExtentHeader* ext4_find_leaf(Ext2Partition* self, Ext4ExtentHeader* hdr, usize block) {
+	while (true) {
+		if (hdr->eh_depth == 0) {
+			return hdr;
+		}
+
+		Ext4ExtentIdx* extents = offset(hdr, Ext4ExtentIdx*, sizeof(Ext4ExtentHeader));
+		i32 i = -1;
+		if (hdr->eh_entries == 1 && extents[0].ei_block == block) {
+			i = 0;
+		}
+		else {
+			for (; i < hdr->eh_entries; ++i) {
+				Ext4ExtentIdx* extent = &extents[i];
+				if (extent->ei_block > block) {
+					i = i - 1;
+					break;
+				}
+			}
+		}
+
+		if (i == -1) {
+			return NULL;
+		}
+
+		u64 leaf_block = extents[i].ei_leaf_lo | (u64) extents[i].ei_leaf_hi << 32;
+		hdr = (Ext4ExtentHeader*) ext2_block_read(self, leaf_block);
+	}
+}
+
 static usize ext4_inode_data_read_helper(Ext2Partition* self, Ext4ExtentHeader* extent_hdr, usize off, void* data, usize max_read) {
 	assert(extent_hdr->eh_magic == 0xF30A);
 
 	usize read = 0;
-	if (extent_hdr->eh_depth == 0) {
-		u32 skip_blocks = off / self->block_size;
-		u32 skip_bytes = off % self->block_size;
+	while (read < max_read) {
+		usize block = (off + read) / self->block_size;
+		usize offset = (off + read) % self->block_size;
+		usize remaining = max_read - read;
+		usize chunk = remaining > self->block_size - offset ? self->block_size - offset : remaining;
 
-		Ext4Extent* extents = offset(extent_hdr, Ext4Extent*, sizeof(Ext4ExtentHeader));
-		for (u16 i = 0; i < extent_hdr->eh_entries; ++i) {
-			u64 start_block = extents[i].ee_start_lo | (u64) extents[i].ee_start_hi << 32;
-			u32 file_start_block = extents[i].ee_block;
-			u16 num_blocks = extents[i].ee_len;
-
-			void* ptr;
-			u32 real_skip;
-			if (file_start_block >= skip_blocks) {
-				ptr = offset(data, void*, (file_start_block - skip_blocks) * self->block_size);
-				real_skip = 0;
-			}
-			else {
-				real_skip = skip_blocks;
-				ptr = data;
-			}
-
-			for (u16 j = real_skip; j < num_blocks; ++j) {
-				assert(ptr < offset(data, void*, max_read));
-
-				void* data_ptr = ext2_block_read(self, start_block + j);
-				if (max_read - read >= self->block_size) {
-					if (skip_bytes) {
-						memcpy(ptr, offset(data_ptr, void*, skip_bytes), self->block_size - skip_bytes);
-						ptr = offset(ptr, void*, self->block_size - skip_bytes);
-						read += self->block_size - skip_bytes;
-						skip_bytes = 0;
-					}
-					else {
-						memcpy(ptr, data_ptr, self->block_size);
-						ptr = offset(ptr, void*, self->block_size);
-						read += self->block_size;
-					}
-				}
-				else {
-					if (skip_bytes) {
-						memcpy(ptr, offset(data_ptr, void*, skip_bytes), max_read - read);
-					}
-					else {
-						memcpy(ptr, data_ptr, max_read - read);
-					}
-					return max_read;
+		Ext4ExtentHeader* leaf = ext4_find_leaf(self, extent_hdr, block);
+		Ext4Extent* extents = offset(leaf, Ext4Extent*, sizeof(Ext4ExtentHeader));
+		i32 i;
+		if (leaf->eh_entries == 1 && extents[0].ee_block == block) {
+			i = 0;
+		}
+		else {
+			for (i = 0; i < leaf->eh_entries; ++i) {
+				Ext4Extent* extent = &extents[i];
+				if (extent->ee_block > block) {
+					i = i - 1;
+					break;
 				}
 			}
 		}
-		return read;
-	}
-	else {
-		Ext4ExtentIdx* idx = offset(extent_hdr, Ext4ExtentIdx*, sizeof(Ext4ExtentHeader));
-		for (u16 i = 0; i < extent_hdr->eh_entries; ++i) {
-			u64 leaf_block = idx[i].ei_leaf_lo | (u64) idx[i].ei_leaf_hi << 32;
-			Ext4ExtentHeader* hdr2 = (Ext4ExtentHeader*) ext2_block_read(self, leaf_block);
-			Ext4ExtentHeader* backup = (Ext4ExtentHeader*) kmalloc(self->block_size);
-			assert(backup);
-			memcpy(backup, hdr2, self->block_size);
-			read += ext4_inode_data_read_helper(self, backup, off, data, max_read);
-			kfree(backup, self->block_size);
-			if (read == max_read) {
-				return read;
-			}
-		}
-	}
 
+		if (i == -1) {
+			return read;
+		}
+
+		Ext4Extent* extent = &extents[i];
+
+		if (block < extent->ee_block + extent->ee_len) {
+			u64 extent_block = extent->ee_start_lo | (u64) extent->ee_start_hi << 32;
+			extent_block += block - extent->ee_block;
+			void* ptr = ext2_block_read(self, extent_block);
+			assert(ptr);
+			memcpy(offset(data, void*, read), offset(ptr, void*, offset), chunk);
+		}
+		else {
+			memset(offset(data, void*, read), 0, chunk);
+		}
+
+		read += chunk;
+	}
 	return read;
 }
 
@@ -259,7 +263,7 @@ int ext4_inode_data_read(Ext2Partition* self, InodeDesc* inode, usize off, void*
 	}
 
 	Ext4ExtentHeader* extent_hdr = (Ext4ExtentHeader*) inode->i_block;
-	ext4_inode_data_read_helper(self, extent_hdr, off, data, size);
+	assert(ext4_inode_data_read_helper(self, extent_hdr, off, data, size) == size);
 	return 0;
 }
 
