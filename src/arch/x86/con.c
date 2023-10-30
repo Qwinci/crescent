@@ -39,17 +39,7 @@ void x86_init_fbs() {
 			FbDev* fb = kcalloc(sizeof(FbDev));
 			assert(fb);
 
-			memcpy(fb->generic.name, "fb#", 3);
-			// todo maybe snprintf
-			usize num = i;
-			char buf[21];
-			buf[20] = 0;
-			char* ptr = buf + 20;
-			do {
-				*--ptr = (char) ('0' + num % 10);
-				num /= 10;
-			} while (num);
-			memcpy(fb->generic.name + 3, ptr, buf + 21 - ptr);
+			snprintf(fb->generic.name, sizeof(fb->generic.name), "fb#%d", (int) i);
 
 			fb->base = limine_fb->address;
 			fb->phys_base = to_phys(limine_fb->address);
