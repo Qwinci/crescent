@@ -28,3 +28,33 @@ void x86_set_cpu_local(X86Task* task);
 void x86_set_msr(Msr msr, u64 value);
 u64 x86_get_msr(Msr msr);
 X86Cpu* x86_get_cur_cpu();
+
+typedef struct {
+	usize xsave_area_size;
+	bool rdrnd;
+	bool xsave;
+	bool avx;
+	bool avx512;
+} CpuFeatures;
+
+extern CpuFeatures CPU_FEATURES;
+
+static inline void xsave(u8* area, u64 mask) {
+	assert((usize) area % 64 == 0);
+	usize low = mask & 0xFFFFFFFF;
+	usize high = mask >> 32;
+	__asm__ volatile("xsave %0" : : "m"(*area), "a"(low), "d"(high) : "memory");
+}
+
+static inline void xrstor(u8* area, u64 mask) {
+	assert((usize) area % 64 == 0);
+	usize low = mask & 0xFFFFFFFF;
+	usize high = mask >> 32;
+	__asm__ volatile("xrstor %0" : : "m"(*area), "a"(low), "d"(high) : "memory");
+}
+
+static inline void wrxcr(u32 index, u64 value) {
+	u32 low = value;
+	u32 high = value >> 32;
+	__asm__ volatile("xsetbv" : : "c"(index), "a"(low), "d"(high) : "memory");
+}

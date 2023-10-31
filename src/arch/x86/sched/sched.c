@@ -32,7 +32,25 @@ void arch_switch_task(Task* self, Task* new_task) {
 	x86_set_msr(MSR_KERNELGSBASE, x86_new->state.generic.gs);
 	x86_set_msr(MSR_FSBASE, x86_new->state.generic.fs);
 
+	if (x86_self->user) {
+		if (CPU_FEATURES.xsave) {
+			xsave(x86_self->state.simd, ~0);
+		}
+		else {
+			__asm__ volatile("fxsaveq %0" : : "m"(*x86_self->state.simd) : "memory");
+		}
+	}
+
 	X86Task* prev = x86_switch_task(x86_self, x86_new);
+
+	if (x86_self->user) {
+		if (CPU_FEATURES.xsave) {
+			xrstor(x86_self->state.simd, ~0);
+		}
+		else {
+			__asm__ volatile("fxrstorq %0" : : "m"(*x86_self->state.simd) : "memory");
+		}
+	}
 
 	x86_set_msr(MSR_KERNELGSBASE, x86_self->state.generic.gs);
 	x86_set_msr(MSR_FSBASE, x86_self->state.generic.fs);

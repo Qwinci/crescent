@@ -13,6 +13,7 @@
 #include "sys/dev.h"
 #include "fs/vfs.h"
 #include "sys/fs.h"
+#include "arch/x86/cpu.h"
 
 typedef struct {
 	u64 r15, r14, r13, r12, rbp, rbx;
@@ -101,6 +102,19 @@ Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*
 	task->user = true;
 	task->common.priority = 0;
 	task->common.process = process;
+	usize simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
+	task->state.simd = (u8*) vm_kernel_alloc_backed(ALIGNUP(simd_size, PAGE_SIZE) / PAGE_SIZE, PF_READ | PF_WRITE);
+	if (!task->state.simd) {
+		kprintf("[kernel][x86]: failed to allocate simd state (out of memory)\n");
+		kfree(kernel_stack, KERNEL_STACK_SIZE);
+		vm_user_dealloc_backed(process, (void*) task->stack_base, USER_STACK_SIZE / PAGE_SIZE, NULL);
+		kfree(task, sizeof(X86Task));
+		return NULL;
+	}
+	FxState* fx_state = (FxState*) task->state.simd;
+	// IM | DM | ZM | OM | UM | PM | PC
+	fx_state->fcw = 1 << 0 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4 | 1 << 5 | 0b11 << 8;
+	fx_state->mxcsr = 0b1111110000000;
 
 	return &task->common;
 }
@@ -153,6 +167,11 @@ void arch_destroy_task(Task* task) {
 	X86Task* x86_task = container_of(task, X86Task, common);
 
 	if (x86_task->user) {
+		usize simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
+		assert(x86_task->state.simd);
+		vm_kernel_dealloc_backed(x86_task->state.simd, ALIGNUP(simd_size, PAGE_SIZE) / PAGE_SIZE);
+		x86_task->state.simd = NULL;
+
 		vm_user_dealloc_backed(task->process, (void*) x86_task->stack_base, USER_STACK_SIZE / PAGE_SIZE, NULL);
 
 		kfree((void*) (x86_task->kernel_stack_base), KERNEL_STACK_SIZE);

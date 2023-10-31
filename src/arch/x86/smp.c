@@ -16,6 +16,7 @@
 #include "string.h"
 #include "utils/spinlock.h"
 #include "utils/math.h"
+#include "cpuid.h"
 
 static volatile struct limine_smp_request SMP_REQUEST = {
 	.id = LIMINE_SMP_REQUEST
@@ -52,6 +53,43 @@ static X86Task* create_this_task(Cpu* cpu) {
 	return self;
 }
 
+static void init_simd() {
+	u64 cr0;
+	__asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
+	// clear EM
+	cr0 &= ~(1 << 2);
+	// set MP
+	cr0 |= 1 << 1;
+	__asm__ volatile("mov %0, %%cr0" : : "r"(cr0));
+
+	u64 cr4;
+	__asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+	// set OSXMMEXCPT and OSFXSR
+	cr4 |= 1 << 10 | 1 << 9;
+	if (CPU_FEATURES.xsave) {
+		// set OSXSAVE
+		cr4 |= 1 << 18;
+	}
+	__asm__ volatile("mov %0, %%cr4" : : "r"(cr4));
+
+	if (CPU_FEATURES.xsave) {
+		// x87 and SSE
+		u64 xcr0 = 1 << 0 | 1 << 1;
+
+		if (CPU_FEATURES.avx) {
+			xcr0 |= 1 << 2;
+		}
+
+		if (CPU_FEATURES.avx512) {
+			xcr0 |= 1 << 5;
+			xcr0 |= 1 << 6;
+			xcr0 |= 1 << 7;
+		}
+
+		wrxcr(0, xcr0);
+	}
+}
+
 [[noreturn]] static void x86_ap_entry(struct limine_smp_info* info) {
 	X86Cpu* cpu = &CPUS[CPU_COUNT++];
 
@@ -69,6 +107,8 @@ static X86Task* create_this_task(Cpu* cpu) {
 
 	__asm__ volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
 
+	init_simd();
+
 	lapic_init();
 	lapic_timer_init();
 
@@ -83,7 +123,33 @@ static X86Task* create_this_task(Cpu* cpu) {
 	panic("x86_ap_entry resumed\n");
 }
 
+CpuFeatures CPU_FEATURES = {};
+
+static void detect_cpu_features() {
+	Cpuid info = cpuid(1, 0);
+
+	if (info.ecx & 1U << 30) {
+		CPU_FEATURES.rdrnd = true;
+	}
+	if (info.ecx & 1U << 26) {
+		CPU_FEATURES.xsave = true;
+
+		if (info.ecx & 1U << 28) {
+			CPU_FEATURES.avx = true;
+		}
+
+		info = cpuid(7, 0);
+		if (info.ebx & 1U << 16) {
+			CPU_FEATURES.avx512 = true;
+		}
+
+		CPU_FEATURES.xsave_area_size = cpuid(0xD, 0).ecx;
+	}
+}
+
 void arch_init_smp() {
+	detect_cpu_features();
+
 	assert(SMP_REQUEST.response);
 	X86_BSP_ID = SMP_REQUEST.response->bsp_lapic_id;
 
@@ -112,6 +178,8 @@ void arch_init_smp() {
 	lapic_init();
 	lapic_timer_init();
 	kprintf("[kernel][timer]: apic frequency %uhz\n", CPUS[0].lapic_timer.freq);
+
+	init_simd();
 
 	x86_init_usermode();
 	sched_init(true);
