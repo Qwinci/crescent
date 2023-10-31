@@ -66,7 +66,7 @@ IrqStatus ex_pf(void* void_ctx, void*) {
 	u64 addr;
 	__asm__ volatile("mov %%cr2, %0" : "=r"(addr));
 
-	if (process_handle_fault(self->process, addr)) {
+	if (self->process && process_handle_fault(self->process, addr)) {
 		return IRQ_ACK;
 	}
 
