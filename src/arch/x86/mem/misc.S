@@ -18,7 +18,12 @@ arch_mem_copy_to_user:
 	mov %rax, %gs:X86TASK_HANDLER_IP_OFF
 	mov %rsp, %gs:X86TASK_HANDLER_SP_OFF
 
+	cmpb $0, CPU_FEATURES + 14(%rip)
+	je unsafe_copy
+
+	stac
 	call memcpy
+	clac
 
 	xor %edi, %edi
 	mov %rdi, %gs:X86TASK_HANDLER_IP_OFF
@@ -44,7 +49,12 @@ arch_mem_copy_to_kernel:
 	mov %rax, %gs:X86TASK_HANDLER_IP_OFF
 	mov %rsp, %gs:X86TASK_HANDLER_SP_OFF
 
+	cmpb $0, CPU_FEATURES + 14(%rip)
+	je unsafe_copy
+
+	stac
 	call memcpy
+	clac
 
 	xor %edi, %edi
 	mov %rdi, %gs:X86TASK_HANDLER_IP_OFF
@@ -56,4 +66,13 @@ arch_mem_copy_to_kernel:
 	xor %eax, %eax
 	mov %rax, %gs:X86TASK_HANDLER_IP_OFF
 	pop %rbp
+	ret
+
+unsafe_copy:
+	call memcpy
+	xor %edi, %edi
+	mov %rdi, %gs:X86TASK_HANDLER_IP_OFF
+
+	pop %rbp
+	mov $1, %eax
 	ret

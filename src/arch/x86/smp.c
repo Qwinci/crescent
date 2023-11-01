@@ -109,6 +109,19 @@ static void init_simd() {
 
 	init_simd();
 
+	u64 cr4;
+	__asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+	if (CPU_FEATURES.umip) {
+		cr4 |= 1 << 11;
+	}
+	if (CPU_FEATURES.smep) {
+		cr4 |= 1 << 20;
+	}
+	if (CPU_FEATURES.smap) {
+		cr4 |= 1 << 21;
+	}
+	__asm__ volatile("mov %0, %%cr4" : : "r"(cr4));
+
 	lapic_init();
 	lapic_timer_init();
 
@@ -145,6 +158,16 @@ static void detect_cpu_features() {
 
 		CPU_FEATURES.xsave_area_size = cpuid(0xD, 0).ecx;
 	}
+	info = cpuid(7, 0);
+	if (info.ecx & 1 << 2) {
+		CPU_FEATURES.umip = true;
+	}
+	if (info.ebx & 1 << 7) {
+		CPU_FEATURES.smep = true;
+	}
+	if (info.ebx & 1 << 20) {
+		CPU_FEATURES.smap = true;
+	}
 }
 
 void arch_init_smp() {
@@ -180,6 +203,21 @@ void arch_init_smp() {
 	kprintf("[kernel][timer]: apic frequency %uhz\n", CPUS[0].lapic_timer.freq);
 
 	init_simd();
+	u64 cr4;
+	__asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+	if (CPU_FEATURES.umip) {
+		kprintf("[kernel][x86]: enabling UMIP\n");
+		cr4 |= 1 << 11;
+	}
+	if (CPU_FEATURES.smep) {
+		kprintf("[kernel][x86]: enabling SMEP\n");
+		cr4 |= 1 << 20;
+	}
+	if (CPU_FEATURES.smap) {
+		kprintf("[kernel][x86]: enabling SMAP\n");
+		cr4 |= 1 << 21;
+	}
+	__asm__ volatile("mov %0, %%cr4" : : "r"(cr4));
 
 	x86_init_usermode();
 	sched_init(true);

@@ -1,5 +1,5 @@
 set(QEMU_FLAGS -m 2G -machine q35 -smp 1
-		-no-reboot -no-shutdown -cpu qemu64
+		-no-reboot -no-shutdown -cpu qemu64,+umip,+smep,+smap
 		-drive file=nvm.img,if=none,id=nvm,format=raw
 		-device nvme,serial=deadbeef,drive=nvm -M smm=off
 		-trace pci_nvme_err*

@@ -14,8 +14,12 @@
 
 x86_usermode_ret:
 	swapgs
+	// rip
 	pop %rcx
+	// arg
 	pop %rdi
+	// rsp
+	pop %rsp
 
 	xor %eax, %eax
 	xor %edx, %edx

@@ -35,7 +35,12 @@ typedef struct {
 	bool xsave;
 	bool avx;
 	bool avx512;
+	bool umip;
+	bool smep;
+	bool smap;
 } CpuFeatures;
+// this is used from assembly
+static_assert(offsetof(CpuFeatures, smap) == 14);
 
 extern CpuFeatures CPU_FEATURES;
 

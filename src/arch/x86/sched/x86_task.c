@@ -30,6 +30,7 @@ typedef struct {
 	void (*usermode_ret)();
 	void (*fn)(void*);
 	void* arg;
+	void* rsp;
 	u64 null_rbp;
 	u64 null_rip;
 } UserInitStackFrame;
@@ -81,14 +82,15 @@ Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*
 	u8* stack_base = stack;
 	memset(stack, 0, USER_STACK_SIZE);
 	task->stack_base = (usize) user_stack;
-	stack += USER_STACK_SIZE - sizeof(UserInitStackFrame);
-	user_stack += USER_STACK_SIZE - sizeof(UserInitStackFrame);
+	stack += USER_STACK_SIZE;
+	user_stack += USER_STACK_SIZE;
 
-	UserInitStackFrame* frame = (UserInitStackFrame*) stack;
+	UserInitStackFrame* frame = (UserInitStackFrame*) (task->kernel_rsp - sizeof(UserInitStackFrame));
 	frame->after_switch = x86_switch_from_init;
 	frame->usermode_ret = x86_usermode_ret;
 	frame->fn = fn;
 	frame->arg = arg;
+	frame->rsp = user_stack;
 	frame->null_rbp = 0;
 	frame->null_rip = 0;
 
@@ -97,7 +99,7 @@ Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*
 	strncpy(task->common.name, name, sizeof(task->common.name));
 	task->common.status = TASK_STATUS_READY;
 
-	task->rsp = (usize) user_stack;
+	task->rsp = (usize) frame;
 	task->common.level = SCHED_MAX_LEVEL - 1;
 	task->user = true;
 	task->common.priority = 0;
