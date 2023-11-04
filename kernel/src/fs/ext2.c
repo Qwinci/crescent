@@ -502,9 +502,10 @@ bool ext2_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	self->vfs = ext2_create_vfs(self);
 	vfs_add(&self->vfs);
 	self->partition_dev.vfs = &self->vfs;
-	snprintf(self->partition_dev.generic.name, 128, "ext2_n%d", NUMBER++);
+	snprintf(self->partition_dev.generic.name, 128, "ext2_p%d", NUMBER++);
 	self->partition_dev.generic.refcount = 0;
 	dev_add(&self->partition_dev.generic, DEVICE_TYPE_PARTITION);
+	kprintf("[kernel][fs]: ext2 initialized on partition '%s'\n", self->partition_dev.generic.name);
 
 	return true;
 }

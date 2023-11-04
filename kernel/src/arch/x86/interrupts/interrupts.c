@@ -100,6 +100,10 @@ static volatile struct limine_kernel_file_request KERNEL_FILE_REQUEST = {
 	.id = LIMINE_KERNEL_FILE_REQUEST
 };
 
+const char* arch_get_kernel_cmdline() {
+	return KERNEL_FILE_REQUEST.response->kernel_file->cmdline;
+}
+
 static const char* strtab = NULL;
 static void* symtab = NULL;
 static usize symtab_size = 0;

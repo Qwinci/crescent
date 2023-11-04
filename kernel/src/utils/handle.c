@@ -7,6 +7,8 @@
 #include "sched/task.h"
 
 Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
+	assert(data);
+
 	mutex_lock(&self->lock);
 
 	if (self->freelist) {
@@ -20,6 +22,11 @@ Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 		return entry->handle;
 	}
 	else {
+		Handle id = self->size;
+		if (id & FREED_HANDLE) {
+			return INVALID_HANDLE;
+		}
+
 		self->cap = self->cap < 8 ? 8 : self->cap * 2;
 		HandleEntry* table = kmalloc(sizeof(HandleEntry) * self->cap);
 		if (!table) {
@@ -28,17 +35,24 @@ Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 		}
 		memset(table, 0, sizeof(HandleEntry) * self->cap);
 		memcpy(table, self->table, sizeof(HandleEntry) * self->size);
+
 		self->table = table;
-		Handle id = self->size;
-		if (id & FREED_HANDLE) {
-			return INVALID_HANDLE;
+
+		for (usize i = 1; i < self->cap - self->size; ++i) {
+			HandleEntry* entry = &self->table[self->size + i];
+			entry->handle = self->size + i;
+			entry->handle |= FREED_HANDLE;
+			entry->data = self->freelist;
+			self->freelist = entry;
 		}
+
 		self->table[self->size++] = (HandleEntry) {
 			.handle = id,
 			.data = data,
 			.type = type,
 			.refs = 1
 		};
+		self->size = self->cap;
 		mutex_unlock(&self->lock);
 		return id;
 	}
