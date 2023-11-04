@@ -185,25 +185,25 @@ static Ext4ExtentHeader* ext4_find_leaf(Ext2Partition* self, Ext4ExtentHeader* h
 		}
 
 		Ext4ExtentIdx* extents = offset(hdr, Ext4ExtentIdx*, sizeof(Ext4ExtentHeader));
-		i32 i = -1;
+		i32 index = -1;
 		if (hdr->eh_entries == 1 && extents[0].ei_block == block) {
-			i = 0;
+			index = 0;
 		}
 		else {
-			for (; i < hdr->eh_entries; ++i) {
+			for (i32 i = 0; i < hdr->eh_entries; ++i) {
 				Ext4ExtentIdx* extent = &extents[i];
 				if (extent->ei_block > block) {
-					i = i - 1;
+					index = i - 1;
 					break;
 				}
 			}
 		}
 
-		if (i == -1) {
+		if (index == -1) {
 			return NULL;
 		}
 
-		u64 leaf_block = extents[i].ei_leaf_lo | (u64) extents[i].ei_leaf_hi << 32;
+		u64 leaf_block = extents[index].ei_leaf_lo | (u64) extents[index].ei_leaf_hi << 32;
 		hdr = (Ext4ExtentHeader*) ext2_block_read(self, leaf_block);
 	}
 }
@@ -220,25 +220,21 @@ static usize ext4_inode_data_read_helper(Ext2Partition* self, Ext4ExtentHeader* 
 
 		Ext4ExtentHeader* leaf = ext4_find_leaf(self, extent_hdr, block);
 		Ext4Extent* extents = offset(leaf, Ext4Extent*, sizeof(Ext4ExtentHeader));
-		i32 i;
-		if (leaf->eh_entries == 1 && extents[0].ee_block == block) {
-			i = 0;
-		}
-		else {
-			for (i = 0; i < leaf->eh_entries; ++i) {
-				Ext4Extent* extent = &extents[i];
-				if (extent->ee_block > block) {
-					i = i - 1;
-					break;
-				}
+		i32 index = -1;
+		for (i32 i = 0; i < leaf->eh_entries; ++i) {
+			Ext4Extent* extent = &extents[i];
+			if ((block >= extent->ee_block && block - extent->ee_block < extent->ee_len) ||
+				(i + 1 < leaf->eh_entries && extents[i + 1].ee_block > block)) {
+				index = i;
+				break;
 			}
 		}
 
-		if (i == -1) {
+		if (index == -1) {
 			return read;
 		}
 
-		Ext4Extent* extent = &extents[i];
+		Ext4Extent* extent = &extents[index];
 
 		if (block < extent->ee_block + extent->ee_len) {
 			u64 extent_block = extent->ee_start_lo | (u64) extent->ee_start_hi << 32;
