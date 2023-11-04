@@ -11,7 +11,7 @@
 	- [x] APIC
 	- [x] Exceptions
 	- [x] IO-APIC
-- [ ] Elf loading from modules
+- [ ] Kernel module loading
 - [x] Per-cpu multilevel feedback queue scheduler
 - [ ] ACPI
 	- [x] FADT
@@ -20,6 +20,8 @@
     - [ ] Power management
 - [ ] Filesystems
 	- [ ] FAT32
+    - [x] Ext4 read
+    - [ ] Ext4 write
 - [ ] Drivers
 	- [x] SMP
 	- [ ] AHCI SATA
