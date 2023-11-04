@@ -386,8 +386,9 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 						return ERR_INVALID_ARG;
 					}
 
+					usize align = phdr_vaddr & (PAGE_SIZE - 1);
 					if (type == R_AMD64_RELATIVE) {
-						*offset(m->mapping, u64*, addr - phdr_vaddr) = base + rela->r_addend;
+						*offset(m->mapping, u64*, align + addr - phdr_vaddr) = base + rela->r_addend;
 					}
 					else {
 						panic("unsupported elf relocation type %u\n", type);
