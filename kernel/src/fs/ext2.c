@@ -281,7 +281,7 @@ static usize ext2_vfs_read_dir_internal(VNode* self, usize off, LinkedDirEntryDe
 	return off;
 }
 
-static int ext2_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry) {
+static int ext2_vfs_read_dir(VNode* self, usize* offset, CrescentDirEntry* entry) {
 	if (self->type != VNODE_DIR) {
 		return ERR_NOT_DIR;
 	}
@@ -307,7 +307,7 @@ static int ext2_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry) {
 static int ext2_vfs_lookup(VNode* self, Str component, VNode** ret);
 static void ext2_vfs_release(VNode* self);
 static int ext2_vfs_read(VNode* self, void* data, usize off, usize size);
-static int ext2_vfs_stat(VNode* self, Stat* stat);
+static int ext2_vfs_stat(VNode* self, CrescentStat* stat);
 
 static VNode* ext2_populate_vnode(Vfs* vfs, VNodeType type, void* data, const InodeDesc* inode) {
 	VNode* node = vnode_alloc();
@@ -382,7 +382,7 @@ static int ext2_vfs_read(VNode* self, void* data, usize off, usize size) {
 	return ext4_inode_data_read(partition, inode, off, data, size);
 }
 
-static int ext2_vfs_stat(VNode* self, Stat* stat) {
+static int ext2_vfs_stat(VNode* self, CrescentStat* stat) {
 	InodeDesc* inode = (InodeDesc*) self->inode;
 	stat->size = inode->i_size;
 	return 0;

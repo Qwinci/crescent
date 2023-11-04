@@ -9,13 +9,13 @@ typedef enum {
 } VNodeType;
 
 typedef struct VNode VNode;
-typedef struct Dir Dir;
+typedef struct CrescentDir CrescentDir;
 
 typedef struct {
-	int (*read_dir)(VNode* self, usize* offset, DirEntry* entry);
+	int (*read_dir)(VNode* self, usize* offset, CrescentDirEntry* entry);
 	int (*lookup)(VNode* self, Str component, VNode** ret);
 	int (*read)(VNode* self, void* data, usize off, usize size);
-	int (*stat)(VNode* self, Stat* stat);
+	int (*stat)(VNode* self, CrescentStat* stat);
 	int (*write)(VNode* self, const void* data, usize off, usize size);
 	void (*release)(VNode* self);
 } VNodeOps;

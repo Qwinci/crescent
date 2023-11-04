@@ -384,13 +384,13 @@ void* sys_mmap(size_t size, int protection) {
 	}
 
 	MappingFlags flags = 0;
-	if (protection & PROT_READ) {
+	if (protection & KPROT_READ) {
 		flags |= MAPPING_FLAG_R;
 	}
-	if (protection & PROT_WRITE) {
+	if (protection & KPROT_WRITE) {
 		flags |= MAPPING_FLAG_W;
 	}
-	if (protection & PROT_EXEC) {
+	if (protection & KPROT_EXEC) {
 		flags |= MAPPING_FLAG_X;
 	}
 	Task* self = arch_get_cur_task();

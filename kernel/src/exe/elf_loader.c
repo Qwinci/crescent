@@ -163,7 +163,7 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 		return ERR_INVALID_ARG;
 	}
 
-	Stat s;
+	CrescentStat s;
 	if ((ret = node->ops.stat(node, &s)) != 0) {
 		return ret;
 	}
@@ -208,7 +208,6 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 	}
 
 	usize base = relocatable ? 0x400000 : 0;
-	bool base_found = false;
 	for (u16 i = 0; i < ehdr.e_phnum; ++i) {
 		const Elf64PHdr* phdr = offset(phdrs, Elf64PHdr*, i * ehdr.e_phentsize);
 		if (phdr->p_type == PT_LOAD) {

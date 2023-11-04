@@ -28,10 +28,10 @@ static u64 oct_to_int(const char* str) {
 	return value;
 }
 
-static int tar_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry);
+static int tar_vfs_read_dir(VNode* self, usize* offset, CrescentDirEntry* entry);
 static int tar_vfs_lookup(VNode* self, Str component, VNode** ret);
 static int tar_vfs_read(VNode* self, void* data, usize off, usize size);
-static int tar_vfs_stat(VNode* self, Stat* stat);
+static int tar_vfs_stat(VNode* self, CrescentStat* stat);
 static void tar_vfs_release(VNode* self);
 
 static VNode* tar_populate_vnode(Vfs* vfs, void* data, VNodeType type) {
@@ -57,7 +57,7 @@ static VNode* tar_populate_vnode(Vfs* vfs, void* data, VNodeType type) {
 	return node;
 }
 
-static int tar_vfs_read_dir(VNode* self, usize* offset, DirEntry* entry) {
+static int tar_vfs_read_dir(VNode* self, usize* offset, CrescentDirEntry* entry) {
 	if (self->type != VNODE_DIR) {
 		return ERR_NOT_DIR;
 	}
@@ -170,7 +170,7 @@ static int tar_vfs_read(VNode* self, void* data, usize off, usize size) {
 	return 0;
 }
 
-static int tar_vfs_stat(VNode* self, Stat* stat) {
+static int tar_vfs_stat(VNode* self, CrescentStat* stat) {
 	const TarHeader* hdr = (const TarHeader*) self->data;
 	stat->size = oct_to_int(hdr->size);
 	return 0;

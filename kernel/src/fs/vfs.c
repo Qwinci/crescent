@@ -30,7 +30,7 @@ void vfs_add(Vfs* vfs) {
 static VNode* VNODE_LIST = NULL;
 static Mutex VNODE_LIST_MUTEX = {};
 
-static int dummy_read_dir(VNode* self, usize* offset, DirEntry* entry) {
+static int dummy_read_dir(VNode* self, usize* offset, CrescentDirEntry* entry) {
 	return ERR_OPERATION_NOT_SUPPORTED;
 }
 static int dummy_lookup(VNode* self, Str component, VNode** ret) {
@@ -39,7 +39,7 @@ static int dummy_lookup(VNode* self, Str component, VNode** ret) {
 static int dummy_read(VNode* self, void* data, usize off, usize size) {
 	return ERR_OPERATION_NOT_SUPPORTED;
 }
-static int dummy_stat(VNode* self, Stat* stat) {
+static int dummy_stat(VNode* self, CrescentStat* stat) {
 	return ERR_OPERATION_NOT_SUPPORTED;
 }
 static int dummy_write(VNode* self, const void* data, usize off, usize size) {

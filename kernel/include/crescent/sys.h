@@ -40,9 +40,9 @@ typedef enum {
 #define ERR_OPERATION_NOT_SUPPORTED (-6)
 #define ERR_NOT_DIR (-7)
 
-#define PROT_READ (1 << 0)
-#define PROT_WRITE (1 << 1)
-#define PROT_EXEC (1 << 2)
+#define KPROT_READ (1 << 0)
+#define KPROT_WRITE (1 << 1)
+#define KPROT_EXEC (1 << 2)
 
 #define CAP_DIRECT_FB_ACCESS (1 << 0)
 #define CAP_MANAGE_POWER (1 << 1)

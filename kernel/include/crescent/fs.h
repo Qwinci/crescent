@@ -7,18 +7,18 @@
 typedef enum {
 	FS_ENTRY_TYPE_FILE,
 	FS_ENTRY_TYPE_DIR
-} FsEntryType;
+} CrescentFsEntryType;
 
 typedef struct {
 	uint16_t name_len;
 	char name[256];
-	FsEntryType type;
-} DirEntry;
+	CrescentFsEntryType type;
+} CrescentDirEntry;
 
-typedef struct Dir Dir;
+typedef struct CrescentDir CrescentDir;
 
 typedef struct {
 	size_t size;
-} Stat;
+} CrescentStat;
 
 #endif

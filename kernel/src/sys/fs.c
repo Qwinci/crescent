@@ -137,7 +137,7 @@ int sys_read(Handle handle, __user void* buffer, size_t size) {
 	return ret;
 }
 
-int sys_stat(Handle handle, __user Stat* stat) {
+int sys_stat(Handle handle, __user CrescentStat* stat) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
@@ -145,7 +145,7 @@ int sys_stat(Handle handle, __user Stat* stat) {
 	}
 	FileData* data = (FileData*) entry->data;
 
-	Stat s = {};
+	CrescentStat s = {};
 	int ret = data->node->ops.stat(data->node, &s);
 
 	if (!mem_copy_to_user(stat, &s, sizeof(s))) {
@@ -154,12 +154,12 @@ int sys_stat(Handle handle, __user Stat* stat) {
 	return ret;
 }
 
-int sys_opendir(__user const char* path, size_t path_len, __user Dir** ret) {
+int sys_opendir(__user const char* path, size_t path_len, __user CrescentDir** ret) {
 	int status = sys_open(path, path_len, (__user Handle*) ret);
 	return status;
 }
 
-int sys_closedir(__user Dir* dir) {
+int sys_closedir(__user CrescentDir* dir) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, (Handle) dir);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
@@ -173,7 +173,7 @@ int sys_closedir(__user Dir* dir) {
 	return 0;
 }
 
-int sys_readdir(__user Dir* dir, __user DirEntry* entry) {
+int sys_readdir(__user CrescentDir* dir, __user CrescentDirEntry* entry) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* handle = handle_tab_get(&task->process->handle_table, (Handle) dir);
 	if (!handle || handle->type != HANDLE_TYPE_FILE) {
@@ -181,7 +181,7 @@ int sys_readdir(__user Dir* dir, __user DirEntry* entry) {
 	}
 	FileData* data = (FileData*) handle->data;
 
-	DirEntry kernel_entry;
+	CrescentDirEntry kernel_entry;
 	int ret = data->node->ops.read_dir(data->node, &data->cursor, &kernel_entry);
 	if (ret != 0) {
 		return ret;
