@@ -3,7 +3,6 @@
 #include "executor.h"
 
 #define KERNEL_STACK_SIZE 0x2000
-#define USER_STACK_SIZE 0x2000
 
 typedef struct X86Task {
 	struct X86Task* self;

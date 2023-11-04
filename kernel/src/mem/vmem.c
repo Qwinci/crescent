@@ -324,7 +324,7 @@ void* vmem_xalloc( // NOLINT(misc-no-recursion)
 			if (list->size > size) {
 				void* start = MAX(list->base, min);
 				void* end = MIN((void*) ((uintptr_t) list->base + list->size), max);
-				if (start > end || (end - start) < size) {
+				if (start > end || ((usize) end - (usize) start) < size) {
 					self->freelists[i] = list;
 					if (list->next) {
 						list->next->prev = list;

@@ -21,7 +21,7 @@ int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 			}
 
 			usize size = self->info.height * self->info.pitch;
-			void* mem = vm_user_alloc(task->process, NULL, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+			void* mem = vm_user_alloc(task->process, NULL, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE, true);
 			if (!mem) {
 				return ERR_NO_MEM;
 			}
@@ -30,7 +30,7 @@ int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 					for (usize j = 0; j < i; j += PAGE_SIZE) {
 						arch_user_unmap_page(task->process, (usize) mem + j, true);
 					}
-					vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+					vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE, true);
 					return ERR_NO_MEM;
 				}
 			}
@@ -39,7 +39,7 @@ int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 				for (usize i = 0; i < size; i += PAGE_SIZE) {
 					arch_user_unmap_page(task->process, (usize) mem + i, true);
 				}
-				vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE);
+				vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE, true);
 				return ERR_FAULT;
 			}
 			return 0;

@@ -71,28 +71,33 @@ void vm_kernel_dealloc_backed(void* ptr, usize count) {
 }
 
 void vm_user_init(Process* process, usize base, usize size) {
-	vmem_new(&process->vmem, "user vmem", (void*) base, size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
+	usize low_base = base;
+	usize half_size = ALIGNDOWN(size / 2, PAGE_SIZE);
+	usize high_base = base + half_size;
+	vmem_new(&process->low_vmem, "user low vmem", (void*) low_base, half_size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
+	vmem_new(&process->high_vmem, "user high vmem", (void*) high_base, half_size, PAGE_SIZE, NULL, NULL, NULL, 0, 0);
 }
 
 void vm_user_free(Process* process) {
-	vmem_destroy(&process->vmem, false);
+	vmem_destroy(&process->low_vmem, false);
+	vmem_destroy(&process->high_vmem, false);
 }
 
-void* vm_user_alloc(Process* process, void* at, usize count) {
+void* vm_user_alloc(Process* process, void* at, usize count, bool high) {
 	mutex_lock(&process->vmem_lock);
-	void* res = vmem_xalloc(&process->vmem, count * PAGE_SIZE, 0, 0, 0, at, at, VM_INSTANTFIT);
+	void* res = vmem_xalloc(high ? &process->high_vmem : &process->low_vmem, count * PAGE_SIZE, 0, 0, 0, at, at, VM_INSTANTFIT);
 	mutex_unlock(&process->vmem_lock);
 	return res;
 }
 
-void vm_user_dealloc(Process* process, void* ptr, usize count) {
+void vm_user_dealloc(Process* process, void* ptr, usize count, bool high) {
 	mutex_lock(&process->vmem_lock);
-	vmem_free(&process->vmem, ptr, count * PAGE_SIZE);
+	vmem_free(high ? &process->high_vmem : &process->low_vmem, ptr, count * PAGE_SIZE);
 	mutex_unlock(&process->vmem_lock);
 }
 
-void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags flags, void** kernel_mapping) {
-	void* vm = vm_user_alloc(process, at, count);
+void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags flags, bool high, void** kernel_mapping) {
+	void* vm = vm_user_alloc(process, at, count, high);
 	if (!vm) {
 		return NULL;
 	}
@@ -100,7 +105,7 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 	if (kernel_mapping) {
 		*kernel_mapping = vm_kernel_alloc(count);
 		if (!*kernel_mapping) {
-			vm_user_dealloc(process, vm, count);
+			vm_user_dealloc(process, vm, count, high);
 			return NULL;
 		}
 		kernel_vm = *kernel_mapping;
@@ -109,7 +114,7 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 	mutex_lock(&process->mapping_lock);
 	if (!process_add_mapping(process, (usize) vm, count * PAGE_SIZE, (flags & PF_WRITE) ? MAPPING_FLAG_W : 0)) {
 		mutex_unlock(&process->mapping_lock);
-		vm_user_dealloc(process, vm, count);
+		vm_user_dealloc(process, vm, count, high);
 		if (kernel_vm) {
 			vm_kernel_dealloc(kernel_vm, count);
 		}
@@ -128,7 +133,7 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 				}
 				arch_user_unmap_page(process, (usize) vm + j * PAGE_SIZE, true);
 			}
-			vm_user_dealloc(process, vm, count);
+			vm_user_dealloc(process, vm, count, high);
 			if (kernel_vm) {
 				vm_kernel_dealloc(kernel_vm, count);
 			}
@@ -151,7 +156,7 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 				}
 				arch_user_unmap_page(process, (usize) vm + j * PAGE_SIZE, true);
 			}
-			vm_user_dealloc(process, vm, count);
+			vm_user_dealloc(process, vm, count, high);
 			if (kernel_vm) {
 				vm_kernel_dealloc(kernel_vm, count);
 			}
@@ -167,7 +172,7 @@ void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags fl
 
 void* vm_user_create_cow(Process* process, void* original_map, Mapping* original, void* at) {
 	usize pages = ALIGNUP(original->size, PAGE_SIZE) / PAGE_SIZE;
-	void* vm = vm_user_alloc(process, at, pages);
+	void* vm = vm_user_alloc(process, at, pages, true);
 	if (!vm) {
 		return NULL;
 	}
@@ -199,15 +204,15 @@ void* vm_user_create_cow(Process* process, void* original_map, Mapping* original
 			arch_unmap_page(process->map, (usize) vm + i * PAGE_SIZE, true);
 		}
 
-		vm_user_dealloc(process, vm, pages);
+		vm_user_dealloc(process, vm, pages, true);
 		return NULL;
 	}
 	mutex_unlock(&process->mapping_lock);
 	return vm;
 }
 
-void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFlags flags, void** kernel_mapping) {
-	void* vm = vm_user_alloc(process, at, count);
+void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFlags flags, bool high, void** kernel_mapping) {
+	void* vm = vm_user_alloc(process, at, count, high);
 	if (!vm) {
 		return NULL;
 	}
@@ -215,7 +220,7 @@ void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFl
 	if (kernel_mapping) {
 		*kernel_mapping = vm_kernel_alloc(count);
 		if (!*kernel_mapping) {
-			vm_user_dealloc(process, vm, count);
+			vm_user_dealloc(process, vm, count, high);
 			return NULL;
 		}
 		kernel_vm = *kernel_mapping;
@@ -226,7 +231,7 @@ void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFl
 	mutex_lock(&process->mapping_lock);
 	if (!process_add_mapping(process, (usize) vm, count * PAGE_SIZE, flags)) {
 		mutex_unlock(&process->mapping_lock);
-		vm_user_dealloc(process, vm, count);
+		vm_user_dealloc(process, vm, count, high);
 		if (kernel_vm) {
 			vm_kernel_dealloc(kernel_vm, count);
 		}
@@ -243,7 +248,7 @@ void vm_user_dealloc_kernel(void* kernel_mapping, usize count) {
 	}
 }
 
-bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping) {
+bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, bool high, void* kernel_mapping) {
 	if (!process_remove_mapping(process, (usize) ptr)) {
 		return false;
 	}
@@ -258,14 +263,14 @@ bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kern
 		Page* page = page_from_addr(phys);
 		pfree(page, 1);
 	}
-	vm_user_dealloc(process, ptr, count);
+	vm_user_dealloc(process, ptr, count, high);
 	if (kernel_mapping) {
 		vm_kernel_dealloc(kernel_mapping, count);
 	}
 	return true;
 }
 
-bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, void* kernel_mapping) {
+bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, bool high, void* kernel_mapping) {
 	if (!process_remove_mapping(process, (usize) ptr)) {
 		return false;
 	}
@@ -283,7 +288,7 @@ bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, void* k
 		Page* page = page_from_addr(phys);
 		pfree(page, 1);
 	}
-	vm_user_dealloc(process, ptr, count);
+	vm_user_dealloc(process, ptr, count, high);
 	if (kernel_mapping) {
 		vm_kernel_dealloc(kernel_mapping, count);
 	}
@@ -310,6 +315,6 @@ bool vm_user_dealloc_cow(Process* process, void* ptr, usize count) {
 			page->refs -= 1;
 		}
 	}
-	vm_user_dealloc(process, ptr, count);
+	vm_user_dealloc(process, ptr, count, true);
 	return true;
 }

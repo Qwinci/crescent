@@ -111,19 +111,19 @@ int sys_read(Handle handle, void* buffer, size_t size) {
 	return (int) syscall3(SYS_READ, handle, (size_t) buffer, size);
 }
 
-int sys_stat(Handle handle, Stat* stat) {
+int sys_stat(Handle handle, CrescentStat* stat) {
 	return (int) syscall2(SYS_STAT, handle, (size_t) stat);
 }
 
-int sys_opendir(const char* path, size_t path_len, Dir** ret) {
+int sys_opendir(const char* path, size_t path_len, CrescentDir** ret) {
 	return (int) syscall3(SYS_OPENDIR, (size_t) path, path_len, (size_t) ret);
 }
 
-int sys_closedir(Dir* dir) {
+int sys_closedir(CrescentDir* dir) {
 	return (int) syscall1(SYS_CLOSEDIR, (size_t) dir);
 }
 
-int sys_readdir(Dir* dir, DirEntry* entry) {
+int sys_readdir(CrescentDir* dir, CrescentDirEntry* entry) {
 	return (int) syscall2(SYS_READDIR, (size_t) dir, (size_t) entry);
 }
 
@@ -449,7 +449,7 @@ _Noreturn void _start(void*) {
 	sys_devenum(DEVICE_TYPE_PARTITION, &info, &par_count);
 	sys_close(info.handle);
 
-	Dir* dir;
+	CrescentDir* dir;
 	sys_opendir(info.name, strlen(info.name), &dir);
 	puts("opening device:");
 	puts(info.name);
@@ -461,7 +461,7 @@ _Noreturn void _start(void*) {
 	Handle proc_handle;
 	int process_create_status = sys_create_process(buffer, strlen(buffer), &proc_handle);*/
 
-	DirEntry entry;
+	CrescentDirEntry entry;
 	while (sys_readdir(dir, &entry) == 0) {
 		puts(entry.name);
 		if (entry.type != FS_ENTRY_TYPE_FILE) {
@@ -476,10 +476,10 @@ _Noreturn void _start(void*) {
 
 		Handle handle;
 		ret = sys_open(name, strlen(name), &handle);
-		Stat stat;
+		CrescentStat stat;
 		ret = sys_stat(handle, &stat);
 
-		char* buffer = (char*) sys_mmap((stat.size + 1 + 0xFFF) & ~0xFFF, PROT_READ | PROT_WRITE);
+		char* buffer = (char*) sys_mmap((stat.size + 1 + 0xFFF) & ~0xFFF, KPROT_READ | KPROT_WRITE);
 		ret = sys_read(handle, buffer, stat.size);
 		buffer[stat.size] = 0;
 		puts(buffer);
@@ -489,7 +489,7 @@ _Noreturn void _start(void*) {
 	}
 
 	// try mapping 100gb
-	void* huge_test = sys_mmap(1024ULL * 1024 * 1024 * 100, PROT_READ | PROT_WRITE);
+	void* huge_test = sys_mmap(1024ULL * 1024 * 1024 * 100, KPROT_READ | KPROT_WRITE);
 	if (huge_test) {
 		puts("100gb map successful");
 		puts("trying to write to the first and last pages");

@@ -24,7 +24,8 @@ typedef struct {
 
 typedef struct Process {
 	HandleTable handle_table;
-	VMem vmem;
+	VMem low_vmem;
+	VMem high_vmem;
 	Mutex vmem_lock;
 	void* map;
 	Mutex mapping_lock;

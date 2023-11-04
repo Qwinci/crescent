@@ -238,7 +238,8 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 			}
 
 			void* mapping;
-			void* mem = vm_user_alloc_backed(task->process, (void*) aligned_addr, size / PAGE_SIZE, flags, &mapping);
+			bool high = aligned_addr >= (usize) task->process->high_vmem.base;
+			void* mem = vm_user_alloc_backed(task->process, (void*) aligned_addr, size / PAGE_SIZE, flags, high, &mapping);
 			if (!mem) {
 				for (u16 j = 0; j < i; ++j) {
 					const Elf64PHdr* phdr2 = offset(phdrs, Elf64PHdr*, j * ehdr.e_phentsize);
@@ -249,7 +250,7 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 						usize align2 = phdr2->p_vaddr & (PAGE_SIZE - 1);
 						usize aligned_addr2 = base + phdr2->p_vaddr - align2;
 						usize size2 = ALIGNUP(phdr2->p_memsz + align2, PAGE_SIZE);
-						vm_user_dealloc_backed(task->process, (void*) aligned_addr2, size2 / PAGE_SIZE, NULL);
+						vm_user_dealloc_backed(task->process, (void*) aligned_addr2, size2 / PAGE_SIZE, high, NULL);
 					}
 				}
 
@@ -268,7 +269,7 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 						usize align2 = phdr2->p_vaddr & (PAGE_SIZE - 1);
 						usize aligned_addr2 = base + phdr2->p_vaddr - align2;
 						usize size2 = ALIGNUP(phdr2->p_memsz + align2, PAGE_SIZE);
-						vm_user_dealloc_backed(task->process, (void*) aligned_addr2, size2 / PAGE_SIZE, NULL);
+						vm_user_dealloc_backed(task->process, (void*) aligned_addr2, size2 / PAGE_SIZE, high, NULL);
 					}
 				}
 

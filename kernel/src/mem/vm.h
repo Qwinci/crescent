@@ -14,14 +14,14 @@ typedef struct Process Process;
 
 void vm_user_init(Process* process, usize base, usize size);
 void vm_user_free(Process* process);
-void* vm_user_alloc(Process* process, void* at, usize count);
-void vm_user_dealloc(Process* process, void* ptr, usize count);
+void* vm_user_alloc(Process* process, void* at, usize count, bool high);
+void vm_user_dealloc(Process* process, void* ptr, usize count, bool high);
 
-void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags flags, void** kernel_mapping);
-void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFlags flags, void** kernel_mapping);
+void* vm_user_alloc_backed(Process* process, void* at, usize count, PageFlags flags, bool high, void** kernel_mapping);
+void* vm_user_alloc_on_demand(Process* process, void* at, usize count, MappingFlags flags, bool high, void** kernel_mapping);
 void vm_user_dealloc_kernel(void* kernel_mapping, usize count);
-bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, void* kernel_mapping);
-bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, void* kernel_mapping);
+bool vm_user_dealloc_backed(Process* process, void* ptr, usize count, bool high, void* kernel_mapping);
+bool vm_user_dealloc_on_demand(Process* process, void* ptr, usize count, bool high, void* kernel_mapping);
 
 void* vm_user_create_cow(Process* process, void* original_map, Mapping* original, void* at);
 bool vm_user_dealloc_cow(Process* process, void* ptr, usize count);

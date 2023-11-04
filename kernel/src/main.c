@@ -35,7 +35,21 @@
 	LoadedElf init_res;
 	Process* init_process = process_new_user();
 	assert(init_process);
-	Task* init_task = arch_create_user_task(init_process, "init", NULL, NULL);
+	//Task* init_task = arch_create_user_task(init_process, "init", NULL, NULL);
+	Str arg0 = str_new("arg0");
+	Str arg1 = str_new("arg1");
+	Str env0 = str_new("PATH");
+	Str env1 = str_new("XDG_HOME");
+	Str args[] = {arg0, arg1};
+	Str env[] = {env0, env1};
+	SysvTaskInfo info = {
+		.aux_len = 0,
+		.args = args,
+		.args_len = sizeof(args) / sizeof(*args),
+		.env = env,
+		.env_len = sizeof(env) / sizeof(*env)
+	};
+	Task* init_task = arch_create_sysv_user_task(init_process, "init", &info);
 	VNode* init_vnode;
 
 	char* null_terminated_init = kmalloc(parsed_cmdline.init.len + 1);

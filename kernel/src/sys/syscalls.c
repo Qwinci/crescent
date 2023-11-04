@@ -394,7 +394,7 @@ void* sys_mmap(size_t size, int protection) {
 		flags |= MAPPING_FLAG_X;
 	}
 	Task* self = arch_get_cur_task();
-	void* res = vm_user_alloc_on_demand(self->process, NULL, size / PAGE_SIZE, flags, NULL);
+	void* res = vm_user_alloc_on_demand(self->process, NULL, size / PAGE_SIZE, flags, false, NULL);
 	if (!res) {
 		return NULL;
 	}
@@ -412,7 +412,7 @@ int sys_munmap(__user void* ptr, size_t size) {
 		return ERR_INVALID_ARG;
 	}
 
-	if (!vm_user_dealloc_on_demand(self->process, (void*) ptr, size / PAGE_SIZE, NULL)) {
+	if (!vm_user_dealloc_on_demand(self->process, (void*) ptr, size / PAGE_SIZE, false, NULL)) {
 		return ERR_INVALID_ARG;
 	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);

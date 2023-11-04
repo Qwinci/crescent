@@ -1,8 +1,9 @@
 #pragma once
-#include "task.h"
 #include "process.h"
+#include "task.h"
 #include "types.h"
 #include "utils/attribs.h"
+#include "utils/str.h"
 
 #define NS_IN_US 1000
 #define US_IN_MS 1000
@@ -20,8 +21,24 @@ typedef struct {
 	usize slice_us;
 } SchedLevel;
 
+typedef struct {
+	size_t type;
+	size_t value;
+} SysvAux;
+
+typedef struct {
+	SysvAux* aux;
+	usize aux_len;
+	Str* args;
+	usize args_len;
+	Str* env;
+	usize env_len;
+	void (*fn)();
+} SysvTaskInfo;
+
 Task* arch_create_kernel_task(const char* name, void (*fn)(void*), void* arg);
 Task* arch_create_user_task(Process* process, const char* name, void (*fn)(void*), void* arg);
+Task* arch_create_sysv_user_task(Process* process, const char* name, const SysvTaskInfo* info);
 void arch_set_user_task_fn(Task* task, void (*fn)(void*));
 void arch_destroy_task(Task* task);
 
