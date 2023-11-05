@@ -185,6 +185,8 @@ int elf_load_from_file(Process* process, VNode* node, LoadedElf* res, bool reloc
 		return ERR_INVALID_ARG;
 	}
 
+	res->phdr_count = ehdr.e_phnum;
+
 	bool relocatable = ehdr.e_type == ET_DYN;
 
 	Elf64PHdr* phdrs = (Elf64PHdr*) kmalloc(ehdr.e_phnum * ehdr.e_phentsize);
@@ -215,7 +217,11 @@ int elf_load_from_file(Process* process, VNode* node, LoadedElf* res, bool reloc
 
 	for (u16 i = 0; i < ehdr.e_phnum; ++i) {
 		const Elf64PHdr* phdr = offset(phdrs, Elf64PHdr*, i * ehdr.e_phentsize);
-		if (phdr->p_type == PT_LOAD) {
+
+		if (phdr->p_type == PT_PHDR) {
+			res->user_phdrs = (void*) (base + phdr->p_vaddr);
+		}
+		else if (phdr->p_type == PT_LOAD) {
 			if (!phdr->p_memsz) {
 				continue;
 			}
@@ -471,48 +477,4 @@ int elf_get_interp(VNode* node, char** interp, usize* interp_len) {
 	}
 
 	return ERR_NOT_EXISTS;
-}
-
-int elf_load_user_phdrs(Process* process, VNode* node, void** user_mem, usize* user_phdr_count, usize* user_entry) {
-	Elf64EHdr ehdr;
-	int ret = 0;
-	if ((ret = node->ops.read(node, &ehdr, 0, sizeof(Elf64EHdr))) != 0) {
-		return ERR_INVALID_ARG;
-	}
-
-	CrescentStat s;
-	if ((ret = node->ops.stat(node, &s)) != 0) {
-		return ret;
-	}
-
-	if (ehdr.e_ident[EI_MAG0] != ELFMAG0 ||
-		ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
-		ehdr.e_ident[EI_MAG2] != ELFMAG2 ||
-		ehdr.e_ident[EI_MAG3] != ELFMAG3 ||
-		ehdr.e_ident[EI_CLASS] != ELFCLASS64 ||
-		ehdr.e_ident[EI_DATA] != ELFDATA2LSB ||
-		ehdr.e_ident[EI_VERSION] != EV_CURRENT ||
-		ehdr.e_machine != EM_X86_64 ||
-		(ehdr.e_type != ET_EXEC && ehdr.e_type != ET_DYN) ||
-		ehdr.e_phentsize != sizeof(Elf64PHdr) ||
-		ehdr.e_shentsize != sizeof(Elf64SHdr) ||
-		ehdr.e_phoff >= s.size ||
-		ehdr.e_shoff >= s.size ||
-		ehdr.e_phnum * sizeof(Elf64PHdr) >= s.size) {
-		return ERR_INVALID_ARG;
-	}
-
-	void* mapping;
-	void* phdrs = vm_user_alloc_backed(process, NULL, ALIGNUP(ehdr.e_phnum * ehdr.e_phentsize, PAGE_SIZE) / PAGE_SIZE, PF_USER | PF_READ | PF_WRITE, true, &mapping);
-	if (!phdrs) {
-		return ERR_NO_MEM;
-	}
-	if ((ret = node->ops.read(node, mapping, ehdr.e_phoff, ehdr.e_phnum * ehdr.e_phentsize)) != 0) {
-		vm_user_dealloc_backed(process, phdrs, ALIGNUP(ehdr.e_phnum * ehdr.e_phentsize, PAGE_SIZE) / PAGE_SIZE, true, mapping);
-		return ERR_INVALID_ARG;
-	}
-	*user_mem = phdrs;
-	*user_phdr_count = ehdr.e_phnum;
-	*user_entry = ehdr.e_entry;
-	return 0;
 }

@@ -21,4 +21,12 @@ typedef struct {
 	size_t size;
 } CrescentStat;
 
+typedef enum {
+	KSEEK_SET,
+	KSEEK_END,
+	KSEEK_CUR
+} CrescentSeekType;
+
+typedef intptr_t SeekOff;
+
 #endif

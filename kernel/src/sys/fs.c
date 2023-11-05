@@ -1,10 +1,11 @@
 #include "fs.h"
-#include "crescent/fs.h"
-#include "fs/vfs.h"
-#include "mem/user.h"
-#include "crescent/sys.h"
-#include "mem/allocator.h"
 #include "arch/cpu.h"
+#include "crescent/fs.h"
+#include "crescent/sys.h"
+#include "fs/vfs.h"
+#include "mem/allocator.h"
+#include "mem/user.h"
+#include "utils/math.h"
 
 int kernel_fs_open_ex(const char* dev_name, usize dev_len, const char* path, VNode** ret) {
 	const char* ptr = path;
@@ -119,6 +120,56 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 	return 0;
 }
 
+int sys_open_ex(__user const char* dev, size_t dev_len, __user const char* path, size_t path_len, __user Handle* ret) {
+	char* dev_buf = kmalloc(dev_len);
+	if (!dev_buf) {
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(dev_buf, dev, dev_len)) {
+		kfree(dev_buf, dev_len);
+		return ERR_FAULT;
+	}
+
+	char* buf = kmalloc(path_len + 1);
+	if (!buf) {
+		kfree(dev_buf, dev_len);
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(buf, path, path_len)) {
+		kfree(dev_buf, dev_len);
+		kfree(buf, path_len + 1);
+		return ERR_FAULT;
+	}
+	buf[path_len] = 0;
+
+	VNode* node;
+	int status = kernel_fs_open_ex(dev_buf, dev_len, buf, &node);
+
+	kfree(dev_buf, dev_len);
+	kfree(buf, path_len + 1);
+	if (status != 0) {
+		return status;
+	}
+
+	Task* task = arch_get_cur_task();
+	FileData* data = kmalloc(sizeof(FileData));
+	if (!data) {
+		node->ops.release(node);
+		return ERR_NO_MEM;
+	}
+	data->node = node;
+	data->cursor = 0;
+
+	Handle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
+	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
+		handle_tab_close(&task->process->handle_table, handle);
+		node->ops.release(node);
+		kfree(data, sizeof(FileData));
+		return ERR_FAULT;
+	}
+	return 0;
+}
+
 int sys_read(Handle handle, __user void* buffer, size_t size) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
@@ -142,6 +193,60 @@ int sys_read(Handle handle, __user void* buffer, size_t size) {
 	}
 	kfree(buf, size);
 	return ret;
+}
+
+int sys_write(Handle handle, __user const void* buffer, size_t size) {
+	Task* task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
+	if (!entry || entry->type != HANDLE_TYPE_FILE) {
+		return ERR_INVALID_ARG;
+	}
+	FileData* data = (FileData*) entry->data;
+
+	char* buf = kmalloc(size);
+	if (!buf) {
+		return ERR_NO_MEM;
+	}
+	if (!mem_copy_to_kernel(buf, buffer, size)) {
+		kfree(buf, size);
+		return ERR_FAULT;
+	}
+
+	int ret = data->node->ops.write(data->node, buf, data->cursor, size);
+	if (ret == 0) {
+		data->cursor += size;
+	}
+	kfree(buf, size);
+	return ret;
+}
+
+int sys_seek(Handle handle, CrescentSeekType seek_type, SeekOff offset) {
+	Task* task = arch_get_cur_task();
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
+	if (!entry || entry->type != HANDLE_TYPE_FILE) {
+		return ERR_INVALID_ARG;
+	}
+	FileData* data = (FileData*) entry->data;
+
+	switch (seek_type) {
+		case KSEEK_SET:
+			data->cursor = (usize) offset;
+			break;
+		case KSEEK_END:
+		{
+			CrescentStat s;
+			int status;
+			if ((status = data->node->ops.stat(data->node, &s)) != 0) {
+				return status;
+			}
+			data->cursor = s.size + offset;
+			break;
+		}
+		case KSEEK_CUR:
+			data->cursor += offset;
+			break;
+	}
+	return 0;
 }
 
 int sys_stat(Handle handle, __user CrescentStat* stat) {

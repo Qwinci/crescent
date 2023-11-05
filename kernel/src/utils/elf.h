@@ -56,6 +56,7 @@ typedef struct {
 #define PT_LOAD 0x1
 #define PT_DYNAMIC 0x2
 #define PT_INTERP 0x3
+#define PT_PHDR 0x6
 
 #define DT_NULL 0
 #define DT_NEEDED 0x1

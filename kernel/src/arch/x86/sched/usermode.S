@@ -68,6 +68,12 @@ x86_syscall_entry:
     mov %r10, %rcx
     mov syscall_handlers(, %rdi, 8), %r10
 
+    // check for null because of posix syscalls having higher numbers
+    cmp $0, %r10
+    jne 1f
+    mov $-1, %rax
+    jmp x86_syscall_entry_exit
+1:
     mov %rax, %rdi
 	call *%r10
 

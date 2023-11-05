@@ -212,7 +212,7 @@ void pmalloc_add_mem(void* base, usize size) {
 
 static Mutex PMALLOC_LOCK = {};
 
-Page* pmalloc(usize count) {
+static Page* pmalloc_memset(usize count, uint8_t value) {
 	if (!count) {
 		return NULL;
 	}
@@ -229,9 +229,17 @@ Page* pmalloc(usize count) {
 	Page* ptr = freelist_get_nonrecursive(index);
 	mutex_unlock(&PMALLOC_LOCK);
 	if (ptr) {
-		memset(to_virt(ptr->phys), 0xCB, index_to_size(index) * PAGE_SIZE);
+		memset(to_virt(ptr->phys), value, index_to_size(index) * PAGE_SIZE);
 	}
 	return ptr;
+}
+
+Page* pmalloc(usize count) {
+	return pmalloc_memset(count, 0xCB);
+}
+
+Page* pcalloc(usize count) {
+	return pmalloc_memset(count, 0);
 }
 
 void pfree(Page* ptr, usize count) {

@@ -247,7 +247,7 @@ bool process_handle_fault(Process* process, usize addr) {
 	}
 
 	assert(addr >= mapping->base);
-	Page* page = pmalloc(1);
+	Page* page = (mapping->flags & MAPPING_FLAG_ZEROED) ? pcalloc(1) : pmalloc(1);
 	if (!page) {
 		// todo oom
 		return false;

@@ -10,7 +10,7 @@ if(NOT EXISTS ${CMAKE_SOURCE_DIR}/libs/mlibc)
 	)
 endif()
 
-set(mlibc_config "--cross-file=${CMAKE_SOURCE_DIR}/libs/cross-file.toml")
+set(mlibc_config "--cross-file=${CMAKE_SOURCE_DIR}/libs/cross-file.toml" --buildtype=debug)
 ExternalProject_Add(mlibc
 	SOURCE_DIR ${CMAKE_SOURCE_DIR}/libs/mlibc
 	PREFIX mlibc-prefix

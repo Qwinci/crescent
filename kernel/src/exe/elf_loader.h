@@ -3,6 +3,8 @@
 
 typedef struct {
 	void* entry;
+	void* user_phdrs;
+	usize phdr_count;
 } LoadedElf;
 
 typedef struct {
@@ -29,4 +31,3 @@ typedef struct VNode VNode;
 
 int elf_load_from_file(Process* process, VNode* node, LoadedElf* res, bool relocate, usize* interp_base);
 int elf_get_interp(VNode* node, char** interp, usize* interp_len);
-int elf_load_user_phdrs(Process* process, VNode* node, void** user_mem, usize* user_phdr_count, usize* user_entry);

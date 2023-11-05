@@ -26,11 +26,23 @@ typedef enum {
 #define SYS_DEVENUM 17
 
 #define SYS_OPEN 18
-#define SYS_READ 19
-#define SYS_STAT 20
-#define SYS_OPENDIR 21
-#define SYS_READDIR 22
-#define SYS_CLOSEDIR 23
+#define SYS_OPEN_EX 19
+#define SYS_READ 20
+#define SYS_WRITE 21
+#define SYS_SEEK 22
+#define SYS_STAT 23
+#define SYS_OPENDIR 24
+#define SYS_READDIR 25
+#define SYS_CLOSEDIR 26
+#define SYS_WRITE_FS_BASE 27
+#define SYS_WRITE_GS_BASE 28
+
+#define SYS_POSIX_OPEN 1000
+#define SYS_POSIX_READ 1001
+#define SYS_POSIX_SEEK 1002
+#define SYS_POSIX_MMAP 1003
+#define SYS_POSIX_CLOSE 1004
+#define SYS_POSIX_WRITE 1005
 
 #define ERR_INVALID_ARG (-1)
 #define ERR_NO_PERMISSIONS (-2)

@@ -107,6 +107,10 @@ Task* arch_create_sysv_user_task(Process* process, const char* name, const SysvT
 	u8* user_str_ptr = user_stack;
 	u64* ptr = (u64*) stack;
 
+	ptr = (u64*) (ALIGNDOWN((usize) ptr, 16));
+	stack = (u8*) (ALIGNDOWN((usize) stack, 16));
+	user_stack = (u8*) (ALIGNDOWN((usize) user_stack, 16));
+
 	// null aux
 	*--ptr = 0;
 	*--ptr = 0;

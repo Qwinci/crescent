@@ -32,6 +32,8 @@ bool sys_request_cap(u32 cap);
 void* sys_mmap(size_t size, int protection);
 int sys_munmap(__user void* ptr, size_t size);
 int sys_close(Handle handle);
+int sys_write_fs_base(size_t value);
+int sys_write_gs_base(size_t value);
 
 __attribute__((used)) void* syscall_handlers[] = {
 	[SYS_CREATE_PROCESS] = sys_create_process,
@@ -58,11 +60,24 @@ __attribute__((used)) void* syscall_handlers[] = {
 	[SYS_DEVENUM] = sys_devenum,
 
 	[SYS_OPEN] = sys_open,
+	[SYS_OPEN_EX] = sys_open_ex,
 	[SYS_READ] = sys_read,
+	[SYS_WRITE] = sys_write,
+	[SYS_SEEK] = sys_seek,
 	[SYS_STAT] = sys_stat,
 	[SYS_OPENDIR] = sys_opendir,
 	[SYS_READDIR] = sys_readdir,
-	[SYS_CLOSEDIR] = sys_closedir
+	[SYS_CLOSEDIR] = sys_closedir,
+
+	[SYS_WRITE_FS_BASE] = sys_write_fs_base,
+	[SYS_WRITE_GS_BASE] = sys_write_gs_base,
+
+	[SYS_POSIX_OPEN] = sys_posix_open,
+	[SYS_POSIX_READ] = sys_posix_read,
+	[SYS_POSIX_SEEK] = sys_posix_seek,
+	[SYS_POSIX_MMAP] = sys_posix_mmap,
+	[SYS_POSIX_CLOSE] = sys_posix_close,
+	[SYS_POSIX_WRITE] = sys_posix_write
 };
 
 __attribute__((used)) const usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
@@ -463,4 +478,26 @@ int sys_close(Handle handle) {
 		}
 	}
 	return 0;
+}
+
+#ifdef __x86_64
+#include "arch/x86/cpu.h"
+#endif
+
+int sys_write_fs_base(size_t value) {
+#ifdef __x86_64__
+	x86_set_msr(MSR_FSBASE, value);
+	return 0;
+#else
+	return ERR_OPERATION_NOT_SUPPORTED;
+#endif
+}
+
+int sys_write_gs_base(size_t value) {
+#ifdef __x86_64__
+	x86_set_msr(MSR_KERNELGSBASE, value);
+	return 0;
+#else
+	return ERR_OPERATION_NOT_SUPPORTED;
+#endif
 }

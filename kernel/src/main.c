@@ -21,6 +21,16 @@
 #include "utils/cmdline.h"
 #include "utils/elf.h"
 
+static int stdout_vnode_write(VNode* self, const void* data, usize off, usize size) {
+	kprintf("%" PRIfg "%.*s" "%" PRIfg, COLOR_ORANGE, (int) size, (const char*) data, COLOR_RESET);
+	return 0;
+}
+
+static int stderr_vnode_write(VNode* self, const void* data, usize off, usize size) {
+	kprintf("%" PRIfg "%.*s" "%" PRIfg, COLOR_RED, (int) size, (const char*) data, COLOR_RESET);
+	return 0;
+}
+
 [[noreturn]] void kmain() {
 	kprintf("[kernel]: entered main\n");
 	const char* cmdline = arch_get_kernel_cmdline();
@@ -73,23 +83,21 @@
 
 	usize interp_base;
 	if ((status = elf_load_from_file(init_process, interp_vnode, &init_res, false, &interp_base)) != 0) {
+		panic("failed to load init elf phdrs, status: %d\n", status);
+	}
+	LoadedElf program_res;
+	if ((status = elf_load_from_file(init_process, init_vnode, &program_res, false, NULL)) != 0) {
 		panic("failed to load init elf, status: %d\n", status);
 	}
-	void* user_phdrs;
-	usize user_phdr_count;
-	usize user_entry;
-	if ((status = elf_load_user_phdrs(init_process, init_vnode, &user_phdrs, &user_phdr_count, &user_entry)) != 0) {
-		panic("failed to load user phdrs, status: %d\n", status);
-	}
 
-	Str arg0 = str_new("ext2_p0/libc_test_program");
+	Str arg0 = str_new("posix_rootfs/libc_test_program");
 	Str args[] = {arg0};
 	SysvAux aux[] = {
-		{.type = AT_PHDR, .value = (size_t) user_phdrs},
+		{.type = AT_PHDR, .value = (size_t) program_res.user_phdrs},
 		{.type = AT_PHENT, .value = sizeof(Elf64PHdr)},
-		{.type = AT_PHNUM, .value = user_phdr_count},
+		{.type = AT_PHNUM, .value = program_res.phdr_count},
 		{.type = AT_PAGESZ, .value = PAGE_SIZE},
-		{.type = AT_ENTRY, .value = user_entry}
+		{.type = AT_ENTRY, .value = (size_t) program_res.entry}
 	};
 	SysvTaskInfo info = {
 		.aux = aux,
@@ -101,6 +109,23 @@
 		.fn = (void (*)()) init_res.entry
 	};
 	Task* init_task = arch_create_sysv_user_task(init_process, "init", &info);
+
+	Vfs dumb_vfs = {};
+	VNode* stdin_vnode = vnode_alloc();
+	stdin_vnode->refcount = 1;
+	stdin_vnode->vfs = &dumb_vfs;
+	VNode* stdout_vnode = vnode_alloc();
+	stdout_vnode->refcount = 1;
+	stdout_vnode->vfs = &dumb_vfs;
+	stdout_vnode->ops.write = stdout_vnode_write;
+	VNode* stderr_vnode = vnode_alloc();
+	stderr_vnode->refcount = 1;
+	stderr_vnode->vfs = &dumb_vfs;
+	stderr_vnode->ops.write = stderr_vnode_write;
+
+	assert(fd_table_insert(&init_process->fd_table, stdin_vnode) == 0);
+	assert(fd_table_insert(&init_process->fd_table, stdout_vnode) == 1);
+	assert(fd_table_insert(&init_process->fd_table, stderr_vnode) == 2);
 
 	ACTIVE_INPUT_TASK = init_task;
 	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));

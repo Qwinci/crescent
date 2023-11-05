@@ -1,3 +1,4 @@
+#pragma once
 #include "arch/cpu.h"
 #include "arch/x86/dev/lapic_timer.h"
 #include "arch/x86/sched/x86_task.h"

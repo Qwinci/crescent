@@ -1,6 +1,7 @@
 #pragma once
-#include "utils/handle.h"
 #include "mem/vmem.h"
+#include "sys/posix.h"
+#include "utils/handle.h"
 #include "utils/rb_tree.h"
 
 typedef enum {
@@ -9,6 +10,7 @@ typedef enum {
 	MAPPING_FLAG_X = 1 << 2,
 	MAPPING_FLAG_COW = 1 << 3,
 	MAPPING_FLAG_ON_DEMAND = 1 << 4,
+	MAPPING_FLAG_ZEROED = 1 << 5
 } MappingFlags;
 
 typedef struct {
@@ -24,6 +26,7 @@ typedef struct {
 
 typedef struct Process {
 	HandleTable handle_table;
+	FdTable fd_table;
 	VMem low_vmem;
 	VMem high_vmem;
 	Mutex vmem_lock;
