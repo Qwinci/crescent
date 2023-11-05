@@ -6,10 +6,8 @@
 #include "mem/allocator.h"
 #include "arch/cpu.h"
 
-int kernel_fs_open(const char* path, VNode** ret) {
+int kernel_fs_open_ex(const char* dev_name, usize dev_len, const char* path, VNode** ret) {
 	const char* ptr = path;
-	for (; *ptr && *ptr != '/'; ++ptr);
-	usize dev_len = ptr - path;
 
 	DeviceList* list = &DEVICES[DEVICE_TYPE_PARTITION];
 	mutex_lock(&list->lock);
@@ -17,7 +15,7 @@ int kernel_fs_open(const char* path, VNode** ret) {
 	GenericDevice* dev = NULL;
 	for (usize dev_i = 0; dev_i < list->len; ++dev_i) {
 		GenericDevice* d = list->devices[dev_i];
-		if (strncmp(d->name, path, dev_len) == 0) {
+		if (strncmp(d->name, dev_name, dev_len) == 0) {
 			dev = d;
 			break;
 		}
@@ -39,7 +37,9 @@ int kernel_fs_open(const char* path, VNode** ret) {
 		*ret = root;
 		return 0;
 	}
-	++ptr;
+	if (*ptr == '/') {
+		++ptr;
+	}
 
 	VNode* node = root;
 	while (true) {
@@ -72,6 +72,13 @@ int kernel_fs_open(const char* path, VNode** ret) {
 
 	*ret = node;
 	return 0;
+}
+
+int kernel_fs_open(const char* path, VNode** ret) {
+	const char* ptr = path;
+	for (; *ptr && *ptr != '/'; ++ptr);
+	usize dev_len = ptr - path;
+	return kernel_fs_open_ex(path, dev_len, ptr, ret);
 }
 
 int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {

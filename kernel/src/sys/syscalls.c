@@ -309,7 +309,8 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	}
 
 	LoadedElf res;
-	status = elf_load_from_file(thread, node, &res);
+	// todo interp here too
+	status = elf_load_from_file(process, node, &res, false, NULL);
 	node->ops.release(node);
 	if (status != 0) {
 		thread->process->thread_count = 0;

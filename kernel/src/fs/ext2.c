@@ -70,6 +70,8 @@ typedef struct {
 	u8 unused3[760];
 } Ext2SuperBlock;
 
+#define FEATURE_64BIT 0x80
+
 typedef struct {
 	u32 bg_block_bitmap;
 	u32 bg_inode_bitmap;
@@ -79,6 +81,35 @@ typedef struct {
 	u16 bg_used_dirs_count;
 	u8 unused[14];
 } BlockGroupDesc;
+static_assert(sizeof(BlockGroupDesc) == 32);
+
+typedef struct {
+	u32 bg_block_bitmap_lo;
+	u32 bg_inode_bitmap_lo;
+	u32 bg_inode_table_lo;
+	u16 bg_free_blocks_count_lo;
+	u16 bg_free_inodes_count_lo;
+	u16 bg_used_dirs_count_lo;
+	u16 bg_flags;
+	u32 bg_exclude_bitmap_lo;
+	u16 bg_block_bitmap_csum_lo;
+	u16 bg_inode_bitmap_csum_lo;
+	u16 bg_itable_unused_lo;
+	u16 bg_checksum;
+
+	u32 bg_block_bitmap_hi;
+	u32 bg_inode_bitmap_hi;
+	u32 bg_inode_table_hi;
+	u16 bg_free_blocks_count_hi;
+	u16 bg_free_inodes_count_hi;
+	u16 bg_used_dirs_count_hi;
+	u16 bg_itable_unused_hi;
+	u32 bg_exclude_bitmap_hi;
+	u16 bg_block_bitmap_csum_hi;
+	u16 bg_inode_bitmap_csum_hi;
+	u32 bg_reserved;
+} BlockGroupDesc64;
+static_assert(sizeof(BlockGroupDesc64) == 64);
 
 typedef struct {
 	u16 i_mode;
@@ -121,7 +152,10 @@ typedef struct {
 	usize start_blk;
 	usize device_blks_in_ext_blk;
 
-	BlockGroupDesc* block_groups;
+	union {
+		BlockGroupDesc* block_groups;
+		BlockGroupDesc64* block_groups64;
+	};
 
 	u32 block_size;
 
@@ -134,6 +168,8 @@ typedef struct {
 
 	u32 inode_size;
 	u32 groups_size;
+
+	u32 features;
 } Ext2Partition;
 
 void* ext2_block_read(Ext2Partition* self, usize block) {
@@ -144,16 +180,33 @@ void* ext2_block_read(Ext2Partition* self, usize block) {
 }
 
 InodeDesc ext2_inode_read(Ext2Partition* self, u32 num) {
-	BlockGroupDesc* block_group = &self->block_groups[(num - 1) / self->inodes_in_group];
-	u32 inode_idx = (num - 1) % self->inodes_in_group;
+	if (self->features & FEATURE_64BIT) {
+		BlockGroupDesc64* block_group = &self->block_groups64[(num - 1) / self->inodes_in_group];
+		u32 inode_idx = (num - 1) % self->inodes_in_group;
 
-	u32 inode_byte_off = inode_idx * self->inode_size;
-	u32 inode_block = block_group->bg_inode_table + (inode_byte_off / self->block_size);
-	u32 inode_block_off = inode_byte_off % self->block_size;
+		u32 inode_byte_off = inode_idx * self->inode_size;
 
-	void* block = ext2_block_read(self, inode_block);
-	assert(block);
-	return *offset(block, InodeDesc*, inode_block_off);
+		u64 bg_inode_table_block = block_group->bg_inode_table_lo | (u64) block_group->bg_inode_table_hi << 32;
+
+		u64 inode_block = bg_inode_table_block + (inode_byte_off / self->block_size);
+		u32 inode_block_off = inode_byte_off % self->block_size;
+
+		void* block = ext2_block_read(self, inode_block);
+		assert(block);
+		return *offset(block, InodeDesc*, inode_block_off);
+	}
+	else {
+		BlockGroupDesc* block_group = &self->block_groups[(num - 1) / self->inodes_in_group];
+		u32 inode_idx = (num - 1) % self->inodes_in_group;
+
+		u32 inode_byte_off = inode_idx * self->inode_size;
+		u32 inode_block = block_group->bg_inode_table + (inode_byte_off / self->block_size);
+		u32 inode_block_off = inode_byte_off % self->block_size;
+
+		void* block = ext2_block_read(self, inode_block);
+		assert(block);
+		return *offset(block, InodeDesc*, inode_block_off);
+	}
 }
 
 typedef struct {
@@ -476,7 +529,14 @@ bool ext2_enum_partition(Storage* storage, usize start_blk, usize end_blk) {
 	}
 
 	self->inode_size = super_block->s_rev_level == 1 ? super_block->s_inode_size : 128;
-	self->groups_size = self->total_groups * sizeof(BlockGroupDesc);
+	u8 block_group_size = sizeof(BlockGroupDesc);
+	if (super_block->s_rev_level == 1) {
+		if (super_block->s_feature_incompat & FEATURE_64BIT) {
+			self->features |= FEATURE_64BIT;
+			block_group_size = sizeof(BlockGroupDesc64);
+		}
+	}
+	self->groups_size = self->total_groups * block_group_size;
 
 	kfree(super_block, MAX(sizeof(Ext2SuperBlock), storage->blk_size));
 

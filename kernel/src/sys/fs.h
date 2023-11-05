@@ -21,4 +21,5 @@ int sys_opendir(__user const char* path, size_t path_len, __user CrescentDir** r
 int sys_closedir(__user CrescentDir* dir);
 int sys_readdir(__user CrescentDir* dir, __user CrescentDirEntry* entry);
 
+int kernel_fs_open_ex(const char* dev_name, usize dev_len, const char* path, struct VNode** ret);
 int kernel_fs_open(const char* path, struct VNode** ret);

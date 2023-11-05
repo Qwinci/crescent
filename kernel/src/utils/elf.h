@@ -63,6 +63,14 @@ typedef struct {
 #define DT_RELASZ 0x8
 #define DT_RELAENT 0x9
 
+#define AT_EXECFD 2
+#define AT_PHDR 3
+#define AT_PHENT 4
+#define AT_PHNUM 5
+#define AT_PAGESZ 6
+#define AT_BASE 7
+#define AT_ENTRY 9
+
 typedef struct {
 	u32 p_type;
 	u32 p_flags;

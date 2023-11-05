@@ -156,7 +156,7 @@ void elf_protect(ElfInfo info, void* load_base, void* map, bool user) {
 	}
 }
 
-int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
+int elf_load_from_file(Process* process, VNode* node, LoadedElf* res, bool relocate, usize* interp_base) {
 	Elf64EHdr ehdr;
 	int ret = 0;
 	if ((ret = node->ops.read(node, &ehdr, 0, sizeof(Elf64EHdr))) != 0) {
@@ -208,6 +208,11 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 	}
 
 	usize base = relocatable ? 0x400000 : 0;
+	if (interp_base) {
+		base = 0x10000000;
+		*interp_base = base;
+	}
+
 	for (u16 i = 0; i < ehdr.e_phnum; ++i) {
 		const Elf64PHdr* phdr = offset(phdrs, Elf64PHdr*, i * ehdr.e_phentsize);
 		if (phdr->p_type == PT_LOAD) {
@@ -238,8 +243,8 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 			}
 
 			void* mapping;
-			bool high = aligned_addr >= (usize) task->process->high_vmem.base;
-			void* mem = vm_user_alloc_backed(task->process, (void*) aligned_addr, size / PAGE_SIZE, flags, high, &mapping);
+			bool high = aligned_addr >= (usize) process->high_vmem.base;
+			void* mem = vm_user_alloc_backed(process, (void*) aligned_addr, size / PAGE_SIZE, flags, high, &mapping);
 			if (!mem) {
 				for (u16 j = 0; j < i; ++j) {
 					const Elf64PHdr* phdr2 = offset(phdrs, Elf64PHdr*, j * ehdr.e_phentsize);
@@ -250,7 +255,7 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 						usize align2 = phdr2->p_vaddr & (PAGE_SIZE - 1);
 						usize aligned_addr2 = base + phdr2->p_vaddr - align2;
 						usize size2 = ALIGNUP(phdr2->p_memsz + align2, PAGE_SIZE);
-						vm_user_dealloc_backed(task->process, (void*) aligned_addr2, size2 / PAGE_SIZE, high, NULL);
+						vm_user_dealloc_backed(process, (void*) aligned_addr2, size2 / PAGE_SIZE, high, NULL);
 					}
 				}
 
@@ -269,7 +274,7 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 						usize align2 = phdr2->p_vaddr & (PAGE_SIZE - 1);
 						usize aligned_addr2 = base + phdr2->p_vaddr - align2;
 						usize size2 = ALIGNUP(phdr2->p_memsz + align2, PAGE_SIZE);
-						vm_user_dealloc_backed(task->process, (void*) aligned_addr2, size2 / PAGE_SIZE, high, NULL);
+						vm_user_dealloc_backed(process, (void*) aligned_addr2, size2 / PAGE_SIZE, high, NULL);
 					}
 				}
 
@@ -326,7 +331,7 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 
 			usize rela_size = dyn[DT_RELASZ];
 			usize rela_off = dyn[DT_RELA];
-			if (rela_size) {
+			if (relocate && rela_size) {
 				Elf64Rela* rela = kmalloc(rela_size);
 				if (!rela) {
 					for (usize j = 0; j < ehdr.e_phnum; ++j) {
@@ -394,6 +399,8 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 						panic("unsupported elf relocation type %u\n", type);
 					}
 				}
+
+				kfree(rela, rela_size);
 			}
 		}
 	}
@@ -408,8 +415,104 @@ int elf_load_from_file(Task* task, VNode* node, LoadedElf* res) {
 
 	kfree(phdrs, ehdr.e_phnum * ehdr.e_phentsize);
 	kfree(mappings, ehdr.e_phnum * sizeof(ElfMapping));
+	kfree(dyn_ptr, dyn_size);
 
 	res->entry = relocatable ? (void*) (base + ehdr.e_entry) : (void*) ehdr.e_entry;
 
+	return 0;
+}
+
+int elf_get_interp(VNode* node, char** interp, usize* interp_len) {
+	Elf64EHdr ehdr;
+	if (node->ops.read(node, &ehdr, 0, sizeof(Elf64EHdr)) != 0) {
+		return ERR_INVALID_ARG;
+	}
+
+	CrescentStat s;
+	if (node->ops.stat(node, &s) != 0) {
+		return ERR_INVALID_ARG;
+	}
+
+	if (ehdr.e_ident[EI_MAG0] != ELFMAG0 ||
+		ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
+		ehdr.e_ident[EI_MAG2] != ELFMAG2 ||
+		ehdr.e_ident[EI_MAG3] != ELFMAG3 ||
+		ehdr.e_ident[EI_CLASS] != ELFCLASS64 ||
+		ehdr.e_ident[EI_DATA] != ELFDATA2LSB ||
+		ehdr.e_ident[EI_VERSION] != EV_CURRENT ||
+		ehdr.e_machine != EM_X86_64 ||
+		(ehdr.e_type != ET_EXEC && ehdr.e_type != ET_DYN) ||
+		ehdr.e_phentsize != sizeof(Elf64PHdr) ||
+		ehdr.e_shentsize != sizeof(Elf64SHdr) ||
+		ehdr.e_phoff >= s.size ||
+		ehdr.e_shoff >= s.size ||
+		ehdr.e_phnum * sizeof(Elf64PHdr) >= s.size) {
+		return ERR_INVALID_ARG;
+	}
+
+	for (u16 i = 0; i < ehdr.e_phnum; ++i) {
+		Elf64PHdr phdr;
+		if (node->ops.read(node, &phdr, ehdr.e_phoff + i * ehdr.e_phentsize, sizeof(Elf64PHdr)) != 0) {
+			return ERR_INVALID_ARG;
+		}
+		if (phdr.p_type == PT_INTERP) {
+			char* mem = (char*) kmalloc(phdr.p_filesz);
+			if (!mem) {
+				return ERR_NO_MEM;
+			}
+			if (node->ops.read(node, mem, phdr.p_offset, phdr.p_filesz) != 0) {
+				kfree(mem, phdr.p_filesz);
+				return ERR_INVALID_ARG;
+			}
+			*interp = mem;
+			*interp_len = phdr.p_filesz;
+			return 0;
+		}
+	}
+
+	return ERR_NOT_EXISTS;
+}
+
+int elf_load_user_phdrs(Process* process, VNode* node, void** user_mem, usize* user_phdr_count, usize* user_entry) {
+	Elf64EHdr ehdr;
+	int ret = 0;
+	if ((ret = node->ops.read(node, &ehdr, 0, sizeof(Elf64EHdr))) != 0) {
+		return ERR_INVALID_ARG;
+	}
+
+	CrescentStat s;
+	if ((ret = node->ops.stat(node, &s)) != 0) {
+		return ret;
+	}
+
+	if (ehdr.e_ident[EI_MAG0] != ELFMAG0 ||
+		ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
+		ehdr.e_ident[EI_MAG2] != ELFMAG2 ||
+		ehdr.e_ident[EI_MAG3] != ELFMAG3 ||
+		ehdr.e_ident[EI_CLASS] != ELFCLASS64 ||
+		ehdr.e_ident[EI_DATA] != ELFDATA2LSB ||
+		ehdr.e_ident[EI_VERSION] != EV_CURRENT ||
+		ehdr.e_machine != EM_X86_64 ||
+		(ehdr.e_type != ET_EXEC && ehdr.e_type != ET_DYN) ||
+		ehdr.e_phentsize != sizeof(Elf64PHdr) ||
+		ehdr.e_shentsize != sizeof(Elf64SHdr) ||
+		ehdr.e_phoff >= s.size ||
+		ehdr.e_shoff >= s.size ||
+		ehdr.e_phnum * sizeof(Elf64PHdr) >= s.size) {
+		return ERR_INVALID_ARG;
+	}
+
+	void* mapping;
+	void* phdrs = vm_user_alloc_backed(process, NULL, ALIGNUP(ehdr.e_phnum * ehdr.e_phentsize, PAGE_SIZE) / PAGE_SIZE, PF_USER | PF_READ | PF_WRITE, true, &mapping);
+	if (!phdrs) {
+		return ERR_NO_MEM;
+	}
+	if ((ret = node->ops.read(node, mapping, ehdr.e_phoff, ehdr.e_phnum * ehdr.e_phentsize)) != 0) {
+		vm_user_dealloc_backed(process, phdrs, ALIGNUP(ehdr.e_phnum * ehdr.e_phentsize, PAGE_SIZE) / PAGE_SIZE, true, mapping);
+		return ERR_INVALID_ARG;
+	}
+	*user_mem = phdrs;
+	*user_phdr_count = ehdr.e_phnum;
+	*user_entry = ehdr.e_entry;
 	return 0;
 }
