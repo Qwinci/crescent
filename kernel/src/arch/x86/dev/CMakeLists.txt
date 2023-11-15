@@ -4,4 +4,6 @@ target_sources(crescent PRIVATE
         tsc.c
         timer.c
         hpet.c
-        io_apic.c)
+        io_apic.c
+        serial.c
+)
