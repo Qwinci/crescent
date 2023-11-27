@@ -26,3 +26,5 @@ x86_switch_task:
 	pop %rbp
 	pop %rbx
 	ret
+
+.section .note.GNU-stack

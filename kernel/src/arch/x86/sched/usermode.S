@@ -56,7 +56,7 @@ x86_syscall_entry:
 	push %r15
 	push %rbp
 
-    cmp (syscall_handler_count), %rdi
+    cmp syscall_handler_count(%rip), %rdi
 	jb 0f
 	mov $-1, %rax
 	jmp x86_syscall_entry_exit
@@ -66,7 +66,11 @@ x86_syscall_entry:
 	// rdi rax  rsi  rdx  r10  r8   r9
 
     mov %r10, %rcx
-    mov syscall_handlers(, %rdi, 8), %r10
+
+	// multiply num by 8
+	shl $3, %rdi
+	lea syscall_handlers(%rip), %r10
+	add %rdi, %r10
 
     // check for null because of posix syscalls having higher numbers
     cmp $0, %r10
@@ -75,7 +79,7 @@ x86_syscall_entry:
     jmp x86_syscall_entry_exit
 1:
     mov %rax, %rdi
-	call *%r10
+	call *(%r10)
 
 x86_syscall_entry_exit:
     cli
@@ -97,3 +101,5 @@ x86_syscall_entry_exit:
     mov %gs:X86Task.syscall_save_rsp, %rsp
 	swapgs
 	sysretq
+
+.section .note.GNU-stack

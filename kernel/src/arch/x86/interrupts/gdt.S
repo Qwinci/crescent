@@ -13,3 +13,5 @@ x86_load_gdt_asm:
 	push $0x8
 	push %rdi
 	lretq
+
+.section .note.GNU-stack

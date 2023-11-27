@@ -49,8 +49,6 @@ SECTIONS {
 		__fini_array_end = .;
 	}
 
-	. = DATA_SEGMENT_RELRO_END(0, .);
-
 	.got : { *(.got) *(.igot) }
 	.got.plt : { *(.got.plt) *(.igot.plt) }
 	.data : { *(.data .data.*) }
@@ -66,7 +64,6 @@ SECTIONS {
     }
 	.bss : { *(COMMON) *(.dynbss) *(.bss .bss.*) }
 
-	. = DATA_SEGMENT_END(.);
 	PROVIDE(DATA_END = .);
 	PROVIDE(KERNEL_END = .);
 

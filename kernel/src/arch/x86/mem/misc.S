@@ -76,3 +76,5 @@ unsafe_copy:
 	pop %rbp
 	mov $1, %eax
 	ret
+
+.section .note.GNU-stack

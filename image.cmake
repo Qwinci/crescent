@@ -1,7 +1,7 @@
 set(FILES
 	${PROJECT_SOURCE_DIR}/kernel/fonts/Tamsyn8x16r.psf
 	${PROJECT_SOURCE_DIR}/kernel/limine.cfg
-	kernel/crescent
+	bin/crescent
 )
 
 set(QEMU_FLAGS -m 2G -machine q35 -smp 1 -d int
@@ -63,14 +63,29 @@ if(NOT EXISTS ${PROJECT_BINARY_DIR}/nvm.img)
 	execute_process(COMMAND mkdir -p ${PROJECT_BINARY_DIR}/sysroot)
 endif()
 
-add_custom_target(update_image
-	COMMAND mkdir -p ${PROJECT_BINARY_DIR}/mountpoint
-	COMMAND guestmount --pid-file guestfs.pid -a ${PROJECT_BINARY_DIR}/nvm.img -m /dev/sda1 ${PROJECT_BINARY_DIR}/mountpoint
-	COMMAND rsync -a --delete ${PROJECT_BINARY_DIR}/sysroot/ ${PROJECT_BINARY_DIR}/mountpoint/
-	COMMAND guestunmount ${PROJECT_BINARY_DIR}/mountpoint
-	DEPENDS copy_apps
-	USES_TERMINAL VERBATIM
-)
+find_program(GUESTMOUNT guestmount)
+
+if(GUESTMOUNT)
+	add_custom_target(update_image
+		COMMAND mkdir -p ${PROJECT_BINARY_DIR}/mountpoint
+		COMMAND guestmount --pid-file guestfs.pid -a ${PROJECT_BINARY_DIR}/nvm.img -m /dev/sda1 ${PROJECT_BINARY_DIR}/mountpoint
+		COMMAND rsync -a --delete ${PROJECT_BINARY_DIR}/sysroot/ ${PROJECT_BINARY_DIR}/mountpoint/
+		COMMAND guestunmount ${PROJECT_BINARY_DIR}/mountpoint
+		DEPENDS copy_apps
+		USES_TERMINAL VERBATIM
+	)
+else()
+	add_custom_target(update_image
+		COMMAND mkdir -p ${PROJECT_BINARY_DIR}/mountpoint
+		COMMAND sudo losetup -Pf --show ${PROJECT_BINARY_DIR}/nvm.img &> loopback.id
+		COMMAND sudo mount /dev/loop0p1 ${PROJECT_BINARY_DIR}/mountpoint
+		COMMAND sudo rsync -a --delete ${PROJECT_BINARY_DIR}/sysroot/ ${PROJECT_BINARY_DIR}/mountpoint/
+		COMMAND sudo umount ${PROJECT_BINARY_DIR}/mountpoint
+		COMMAND sudo losetup -d /dev/loop0
+		DEPENDS copy_apps
+		USES_TERMINAL VERBATIM
+	)
+endif()
 
 add_custom_target(run_kvm
 	COMMAND qemu-system-x86_64

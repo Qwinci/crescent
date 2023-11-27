@@ -152,3 +152,5 @@ x86_int_stubs:
 m_label %i
 .set i, i + 1
 .endr
+
+.section .note.GNU-stack

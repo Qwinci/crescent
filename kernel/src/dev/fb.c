@@ -44,6 +44,8 @@ int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 			}
 			return 0;
 		}
+		default:
+			__builtin_unreachable();
 	}
 }
 

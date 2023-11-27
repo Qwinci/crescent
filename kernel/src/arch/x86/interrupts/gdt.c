@@ -3,13 +3,13 @@
 #include "arch/x86/tss.h"
 
 #define GDT_ENTRY(base, access_byte, flags, limit) \
-	((u64) (limit) & 0xFFFF | \
-	 (u64) (limit) >> 16 << 48 | \
-	 (u64) (access_byte) << 40 | \
-	 (u64) (flags) << 52 | \
-	 ((u64) (base) & 0xFFFF) << 16 | \
-	 ((u64) (base) >> 16 & 0xFF) << 32 | \
-	 ((u64) (base) >> 24 & 0xFF) << 56)
+	(((u64) (limit) & 0xFFFF) | \
+	 ((u64) (limit) >> 16 << 48) | \
+	 ((u64) (access_byte) << 40) | \
+	 ((u64) (flags) << 52) | \
+	 (((u64) (base) & 0xFFFF) << 16) | \
+	 (((u64) (base) >> 16 & 0xFF) << 32) | \
+	 (((u64) (base) >> 24 & 0xFF) << 56))
 
 static u64 gdt[8] = {
 	// Null

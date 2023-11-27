@@ -16,10 +16,11 @@ ExternalProject_Add(mlibc
 	PREFIX mlibc-prefix
 	INSTALL_DIR ${CMAKE_BINARY_DIR}/sysroot
 	CONFIGURE_COMMAND
-		env CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS="-Wno-ignored-attributes" ${MESON} setup ${mlibc_config} --prefix=<INSTALL_DIR> <BINARY_DIR> <SOURCE_DIR>
+		env CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS="-Wno-ignored-attributes"
+		${MESON} setup ${mlibc_config} --prefix=<INSTALL_DIR>/usr <BINARY_DIR> <SOURCE_DIR>
 	BUILD_COMMAND
 		${NINJA} -C <BINARY_DIR>
 	INSTALL_COMMAND
 		${NINJA} -C <BINARY_DIR> install
-		COMMAND touch <INSTALL_DIR>/lib/libunwind.a
+		COMMAND touch <INSTALL_DIR>/usr/lib/libunwind.a
 )

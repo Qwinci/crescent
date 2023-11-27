@@ -356,9 +356,10 @@ size_t strlen(const char* str) {
 	return len;
 }
 
-void puts(const char* str) {
+int puts(const char* str) {
 	sys_dprint(str, strlen(str));
 	sys_dprint("\n", 1);
+	return 0;
 }
 
 void another_thread(void* arg) {

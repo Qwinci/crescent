@@ -1,5 +1,6 @@
 project(crescent_kernel)
 include(.config/toolchain.cmake)
+include(CheckCCompilerFlag)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 set(CMAKE_C_STANDARD 23)
@@ -11,11 +12,21 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/.config")
 
 target_compile_options(crescent PRIVATE
 		$<$<COMPILE_LANGUAGE:C>: -Wall -Wextra
-		-mgeneral-regs-only -mno-red-zone -mcmodel=kernel
-		-fno-stack-protector -fno-exceptions -fno-rtti
+		-mgeneral-regs-only -mno-red-zone
+		-fno-stack-protector
 		-fno-omit-frame-pointer
-		-fPIC -nostdlibinc -Werror=switch -Werror=noderef -Werror=return-type
-		-Wframe-larger-than=8192 -Werror=frame-larger-than>)
+		-fPIE -Werror=switch -Werror=return-type
+		-Werror=frame-larger-than=8192>)
+
+check_c_compiler_flag(-nostdlibinc COMPILER_SUPPORTS_NOSTDLIBINC)
+check_c_compiler_flag(-Werror=noderef COMPILER_SUPPORTS_NODEREF)
+if(COMPILER_SUPPORTS_NOSTDLIBINC)
+	target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:C>: -nostdlibinc>)
+endif()
+if(COMPILER_SUPPORTS_NODEREF)
+	target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:C>: -Werror=noderef>)
+endif()
+
 target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:ASM>: -Wno-unused-command-line-argument>)
 target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/.config/kernel.ld)
 

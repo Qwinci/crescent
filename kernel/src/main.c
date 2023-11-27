@@ -75,7 +75,7 @@ static int stderr_vnode_write(VNode* self, const void* data, usize off, usize si
 	kfree(null_terminated_init, parsed_cmdline.init.len + 1);
 
 	// todo don't hardcode this
-	const char* interp_path = "posix_rootfs/lib/ld.so";
+	const char* interp_path = "posix_rootfs/usr/lib/ld.so";
 	VNode* interp_vnode;
 	if ((status = kernel_fs_open(interp_path, &interp_vnode)) != 0) {
 		panic("failed to open interp file '%s': %d\n", interp_path, status);

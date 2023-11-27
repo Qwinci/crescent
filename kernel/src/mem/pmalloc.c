@@ -36,7 +36,7 @@ static void freelist_insert_nonrecursive(usize index, Page* page) {
 		usize size = count * PAGE_SIZE;
 
 		usize region_free_base = page->region->base + page->region->used_pages * PAGE_SIZE;
-		usize buddy = ((page->phys - region_free_base) & (index_to_size(new_i + 1) * PAGE_SIZE) - 1) ? page->phys - size : page->phys + size;
+		usize buddy = ((page->phys - region_free_base) & ((index_to_size(new_i + 1) * PAGE_SIZE) - 1)) ? page->phys - size : page->phys + size;
 		usize buddy_index = (buddy - page->region->base) / PAGE_SIZE;
 		if (new_i + 1 == FREELIST_COUNT || buddy_index >= page->region->size) {
 			break;

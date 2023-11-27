@@ -13,3 +13,5 @@ start:
     leaq STACK + STACK_SIZE(%rip), %rsp
     call kstart
 .cfi_endproc
+
+.section .note.GNU-stack
