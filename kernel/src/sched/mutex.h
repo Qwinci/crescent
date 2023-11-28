@@ -7,8 +7,8 @@ typedef struct Task Task;
 typedef struct {
 	Task* waiting_tasks;
 	Task* waiting_tasks_end;
-	atomic_bool inner;
 	Spinlock task_protector;
+	bool inner;
 } Mutex;
 
 bool mutex_try_lock(Mutex* self);
