@@ -1,8 +1,10 @@
 set(APPS
 	user_tty
+	init
 )
 
 add_subdirectory(user_tty)
+add_subdirectory(init)
 
 set(APP_FILES ${APPS})
 list(TRANSFORM APP_FILES PREPEND "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/")

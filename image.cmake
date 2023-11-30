@@ -2,6 +2,7 @@ set(FILES
 	${PROJECT_SOURCE_DIR}/kernel/fonts/Tamsyn8x16r.psf
 	${PROJECT_SOURCE_DIR}/kernel/limine.cfg
 	bin/crescent
+	initramfs.tar
 )
 
 set(QEMU_FLAGS -m 2G -machine q35 -smp 1 -d int
@@ -64,6 +65,10 @@ if(NOT EXISTS ${PROJECT_BINARY_DIR}/nvm.img)
 endif()
 
 find_program(GUESTMOUNT guestmount)
+
+add_custom_command(OUTPUT initramfs.tar
+	COMMAND tar -cf initramfs.tar -C ${PROJECT_BINARY_DIR}/sysroot/ .
+)
 
 if(GUESTMOUNT)
 	add_custom_target(update_image

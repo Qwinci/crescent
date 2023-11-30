@@ -16,6 +16,11 @@ KernelCmdline parse_kernel_cmdline(const char* cmdline) {
 			Str value = get_arg(&str);
 			res.init = value;
 		}
+		else if (str_strip_prefix(&str, str_new("native_init="))) {
+			Str value = get_arg(&str);
+			res.init = value;
+			res.native_init = true;
+		}
 		else if (str_strip_prefix(&str, str_new("posix_root="))) {
 			Str value = get_arg(&str);
 			res.posix_root = value;

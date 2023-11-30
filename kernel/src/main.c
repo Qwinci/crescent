@@ -13,6 +13,7 @@
 #ifdef CONFIG_TEST
 #include "utils/test.h"
 #endif
+#include "dev/fbcon.h"
 #include "fs/posix_rootfs.h"
 #include "fs/tar.h"
 #include "fs/vfs.h"
@@ -74,20 +75,26 @@ static int stderr_vnode_write(VNode* self, const void* data, usize off, usize si
 	}
 	kfree(null_terminated_init, parsed_cmdline.init.len + 1);
 
-	// todo don't hardcode this
-	const char* interp_path = "posix_rootfs/usr/lib/ld.so";
-	VNode* interp_vnode;
-	if ((status = kernel_fs_open(interp_path, &interp_vnode)) != 0) {
-		panic("failed to open interp file '%s': %d\n", interp_path, status);
-	}
-
-	usize interp_base;
-	if ((status = elf_load_from_file(init_process, interp_vnode, &init_res, false, &interp_base)) != 0) {
-		panic("failed to load init elf phdrs, status: %d\n", status);
-	}
 	LoadedElf program_res;
 	if ((status = elf_load_from_file(init_process, init_vnode, &program_res, false, NULL)) != 0) {
 		panic("failed to load init elf, status: %d\n", status);
+	}
+
+	if (!parsed_cmdline.native_init) {
+		// todo don't hardcode this
+		const char* interp_path = "posix_rootfs/usr/lib/ld.so";
+		VNode* interp_vnode;
+		if ((status = kernel_fs_open(interp_path, &interp_vnode)) != 0) {
+			panic("failed to open interp file '%s': %d\n", interp_path, status);
+		}
+
+		usize interp_base;
+		if ((status = elf_load_from_file(init_process, interp_vnode, &init_res, false, &interp_base)) != 0) {
+			panic("failed to load init elf phdrs, status: %d\n", status);
+		}
+	}
+	else {
+		init_res = program_res;
 	}
 
 	Str arg0 = str_new("posix_rootfs/libc_test_program");

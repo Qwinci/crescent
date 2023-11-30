@@ -24,3 +24,5 @@ ExternalProject_Add(mlibc
 		${NINJA} -C <BINARY_DIR> install
 		COMMAND touch <INSTALL_DIR>/usr/lib/libunwind.a
 )
+
+add_subdirectory(common)
