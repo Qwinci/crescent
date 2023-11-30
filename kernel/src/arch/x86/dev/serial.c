@@ -1,4 +1,5 @@
 #include "serial.h"
+#include "dev/log.h"
 #include "io.h"
 
 #define REG_DATA 0
@@ -61,4 +62,40 @@ u8 serial_receive(u16 port) {
 void serial_send(u16 port, u8 value) {
 	while (!serial_can_send(port));
 	out1(port + REG_DATA, value);
+}
+
+typedef struct {
+	LogSink common;
+	u16 port;
+} SerialLogSink;
+
+static int serial_log_write(LogSink* sink, Str str) {
+	u16 port = container_of(sink, SerialLogSink, common)->port;
+	for (usize i = 0; i < str.len; ++i) {
+		char c = str.data[i];
+		if (c < 0) {
+			// todo support colors
+			continue;
+		}
+
+		serial_send(port, (u8) c);
+	}
+	return 0;
+}
+
+static SerialLogSink SERIAL_LOG_SINK = {
+	.common = {
+		.write = serial_log_write
+	}
+};
+
+bool serial_attach_log(u16 port) {
+	if (serial_init(port)) {
+		SERIAL_LOG_SINK.port = port;
+		log_register_sink(&SERIAL_LOG_SINK.common, false);
+		return true;
+	}
+	else {
+		return false;
+	}
 }

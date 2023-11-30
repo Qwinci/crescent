@@ -8,3 +8,4 @@ bool serial_init(u16 port);
 bool serial_can_receive(u16 port);
 u8 serial_receive(u16 port);
 void serial_send(u16 port, u8 value);
+bool serial_attach_log(u16 port);

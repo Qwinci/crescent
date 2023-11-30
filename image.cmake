@@ -5,17 +5,17 @@ set(FILES
 	initramfs.tar
 )
 
-set(QEMU_FLAGS -m 2G -machine q35 -smp 1 -d int
+set(QEMU_FLAGS -m 2G -machine q35 -smp 1
 	-no-reboot -no-shutdown -cpu qemu64,+umip,+smep,+smap
 	-drive file=nvm.img,if=none,id=nvm,format=raw
 	-device nvme,serial=deadbeef,drive=nvm -M smm=off
-	-trace pci_nvme_err*
 	-device qemu-xhci
 	#-device usb-kbd
 	-netdev user,id=mynet0 -device virtio-net-pci-non-transitional,netdev=mynet0
-	-device ich9-intel-hda,bus=pcie.0,addr=0x1B,debug=3
-	-device hda-output,audiodev=hda,debug=3
+	-device ich9-intel-hda,bus=pcie.0,addr=0x1B#,debug=3
+	-device hda-output,audiodev=hda#,debug=3
 	-audiodev pa,id=hda
+	-serial stdio
 	#-device vfio-pci,host=00:1f.3
 )
 

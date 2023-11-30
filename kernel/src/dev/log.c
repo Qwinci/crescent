@@ -2,7 +2,6 @@
 #include "sched/mutex.h"
 
 static LogSink* SINKS_HEAD = NULL;
-static LogSink* SINKS_TAIL = NULL;
 static Mutex SINK_MUTEX = {};
 
 #define LOG_SIZE 0x2000
@@ -14,10 +13,7 @@ void log_register_sink(LogSink* sink, bool resume) {
 	mutex_lock(&SINK_MUTEX);
 	sink->next = SINKS_HEAD;
 	if (SINKS_HEAD) {
-		SINKS_HEAD->next->prev = sink;
-	}
-	else {
-		SINKS_TAIL = sink;
+		SINKS_HEAD->prev = sink;
 	}
 	SINKS_HEAD = sink;
 
@@ -42,9 +38,6 @@ void log_unregister_sink(LogSink* sink) {
 	}
 	if (sink->next) {
 		sink->next->prev = sink->prev;
-	}
-	else {
-		SINKS_TAIL = sink->prev;
 	}
 	mutex_unlock(&SINK_MUTEX);
 	sink->prev = NULL;

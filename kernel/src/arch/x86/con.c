@@ -1,11 +1,12 @@
+#include "arch/mod.h"
+#include "arch/x86/dev/serial.h"
+#include "assert.h"
 #include "dev/fb.h"
 #include "dev/fbcon.h"
 #include "limine/limine.h"
-#include "arch/mod.h"
 #include "mem/allocator.h"
-#include "assert.h"
-#include "string.h"
 #include "mem/utils.h"
+#include "string.h"
 
 static volatile struct limine_framebuffer_request FB_REQUEST = {
 	.id = LIMINE_FRAMEBUFFER_REQUEST
@@ -30,6 +31,8 @@ void x86_init_con() {
 			fbcon_init(&x86_boot_fb, font_module.base);
 		}
 	}
+
+	serial_attach_log(0x3F8);
 }
 
 void x86_init_fbs() {
