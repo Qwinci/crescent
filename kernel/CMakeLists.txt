@@ -15,8 +15,13 @@ target_compile_options(crescent PRIVATE
 		-mgeneral-regs-only -mno-red-zone
 		-fno-stack-protector
 		-fno-omit-frame-pointer
-		-fPIE -Werror=switch -Werror=return-type
-		-Werror=frame-larger-than=8192>)
+		-fPIE -Werror=switch -Werror=return-type>)
+
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+	target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:C>: -Wframe-larger-than=8192 -Werror=frame-larger-than>)
+else()
+	target_compile_options(crescent PRIVATE $<$<COMPILE_LANGUAGE:C>: -Werror=frame-larger-than=8192>)
+endif()
 
 check_c_compiler_flag(-nostdlibinc COMPILER_SUPPORTS_NOSTDLIBINC)
 check_c_compiler_flag(-Werror=noderef COMPILER_SUPPORTS_NODEREF)

@@ -208,8 +208,10 @@ void tar_initramfs_init() {
 
 	PartitionDev* dev = kcalloc(sizeof(PartitionDev));
 	assert(dev);
+	dev->vfs = tar_vfs;
 
 	memcpy(dev->generic.name, "initramfs", sizeof("initramfs"));
 
 	dev_add(&dev->generic, DEVICE_TYPE_PARTITION);
+	kprintf("[kernel][fs][tar]: initramfs.tar mounted as device 'initramfs'\n");
 }
