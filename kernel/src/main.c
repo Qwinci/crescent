@@ -135,7 +135,7 @@ static int stderr_vnode_write(VNode* self, const void* data, usize off, usize si
 	assert(fd_table_insert(&init_process->fd_table, stderr_vnode) == 2);
 
 	ACTIVE_INPUT_TASK = init_task;
-	ThreadHandle* h = kmalloc(sizeof(ThreadHandle));
+	ThreadHandle* h = kcalloc(sizeof(ThreadHandle));
 	assert(h);
 	h->refcount = 1;
 	h->task = init_task;

@@ -68,6 +68,8 @@ find_program(GUESTMOUNT guestmount)
 
 add_custom_command(OUTPUT initramfs.tar
 	COMMAND tar -cf initramfs.tar -C ${PROJECT_BINARY_DIR}/sysroot/ .
+	DEPENDS copy_apps
+	USES_TERMINAL VERBATIM
 )
 
 if(GUESTMOUNT)

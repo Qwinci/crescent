@@ -93,3 +93,7 @@ void fbcon_init(FbDev* fb, const void* font) {
 	FBLOG.font = (const PsfFont*) font;
 	log_register_sink(&FBLOG.common, false);
 }
+
+void default_fblog_deinit() {
+	log_unregister_sink(&FBLOG.common);
+}

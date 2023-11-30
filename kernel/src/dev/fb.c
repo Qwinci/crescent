@@ -1,10 +1,11 @@
 #include "fb.h"
-#include "assert.h"
-#include "sys/utils.h"
-#include "mem/vm.h"
 #include "arch/cpu.h"
-#include "mem/utils.h"
+#include "assert.h"
+#include "fbcon.h"
 #include "mem/page.h"
+#include "mem/utils.h"
+#include "mem/vm.h"
+#include "sys/utils.h"
 
 int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 	switch (msg) {
@@ -42,6 +43,8 @@ int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
 				vm_user_dealloc(task->process, mem, ALIGNUP(size, PAGE_SIZE) / PAGE_SIZE, true);
 				return ERR_FAULT;
 			}
+
+			default_fblog_deinit();
 			return 0;
 		}
 		default:

@@ -313,7 +313,7 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	}
 
 	const char* process_name = buf + path_len - 1;
-	for (; process_name > buf && *process_name != '/'; --process_name);
+	for (; process_name > buf && process_name[-1] != '/'; --process_name);
 
 	Task* thread = arch_create_user_task(process, process_name, NULL, NULL);
 	kfree(buf, path_len + 1);
@@ -336,14 +336,24 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	void (*user_fn)(void*) = (void (*)(void*)) res.entry;
 	arch_set_user_task_fn(thread, user_fn);
 
-	ProcessHandle* h = kmalloc(sizeof(ProcessHandle));
+	ProcessHandle* h = kcalloc(sizeof(ProcessHandle));
 	if (!h) {
 		arch_destroy_task(thread);
 		return ERR_NO_MEM;
 	}
+
+	ThreadHandle* thread_h = kcalloc(sizeof(ThreadHandle));
+	if (!thread_h) {
+		arch_destroy_task(thread);
+		kfree(h, sizeof(ProcessHandle));
+		return ERR_NO_MEM;
+	}
+	thread_h->refcount = 1;
+	thread_h->task = thread;
+	thread_h->exited = false;
+
 	h->process = process;
 	h->exited = false;
-	memset(&h->lock, 0, sizeof(Mutex));
 	Task* task = arch_get_cur_task();
 	Handle handle = handle_tab_insert(&task->process->handle_table, h, HANDLE_TYPE_PROCESS);
 
@@ -355,6 +365,7 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	}
 
 	process_add_thread(process, thread);
+	thread->tid = handle_tab_insert(&process->handle_table, thread_h, HANDLE_TYPE_THREAD);
 
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
 	sched_queue_task(thread);
