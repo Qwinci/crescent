@@ -1,43 +1,20 @@
 #include "stdio.h"
 #include "arch/interrupts.h"
 #include "arch/misc.h"
-#include "dev/con.h"
+#include "dev/log.h"
 #include "inttypes.h"
 #include "string.h"
 #include "utils/spinlock.h"
 #include <stdarg.h>
 
-Spinlock PRINT_LOCK = {};
-
 void kputs_nolock(const char* str, usize len) {
-	if (!kernel_con) {
-		return;
-	}
-
-	for (; len; --len, ++str) {
-		if (*str == '\n') {
-			kernel_con->column = 0;
-			kernel_con->line += 1;
-		}
-		else if (*str == '\t') {
-			kernel_con->column += 4 - (kernel_con->column % 4);
-		}
-		else if (*str == '\r') {
-			kernel_con->column = 0;
-		}
-		else {
-			kernel_con->write(kernel_con, *str);
-		}
-	}
+	// todo no lock
+	log_print(str_new_with_len(str, len));
 }
 
 void kputs(const char* str, usize len) {
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
-	spinlock_lock(&PRINT_LOCK);
-
 	kputs_nolock(str, len);
-
-	spinlock_unlock(&PRINT_LOCK);
 	arch_ipl_set(old);
 }
 
@@ -190,11 +167,17 @@ void kvprintf_nolock(const char* fmt, va_list valist) {
 			len = (buffer + sizeof(buffer) - 2) - ptr;
 		}
 		else if (*fmt == 'f' && fmt[1] == 'g') {
-			kernel_con->fg = va_arg(valist, u32);
+			char buf[5] = {-1};
+			u32 fg = va_arg(valist, u32);
+			memcpy(buf + 1, &fg, 4);
+			kputs_nolock(buf, 5);
 			fmt += 1;
 		}
 		else if (*fmt == 'b' && fmt[1] == 'g') {
-			kernel_con->bg = va_arg(valist, u32);
+			char buf[5] = {-2};
+			u32 bg = va_arg(valist, u32);
+			memcpy(buf + 1, &bg, 4);
+			kputs_nolock(buf, 5);
 			fmt += 1;
 		}
 		fmt += 1;
@@ -224,9 +207,7 @@ void kvprintf_nolock(const char* fmt, va_list valist) {
 
 void kvprintf(const char* fmt, va_list valist) {
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
-	spinlock_lock(&PRINT_LOCK);
 	kvprintf_nolock(fmt, valist);
-	spinlock_unlock(&PRINT_LOCK);
 	arch_ipl_set(old);
 }
 
@@ -248,11 +229,9 @@ NORETURN void panic(const char* fmt, ...) {
 	arch_ipl_set(IPL_CRITICAL);
 	va_list valist;
 	va_start(valist, fmt);
-	kernel_con->fg = 0xFF0000;
-	spinlock_lock(&PRINT_LOCK);
+	kprintf_nolock("%" PRIfg, 0xFF0000);
 	kputs_nolock("KERNEL PANIC: ", sizeof("KERNEL PANIC: ") - 1);
 	kvprintf_nolock(fmt, valist);
-	spinlock_unlock(&PRINT_LOCK);
 	va_end(valist);
 
 	while (true) {

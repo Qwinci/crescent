@@ -1,7 +1,6 @@
 #include "fbcon.h"
-#include "con.h"
 #include "fb.h"
-#include "sched/sched.h"
+#include "log.h"
 
 typedef struct {
 	u32 magic;
@@ -15,89 +14,82 @@ typedef struct {
 } PsfFont;
 
 typedef struct {
-	Con common;
+	LogSink common;
 	FbDev* fb;
 	const PsfFont* font;
-} FbCon;
+	u32 column;
+	u32 line;
+	u32 fg;
+	u32 bg;
+} FbLogSink;
 
-static int fbcon_write(Con* self, char c);
-static int fbcon_write_at(Con* self, usize x, usize y, char c);
+static int fblog_write(LogSink* log_self, Str str);
 
-static FbCon fbcon = {
+static FbLogSink FBLOG = {
 	.common = {
-		.write = fbcon_write,
-		.write_at = fbcon_write_at,
-		.column = 0,
-		.line = 0,
-		.fg = 0x00FF00,
-		.bg = 0
-	}
+		.write = fblog_write
+	},
+	.fg = 0x00FF00
 };
 
-static int fbcon_write(Con* self, char c) {
-	FbCon* con = container_of(self, FbCon, common);
-	if ((self->column + 1) * con->font->width >= con->fb->info.width) {
-		self->column = 0;
-		self->line += 1;
-	}
-	if (self->line * con->font->height >= con->fb->info.height) {
-		/*
-		fb_clear(con->con, 0);
-		self->line = 0;
-		self->column = 0;*/
-		return 0;
-		// todo
-	}
+static int fblog_write(LogSink* log_self, Str str) {
+	FbLogSink* self = container_of(log_self, FbLogSink, common);
 
-	u32 bytes_per_line = (con->font->width + 7) / 8;
+	u32 bytes_per_line = (self->font->width + 7) / 8;
 
-	usize offset = sizeof(PsfFont) + (usize) c * con->font->bytes_per_glyph;
-	const u8* font_c = offset(con->font, const u8*, offset);
-	usize init_x = self->column * con->font->width;
-	usize init_y = self->line * con->font->height;
-	for (usize y = 0; y < con->font->height; ++y) {
-		for (usize x = 0; x < con->font->width; ++x) {
-			u32 shift = con->font->width - 1 - x;
-			u32 color = font_c[shift / 8] & (1 << (shift % 8)) ? self->fg : self->bg;
-			fb_set_pixel(con->fb, init_x + x, init_y + y, color);
+	for (usize i = 0; i < str.len; ++i) {
+		if ((self->column + 1) * self->font->width >= self->fb->info.width) {
+			self->column = 0;
+			self->line += 1;
 		}
-		font_c += bytes_per_line;
-	}
-	self->column += 1;
-
-	return 1;
-}
-
-static int fbcon_write_at(Con* self, usize x, usize y, char c) {
-	FbCon* fb = container_of(self, FbCon, common);
-	if ((x + 1) * fb->font->width >= fb->fb->info.width) {
-		x = 0;
-		y += 1;
-	}
-	if (y * fb->font->height >= fb->fb->info.height) {
-		return 0;
-	}
-
-	u32 bytes_per_line = (fb->font->width + 7) / 8;
-
-	usize offset = sizeof(PsfFont) + (usize) c * fb->font->bytes_per_glyph;
-	const u8* font_c = offset(fb->font, const u8*, offset);
-	usize init_x = x * fb->font->width;
-	usize init_y = y * fb->font->height;
-	for (usize py = 0; y < fb->font->height; ++py) {
-		for (usize px = 0; x < fb->font->width; ++px) {
-			u32 shift = fb->font->width - 1 - px;
-			u32 color = font_c[shift / 8] & (1 << (shift % 8)) ? self->fg : self->bg;
-			fb_set_pixel(fb->fb, init_x + px, init_y + py, color);
+		if (self->line * self->font->height >= self->fb->info.height) {
+			fb_clear(self->fb, 0);
+			self->line = 0;
+			self->column = 0;
+			// todo proper scrolling
 		}
-		font_c += bytes_per_line;
+
+		char c = str.data[i];
+		if (c == '\n') {
+			self->column = 0;
+			self->line += 1;
+		}
+		else if (c == '\t') {
+			self->column += 4 - (self->column % 4);
+		}
+		else if (c == '\r') {
+			self->column = 0;
+		}
+		else if (c == -1) {
+			memcpy(&self->fg, &str.data[i + 1], 4);
+			i += 4;
+		}
+		else if (c == -2) {
+			memcpy(&self->bg, &str.data[i + 1], 4);
+			i += 4;
+		}
+		else {
+			u32 offset = sizeof(PsfFont) + (u32) c * self->font->bytes_per_glyph;
+			const u8* font_c = offset(self->font, const u8*, offset);
+			u32 init_x = self->column * self->font->width;
+			u32 init_y = self->line * self->font->height;
+			for (u32 y = 0; y < self->font->height; ++y) {
+				for (u32 x = 0; x < self->font->width; ++x) {
+					u32 shift = self->font->width - 1 - x;
+					u32 color = font_c[shift / 8] & (1 << (shift % 8)) ? self->fg : self->bg;
+					fb_set_pixel(self->fb, init_x + x, init_y + y, color);
+				}
+				font_c += bytes_per_line;
+			}
+			self->column += 1;
+		}
 	}
 
-	return 1;
+	return 0;
 }
 
 void fbcon_init(FbDev* fb, const void* font) {
-	fbcon.fb = fb;
-	fbcon.font = (const PsfFont*) font;
-	kernel_con = &fbcon.common;
+	FBLOG.fb = fb;
+	FBLOG.font = (const PsfFont*) font;
+	log_register_sink(&FBLOG.common, false);
 }

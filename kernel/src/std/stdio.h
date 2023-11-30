@@ -4,7 +4,6 @@
 #include "utils/spinlock.h"
 #include <stdarg.h>
 
-extern Spinlock PRINT_LOCK;
 void kputs(const char* str, usize len);
 void kputs_nolock(const char* str, usize len);
 void kprintf(const char* fmt, ...);
