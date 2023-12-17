@@ -68,7 +68,7 @@ find_program(GUESTMOUNT guestmount)
 
 add_custom_command(OUTPUT initramfs.tar
 	COMMAND tar -cf initramfs.tar -C ${PROJECT_BINARY_DIR}/sysroot/ .
-	DEPENDS copy_apps
+	DEPENDS ${APPS}
 	USES_TERMINAL VERBATIM
 )
 
@@ -78,7 +78,7 @@ if(GUESTMOUNT)
 		COMMAND guestmount --pid-file guestfs.pid -a ${PROJECT_BINARY_DIR}/nvm.img -m /dev/sda1 ${PROJECT_BINARY_DIR}/mountpoint
 		COMMAND rsync -a --delete ${PROJECT_BINARY_DIR}/sysroot/ ${PROJECT_BINARY_DIR}/mountpoint/
 		COMMAND guestunmount ${PROJECT_BINARY_DIR}/mountpoint
-		DEPENDS copy_apps
+		DEPENDS ${APPS}
 		USES_TERMINAL VERBATIM
 	)
 else()
@@ -89,7 +89,7 @@ else()
 		COMMAND sudo rsync -a --delete ${PROJECT_BINARY_DIR}/sysroot/ ${PROJECT_BINARY_DIR}/mountpoint/
 		COMMAND sudo umount ${PROJECT_BINARY_DIR}/mountpoint
 		COMMAND sudo losetup -d /dev/loop0
-		DEPENDS copy_apps
+		DEPENDS ${APPS}
 		USES_TERMINAL VERBATIM
 	)
 endif()
