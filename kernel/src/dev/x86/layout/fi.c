@@ -1,6 +1,6 @@
 #include "fi.h"
 
-static Scancode scancode_set2_no_prefix_table[] = {
+static CrescentScancode scancode_set2_no_prefix_table[] = {
 	[0x01] = SCAN_F9,
 	[0x03] = SCAN_F5,
 	[0x04] = SCAN_F3,
@@ -89,7 +89,7 @@ static Scancode scancode_set2_no_prefix_table[] = {
 	[0x83] = SCAN_F7
 };
 
-static Scancode ps2_scancode_set2_no_prefix(u8 byte) {
+static CrescentScancode ps2_scancode_set2_no_prefix(u8 byte) {
 	if (byte < sizeof(scancode_set2_no_prefix_table) / sizeof(*scancode_set2_no_prefix_table)) {
 		return scancode_set2_no_prefix_table[byte];
 	}

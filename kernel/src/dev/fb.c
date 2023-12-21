@@ -7,10 +7,10 @@
 #include "mem/vm.h"
 #include "sys/utils.h"
 
-int fbdev_devmsg(FbDev* self, DevMsgFb msg, __user void* data) {
+int fbdev_devmsg(FbDev* self, CrescentDevMsgFb msg, __user void* data) {
 	switch (msg) {
 		case DEVMSG_FB_INFO:
-			if (!mem_copy_to_user(data, &self->info, sizeof(SysFramebufferInfo))) {
+			if (!mem_copy_to_user(data, &self->info, sizeof(CrescentFramebufferInfo))) {
 				return ERR_FAULT;
 			}
 			return 0;

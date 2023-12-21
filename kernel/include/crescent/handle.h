@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-#define INVALID_HANDLE ((Handle) -1)
+#define INVALID_HANDLE ((CrescentHandle) -1)
 
-typedef uint64_t Handle;
+typedef uint64_t CrescentHandle;
 
 #endif

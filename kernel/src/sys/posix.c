@@ -38,6 +38,7 @@ int sys_posix_open(__user const char* path, size_t path_len) {
 		kfree(buf, path_len + 1);
 		return ERR_FAULT;
 	}
+	buf[path_len] = 0;
 
 	VNode* ret_node;
 	int status = kernel_fs_open_ex("posix_rootfs", sizeof("posix_rootfs") - 1, buf, &ret_node);
@@ -125,7 +126,7 @@ int sys_posix_write(int fd, __user const void* buffer, size_t size) {
 	return 0;
 }
 
-SeekOff sys_posix_seek(int fd, CrescentSeekType type, SeekOff offset) {
+CrescentSeekOff sys_posix_seek(int fd, CrescentSeekType type, CrescentSeekOff offset) {
 	FdEntry* entry = get_fd(fd);
 	if (!entry) {
 		return ERR_INVALID_ARG;
@@ -150,7 +151,7 @@ SeekOff sys_posix_seek(int fd, CrescentSeekType type, SeekOff offset) {
 			break;
 	}
 
-	return (SeekOff) entry->offset;
+	return (CrescentSeekOff) entry->offset;
 }
 
 int sys_posix_mmap(void* hint, size_t size, int prot, void* __user* window) {

@@ -4,7 +4,7 @@
 
 typedef enum {
 	SHUTDOWN_TYPE_REBOOT
-} ShutdownType;
+} CrescentShutdownType;
 
 #define SYS_CREATE_PROCESS 0
 #define SYS_KILL_PROCESS 1

@@ -13,7 +13,7 @@ typedef enum {
 } HandleType;
 
 typedef struct {
-	Handle handle;
+	CrescentHandle handle;
 	void* data;
 	HandleType type;
 	unsigned int refs;
@@ -29,9 +29,9 @@ typedef struct {
 
 #define FREED_HANDLE (1ULL << (sizeof(usize) * 8 - 1))
 
-Handle handle_tab_insert(HandleTable* self, void* data, HandleType type);
-HandleEntry* handle_tab_get(HandleTable* self, Handle handle);
-bool handle_tab_close(HandleTable* self, Handle handle);
-void* handle_tab_open(HandleTable* self, Handle handle);
+CrescentHandle handle_tab_insert(HandleTable* self, void* data, HandleType type);
+HandleEntry* handle_tab_get(HandleTable* self, CrescentHandle handle);
+bool handle_tab_close(HandleTable* self, CrescentHandle handle);
+void* handle_tab_open(HandleTable* self, CrescentHandle handle);
 void handle_tab_destroy(HandleTable* self);
 bool handle_tab_duplicate(HandleTable* self, HandleTable* ret);

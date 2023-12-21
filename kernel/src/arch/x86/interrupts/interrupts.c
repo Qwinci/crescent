@@ -2,10 +2,12 @@
 #include "arch/x86/dev/lapic.h"
 #include "interrupts.h"
 #include "ipl.h"
-#include "stdio.h"
-#include "utils/elf.h"
 #include "limine/limine.h"
+#include "mem/user.h"
+#include "mem/utils.h"
+#include "stdio.h"
 #include "string.h"
+#include "utils/elf.h"
 
 static u32 used_ints[256 / 32] = {};
 static u32 used_shareable_ints[256 / 32] = {};
@@ -156,17 +158,32 @@ const char* resolve_ip(usize ip) {
 }
 
 void backtrace_display(bool lock) {
-	Frame* frame;
-	__asm__ volatile("mov %%rbp, %0" : "=rm"(frame));
-	while (frame->rbp) {
-		const char* name = resolve_ip(frame->rip);
-		if (lock) {
-			kprintf("\t%s <0x%x>\n", name ? name : "<unknown>", frame->rip);
+	Frame frame;
+	Frame* frame_ptr;
+	__asm__ volatile("mov %%rbp, %0" : "=rm"(frame_ptr));
+	int limit = 10;
+	while (limit--) {
+		if ((usize) frame_ptr < HHDM_OFFSET) {
+			if (!mem_copy_to_kernel(&frame, (__user const void* restrict) frame_ptr, sizeof(Frame))) {
+				return;
+			}
 		}
 		else {
-			kprintf_nolock("\t%s <0x%x>\n", name ? name : "<unknown>", frame->rip);
+			frame = *frame_ptr;
 		}
-		frame = frame->rbp;
+
+		if (!frame.rbp) {
+			break;
+		}
+
+		const char* name = resolve_ip(frame.rip);
+		if (lock) {
+			kprintf("\t%s <0x%x>\n", name ? name : "<unknown>", frame.rip);
+		}
+		else {
+			kprintf_nolock("\t%s <0x%x>\n", name ? name : "<unknown>", frame.rip);
+		}
+		frame_ptr = frame.rbp;
 	}
 }
 

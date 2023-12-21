@@ -1,16 +1,10 @@
-#include "crescent/fs.h"
-#include "crescent/sys.h"
-#include "crescent/input.h"
-#include "crescent/fb.h"
-#include "crescent/dev.h"
-#include <stddef.h>
-#include <stdatomic.h>
-
-size_t syscall0(size_t num) {
-	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num) : "r11", "rcx");
-	return ret;
-}
+#include <crescent/dev.h>
+#include <crescent/fb.h>
+#include <crescent/fs.h>
+#include <crescent/input.h>
+#include <crescent/sys.h>
+#include <stdio.h>
+#include <string.h>
 
 size_t syscall1(size_t num, size_t a0) {
 	size_t ret;
@@ -39,23 +33,23 @@ int sys_dprint(const char* msg, size_t len) {
 	return (int) syscall2(SYS_DPRINT, (size_t) msg, len);
 }
 
-int sys_create_process(const char* path, size_t path_len, Handle* ret) {
+int sys_create_process(const char* path, size_t path_len, CrescentHandle* ret) {
 	return (int) syscall3(SYS_CREATE_PROCESS, (size_t) path, (size_t) path_len, (size_t) ret);
 }
 
-int sys_kill_process(Handle handle) {
+int sys_kill_process(CrescentHandle handle) {
 	return (int) syscall1(SYS_KILL_PROCESS, handle);
 }
 
-int sys_wait_process(Handle handle) {
+int sys_wait_process(CrescentHandle handle) {
 	return (int) syscall1(SYS_WAIT_PROCESS, handle);
 }
 
-Handle sys_create_thread(void (*fn)(void*), void* arg) {
-	return (Handle) syscall2(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg);
+CrescentHandle sys_create_thread(void (*fn)(void*), void* arg) {
+	return (CrescentHandle) syscall2(SYS_CREATE_THREAD, (size_t) fn, (size_t) arg);
 }
 
-int sys_kill_thread(Handle thread) {
+int sys_kill_thread(CrescentHandle thread) {
 	return (int) syscall1(SYS_KILL_THREAD, (size_t) thread);
 }
 
@@ -63,19 +57,19 @@ void sys_sleep(size_t ms) {
 	syscall1(SYS_SLEEP, ms);
 }
 
-int sys_wait_thread(Handle thread) {
+int sys_wait_thread(CrescentHandle thread) {
 	return (int) syscall1(SYS_WAIT_THREAD, thread);
 }
 
-int sys_wait_for_event(Event* event) {
+int sys_wait_for_event(CrescentEvent* event) {
 	return (int) syscall1(SYS_WAIT_FOR_EVENT, (size_t) event);
 }
 
-int sys_poll_event(Event* event) {
+int sys_poll_event(CrescentEvent* event) {
 	return (int) syscall1(SYS_POLL_EVENT, (size_t) event);
 }
 
-int sys_shutdown(ShutdownType type) {
+int sys_shutdown(CrescentShutdownType type) {
 	return (int) syscall1(SYS_SHUTDOWN, type);
 }
 
@@ -91,27 +85,27 @@ int sys_munmap(void* ptr, size_t size) {
 	return (int) syscall2(SYS_MUNMAP, (size_t) ptr, size);
 }
 
-int sys_close(Handle handle) {
+int sys_close(CrescentHandle handle) {
 	return (int) syscall1(SYS_CLOSE, handle);
 }
 
-int sys_devmsg(Handle handle, size_t msg, void* data) {
+int sys_devmsg(CrescentHandle handle, size_t msg, void* data) {
 	return (int) syscall3(SYS_DEVMSG, (size_t) handle, msg, (size_t) data);
 }
 
-int sys_devenum(DeviceType type, DeviceInfo* res, size_t* count) {
+int sys_devenum(CrescentDeviceType type, CrescentDeviceInfo* res, size_t* count) {
 	return (int) syscall3(SYS_DEVENUM, (size_t) type, (size_t) res, (size_t) count);
 }
 
-int sys_open(const char* path, size_t path_len, Handle* ret) {
+int sys_open(const char* path, size_t path_len, CrescentHandle* ret) {
 	return (int) syscall3(SYS_OPEN, (size_t) path, path_len, (size_t) ret);
 }
 
-int sys_read(Handle handle, void* buffer, size_t size) {
+int sys_read(CrescentHandle handle, void* buffer, size_t size) {
 	return (int) syscall3(SYS_READ, handle, (size_t) buffer, size);
 }
 
-int sys_stat(Handle handle, CrescentStat* stat) {
+int sys_stat(CrescentHandle handle, CrescentStat* stat) {
 	return (int) syscall2(SYS_STAT, handle, (size_t) stat);
 }
 
@@ -350,40 +344,31 @@ static const char* LAYOUT_ALT_GR[SCAN_MAX] = {
 
 // clang-format on
 
-size_t strlen(const char* str) {
+static size_t kstrlen(const char* str) {
 	size_t len = 0;
 	while (*str++) ++len;
 	return len;
 }
 
-int puts(const char* str) {
-	sys_dprint(str, strlen(str));
+// this is here because tls does not work with native threads
+void kputs(const char* str) {
+	sys_dprint(str, kstrlen(str));
 	sys_dprint("\n", 1);
-	return 0;
 }
 
 void another_thread(void* arg) {
-	puts("hello from another thread");
+	kputs("hello from another thread");
 	if (arg == (void*) 0xCAFE) {
-		puts("cafe received from thread 1!");
+		kputs("cafe received from thread 1!");
 	}
 	else {
-		puts("didn't receive cafe from thread 1");
+		kputs("didn't receive cafe from thread 1");
 	}
 	sys_exit(0xCAFE);
 }
 
-void* memcpy(void* restrict dest, const void* restrict src, size_t len) {
-	char* dest_ptr = (char*) dest;
-	const char* src_ptr = (const char*) src;
-	for (size_t i = 0; i < len; ++i) {
-		*dest_ptr++ = *src_ptr++;
-	}
-	return dest;
-}
-
-_Noreturn void _start(void*) {
-	Handle another = sys_create_thread(another_thread, (void*) 0xCAFE);
+int main() {
+	CrescentHandle another = sys_create_thread(another_thread, (void*) 0xCAFE);
 	if (another == INVALID_HANDLE) {
 		puts("sys_create_thread failed to create thread");
 	}
@@ -413,11 +398,11 @@ _Noreturn void _start(void*) {
 		puts("user_tty didn't get power management access, F5 isn't going to work");
 	}
 
-	DeviceInfo fb;
+	CrescentDeviceInfo fb;
 	size_t count = 1;
 	int ret = sys_devenum(DEVICE_TYPE_FB, &fb, &count);
 	if (ret == 0) {
-		SysFramebufferInfo info;
+		CrescentFramebufferInfo info;
 		ret = sys_devmsg(fb.handle, DEVMSG_FB_INFO, &info);
 		if (ret != 0) {
 			puts("failed to get fb info");
@@ -446,7 +431,7 @@ _Noreturn void _start(void*) {
 	}
 
 	size_t par_count = 1;
-	DeviceInfo info;
+	CrescentDeviceInfo info;
 	sys_devenum(DEVICE_TYPE_PARTITION, &info, &par_count);
 	sys_close(info.handle);
 
@@ -475,7 +460,7 @@ _Noreturn void _start(void*) {
 		memcpy(name + strlen(info.name) + 1, entry.name, entry.name_len);
 		name[strlen(info.name) + 1 + entry.name_len] = 0;
 
-		Handle handle;
+		CrescentHandle handle;
 		ret = sys_open(name, strlen(name), &handle);
 		CrescentStat stat;
 		ret = sys_stat(handle, &stat);
@@ -505,7 +490,7 @@ _Noreturn void _start(void*) {
 	// rdi rax  rsi  rdx  r10  r8   r9
 
 	while (true) {
-		Event event;
+		CrescentEvent event;
 		sys_wait_for_event(&event);
 
 		if (event.type == EVENT_KEY && event.key.pressed) {
@@ -513,6 +498,7 @@ _Noreturn void _start(void*) {
 				if (sys_shutdown(SHUTDOWN_TYPE_REBOOT) == ERR_NO_PERMISSIONS) {
 					puts("no permissions to perform the reboot");
 				}
+				__builtin_unreachable();
 			}
 
 			const char* text = NULL;

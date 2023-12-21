@@ -1,5 +1,8 @@
-set(CMAKE_SYSTEM_NAME Generic)
+include(archdetect)
+target_arch(ARCH)
 
-add_link_options(-static -static-pie -nostdlib -Wl,--fatal-warnings)
-
-enable_language(C CXX ASM)
+if(ARCH STREQUAL "x86_64")
+	include(toolchain_x86_64)
+else()
+	message(FATAL_ERROR "Unsupported target architecture ${ARCH}")
+endif()

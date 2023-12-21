@@ -1,8 +1,3 @@
-project(init)
+add_executable(init src/main.c)
 
-set(CMAKE_C_STANDARD 23)
-
-add_executable(init init.c)
-App(init)
-
-target_link_libraries(init PRIVATE common)
+install(TARGETS init)

@@ -27,6 +27,6 @@ typedef enum {
 	KSEEK_CUR
 } CrescentSeekType;
 
-typedef intptr_t SeekOff;
+typedef intptr_t CrescentSeekOff;
 
 #endif

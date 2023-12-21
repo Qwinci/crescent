@@ -1,11 +1,8 @@
-set(APPS "" CACHE INTERNAL "")
+cmake_minimum_required(VERSION 3.19)
+project(crescent_apps)
 
-macro(App name)
-	add_custom_command(TARGET ${name} POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${name}> "${CMAKE_BINARY_DIR}/sysroot")
-	set(APPS "${APPS};${name}" CACHE INTERNAL "")
-endmacro()
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_subdirectory(user_tty)
 add_subdirectory(init)
-add_subdirectory(gui)
+add_subdirectory(user_tty)

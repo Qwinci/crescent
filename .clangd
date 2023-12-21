@@ -1,0 +1,7 @@
+CompileFlags:
+	CompilationDatabase: /home/visa/Projects/crescent-bootstrap/build/pkg-builds/crescent
+---
+If:
+	PathMatch: apps/.*
+CompileFlags:
+	CompilationDatabase: /home/visa/Projects/crescent-bootstrap/build/pkg-builds/crescent-apps

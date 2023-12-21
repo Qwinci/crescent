@@ -13,7 +13,6 @@
 #ifdef CONFIG_TEST
 #include "utils/test.h"
 #endif
-#include "dev/fbcon.h"
 #include "fs/posix_rootfs.h"
 #include "fs/tar.h"
 #include "fs/vfs.h"
@@ -97,7 +96,7 @@ static int stderr_vnode_write(VNode* self, const void* data, usize off, usize si
 		init_res = program_res;
 	}
 
-	Str arg0 = str_new("posix_rootfs/libc_test_program");
+	Str arg0 = str_new("posix_rootfs/usr/bin/init");
 	Str args[] = {arg0};
 	SysvAux aux[] = {
 		{.type = AT_PHDR, .value = (size_t) program_res.user_phdrs},

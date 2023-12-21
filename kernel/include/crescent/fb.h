@@ -4,19 +4,19 @@
 
 typedef enum {
 	SYS_FB_FORMAT_BGRA32
-} SysFramebufferFormat;
+} CrescentFramebufferFormat;
 
 typedef struct SysFramebufferInfo {
 	size_t width;
 	size_t height;
 	size_t pitch;
 	size_t bpp;
-	SysFramebufferFormat fmt;
-} SysFramebufferInfo;
+	CrescentFramebufferFormat fmt;
+} CrescentFramebufferInfo;
 
 typedef enum {
 	DEVMSG_FB_INFO,
 	DEVMSG_FB_MAP
-} DevMsgFb;
+} CrescentDevMsgFb;
 
 #endif

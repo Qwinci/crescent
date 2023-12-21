@@ -48,7 +48,7 @@ static VNode* posix_rootfs_populate_root(Vfs* vfs) {
 
 static int posix_rootfs_vfs_read_dir(VNode* self, usize* offset, CrescentDirEntry* entry) {
 	PosixRootfs* fs = container_of(self->vfs, PosixRootfs, vfs);
-	const usize MASK = 1ULL << (UINTPTR_WIDTH - 1);
+	const usize MASK = 1ULL << ((sizeof(uintptr_t) * 8) - 1);
 	if (!(*offset & MASK)) {
 		VNode* proxy_root = fs->root_proxy->get_root(fs->root_proxy);
 		if (!proxy_root) {

@@ -10,7 +10,7 @@
 
 DeviceList DEVICES[DEVICE_TYPE_MAX] = {};
 
-void dev_add(GenericDevice* device, DeviceType type) {
+void dev_add(GenericDevice* device, CrescentDeviceType type) {
 	DeviceList* list = &DEVICES[type];
 	mutex_lock(&list->lock);
 
@@ -47,7 +47,7 @@ GenericDevice* dev_get(const char* name, usize name_len) {
 	return NULL;
 }
 
-void dev_remove(GenericDevice* device, DeviceType type) {
+void dev_remove(GenericDevice* device, CrescentDeviceType type) {
 	DeviceList* list = &DEVICES[type];
 	mutex_lock(&list->lock);
 
@@ -61,7 +61,7 @@ void dev_remove(GenericDevice* device, DeviceType type) {
 	mutex_unlock(&list->lock);
 }
 
-int sys_devmsg(Handle handle, size_t msg, __user void* data) {
+int sys_devmsg(CrescentHandle handle, size_t msg, __user void* data) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry) {
@@ -83,7 +83,7 @@ int sys_devmsg(Handle handle, size_t msg, __user void* data) {
 	return 0;
 }
 
-int sys_devenum(DeviceType type, __user DeviceInfo* res, __user size_t* count) {
+int sys_devenum(CrescentDeviceType type, __user CrescentDeviceInfo* res, __user size_t* count) {
 	if (type >= DEVICE_TYPE_MAX) {
 		return ERR_INVALID_ARG;
 	}
@@ -113,8 +113,8 @@ int sys_devenum(DeviceType type, __user DeviceInfo* res, __user size_t* count) {
 		GenericDevice* ptr = list->devices[i];
 		// todo support removing devices
 		ptr->refcount += 1;
-		Handle handle = handle_tab_insert(&task->process->handle_table, ptr, HANDLE_TYPE_DEVICE);
-		DeviceInfo info = {
+		CrescentHandle handle = handle_tab_insert(&task->process->handle_table, ptr, HANDLE_TYPE_DEVICE);
+		CrescentDeviceInfo info = {
 			.handle = handle
 		};
 		strncpy(info.name, ptr->name, sizeof(info.name));

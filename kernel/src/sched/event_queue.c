@@ -8,15 +8,15 @@
 #define EVENT_QUEUE_MAX_SIZE 256
 
 bool event_queue_init(EventQueue* self) {
-	self->events = kmalloc(EVENT_QUEUE_MAX_SIZE * sizeof(Event));
+	self->events = kmalloc(EVENT_QUEUE_MAX_SIZE * sizeof(CrescentEvent));
 	if (!self->events) {
 		return false;
 	}
-	memset(self->events, 0, EVENT_QUEUE_MAX_SIZE * sizeof(Event));
+	memset(self->events, 0, EVENT_QUEUE_MAX_SIZE * sizeof(CrescentEvent));
 	return true;
 }
 
-bool event_queue_get(EventQueue* self, Event* event) {
+bool event_queue_get(EventQueue* self, CrescentEvent* event) {
 	mutex_lock(&self->lock);
 
 	if (!self->events_len) {
@@ -30,7 +30,7 @@ bool event_queue_get(EventQueue* self, Event* event) {
 	return true;
 }
 
-void event_queue_push(EventQueue* self, Event event) {
+void event_queue_push(EventQueue* self, CrescentEvent event) {
 	mutex_lock(&self->lock);
 
 	if (self->notify_target) {

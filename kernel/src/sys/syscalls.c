@@ -17,21 +17,21 @@
 #include "exe/elf_loader.h"
 
 void sys_exit(int status);
-int sys_create_process(__user const char* path, size_t path_len, __user Handle* ret);
-int sys_kill_process(Handle process_handle);
-Handle sys_create_thread(void (*fn)(void*), void* arg);
-int sys_kill_thread(Handle handle);
+int sys_create_process(__user const char* path, size_t path_len, __user CrescentHandle* ret);
+int sys_kill_process(CrescentHandle process_handle);
+CrescentHandle sys_create_thread(void (*fn)(void*), void* arg);
+int sys_kill_thread(CrescentHandle handle);
 int sys_dprint(__user const char* msg, size_t len);
 void sys_sleep(usize ms);
-int sys_wait_thread(Handle handle);
-int sys_wait_process(Handle handle);
-int sys_wait_for_event(__user Event* res);
-int sys_poll_event(__user Event* res);
-int sys_shutdown(ShutdownType type);
+int sys_wait_thread(CrescentHandle handle);
+int sys_wait_process(CrescentHandle handle);
+int sys_wait_for_event(__user CrescentEvent* res);
+int sys_poll_event(__user CrescentEvent* res);
+int sys_shutdown(CrescentShutdownType type);
 bool sys_request_cap(u32 cap);
 void* sys_mmap(size_t size, int protection);
 int sys_munmap(__user void* ptr, size_t size);
-int sys_close(Handle handle);
+int sys_close(CrescentHandle handle);
 int sys_write_fs_base(size_t value);
 int sys_write_gs_base(size_t value);
 
@@ -102,7 +102,7 @@ bool sys_request_cap(u32 cap) {
 
 	bool allow;
 	while (true) {
-		Event res;
+		CrescentEvent res;
 		if (!event_queue_get(&self->event_queue, &res)) {
 			sched_block(TASK_STATUS_WAITING);
 			event_queue_get(&self->event_queue, &res);
@@ -127,7 +127,7 @@ bool sys_request_cap(u32 cap) {
 	return allow;
 }
 
-int sys_shutdown(ShutdownType type) {
+int sys_shutdown(CrescentShutdownType type) {
 	Task* task = arch_get_cur_task();
 	/*if (!(task->caps & CAP_MANAGE_POWER)) {
 		return ERR_NO_PERMISSIONS;
@@ -139,34 +139,34 @@ int sys_shutdown(ShutdownType type) {
 	return ERR_INVALID_ARG;
 }
 
-int sys_wait_for_event(__user Event* res) {
+int sys_wait_for_event(__user CrescentEvent* res) {
 	Task* self = arch_get_cur_task();
 
-	Event kernel_res;
+	CrescentEvent kernel_res;
 
 	if (!event_queue_get(&self->event_queue, &kernel_res)) {
 		sched_block(TASK_STATUS_WAITING);
 		event_queue_get(&self->event_queue, &kernel_res);
 	}
 
-	if (!mem_copy_to_user(res, &kernel_res, sizeof(Event))) {
+	if (!mem_copy_to_user(res, &kernel_res, sizeof(CrescentEvent))) {
 		return ERR_FAULT;
 	}
 
 	return 0;
 }
 
-int sys_poll_event(__user Event* res) {
+int sys_poll_event(__user CrescentEvent* res) {
 	Task* self = arch_get_cur_task();
-	Event kernel_res;
+	CrescentEvent kernel_res;
 	bool result = event_queue_get(&self->event_queue, &kernel_res);
-	if (!mem_copy_to_user(res, &kernel_res, sizeof(Event))) {
+	if (!mem_copy_to_user(res, &kernel_res, sizeof(CrescentEvent))) {
 		return ERR_FAULT;
 	}
 	return !result;
 }
 
-int sys_kill_thread(Handle handle) {
+int sys_kill_thread(CrescentHandle handle) {
 	if (handle == INVALID_HANDLE) {
 		return ERR_INVALID_ARG;
 	}
@@ -191,7 +191,7 @@ int sys_kill_thread(Handle handle) {
 	return status;
 }
 
-int sys_wait_thread(Handle handle) {
+int sys_wait_thread(CrescentHandle handle) {
 	if (handle == INVALID_HANDLE) {
 		return ERR_INVALID_ARG;
 	}
@@ -246,7 +246,7 @@ void sys_exit(int status) {
 	sched_exit(status, TASK_STATUS_EXITED);
 }
 
-Handle sys_create_thread(void (*fn)(void*), void* arg) {
+CrescentHandle sys_create_thread(void (*fn)(void*), void* arg) {
 	if ((usize) fn >= HHDM_OFFSET) {
 		return INVALID_HANDLE;
 	}
@@ -277,7 +277,7 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	handle->task = task;
 	handle->exited = false;
 	memset(&handle->lock, 0, sizeof(Mutex));
-	Handle id = handle_tab_insert(&self->process->handle_table, handle, HANDLE_TYPE_THREAD);
+	CrescentHandle id = handle_tab_insert(&self->process->handle_table, handle, HANDLE_TYPE_THREAD);
 	task->tid = id;
 
 	sched_queue_task(task);
@@ -287,7 +287,7 @@ Handle sys_create_thread(void (*fn)(void*), void* arg) {
 	return id;
 }
 
-int sys_create_process(__user const char* path, size_t path_len, __user Handle* ret) {
+int sys_create_process(__user const char* path, size_t path_len, __user CrescentHandle* ret) {
 	char* buf = kmalloc(path_len + 1);
 	if (!buf) {
 		return ERR_NO_MEM;
@@ -355,7 +355,7 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	h->process = process;
 	h->exited = false;
 	Task* task = arch_get_cur_task();
-	Handle handle = handle_tab_insert(&task->process->handle_table, h, HANDLE_TYPE_PROCESS);
+	CrescentHandle handle = handle_tab_insert(&task->process->handle_table, h, HANDLE_TYPE_PROCESS);
 
 	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
 		handle_tab_close(&task->process->handle_table, handle);
@@ -374,12 +374,12 @@ int sys_create_process(__user const char* path, size_t path_len, __user Handle* 
 	return 0;
 }
 
-int sys_wait_process(Handle handle) {
+int sys_wait_process(CrescentHandle handle) {
 	// todo implement
 	return ERR_OPERATION_NOT_SUPPORTED;
 }
 
-int sys_kill_process(Handle process_handle) {
+int sys_kill_process(CrescentHandle process_handle) {
 	Task* this_task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&this_task->process->handle_table, process_handle);
 	if (!entry || entry->type != HANDLE_TYPE_PROCESS) {
@@ -446,7 +446,7 @@ int sys_munmap(__user void* ptr, size_t size) {
 	return 0;
 }
 
-int sys_close(Handle handle) {
+int sys_close(CrescentHandle handle) {
 	if (handle == INVALID_HANDLE) {
 		return ERR_INVALID_ARG;
 	}

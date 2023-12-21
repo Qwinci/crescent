@@ -82,7 +82,7 @@ int kernel_fs_open(const char* path, VNode** ret) {
 	return kernel_fs_open_ex(path, dev_len, ptr, ret);
 }
 
-int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
+int sys_open(__user const char* path, size_t path_len, __user CrescentHandle* ret) {
 	char* buf = kmalloc(path_len + 1);
 	if (!buf) {
 		return ERR_NO_MEM;
@@ -110,7 +110,7 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 	data->node = node;
 	data->cursor = 0;
 
-	Handle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
+	CrescentHandle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
 	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
 		handle_tab_close(&task->process->handle_table, handle);
 		node->ops.release(node);
@@ -120,7 +120,7 @@ int sys_open(__user const char* path, size_t path_len, __user Handle* ret) {
 	return 0;
 }
 
-int sys_open_ex(__user const char* dev, size_t dev_len, __user const char* path, size_t path_len, __user Handle* ret) {
+int sys_open_ex(__user const char* dev, size_t dev_len, __user const char* path, size_t path_len, __user CrescentHandle* ret) {
 	char* dev_buf = kmalloc(dev_len);
 	if (!dev_buf) {
 		return ERR_NO_MEM;
@@ -160,7 +160,7 @@ int sys_open_ex(__user const char* dev, size_t dev_len, __user const char* path,
 	data->node = node;
 	data->cursor = 0;
 
-	Handle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
+	CrescentHandle handle = handle_tab_insert(&task->process->handle_table, data, HANDLE_TYPE_FILE);
 	if (!mem_copy_to_user(ret, &handle, sizeof(handle))) {
 		handle_tab_close(&task->process->handle_table, handle);
 		node->ops.release(node);
@@ -170,7 +170,7 @@ int sys_open_ex(__user const char* dev, size_t dev_len, __user const char* path,
 	return 0;
 }
 
-int sys_read(Handle handle, __user void* buffer, size_t size) {
+int sys_read(CrescentHandle handle, __user void* buffer, size_t size) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
@@ -195,7 +195,7 @@ int sys_read(Handle handle, __user void* buffer, size_t size) {
 	return ret;
 }
 
-int sys_write(Handle handle, __user const void* buffer, size_t size) {
+int sys_write(CrescentHandle handle, __user const void* buffer, size_t size) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
@@ -220,7 +220,7 @@ int sys_write(Handle handle, __user const void* buffer, size_t size) {
 	return ret;
 }
 
-int sys_seek(Handle handle, CrescentSeekType seek_type, SeekOff offset) {
+int sys_seek(CrescentHandle handle, CrescentSeekType seek_type, CrescentSeekOff offset) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
@@ -249,7 +249,7 @@ int sys_seek(Handle handle, CrescentSeekType seek_type, SeekOff offset) {
 	return 0;
 }
 
-int sys_stat(Handle handle, __user CrescentStat* stat) {
+int sys_stat(CrescentHandle handle, __user CrescentStat* stat) {
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
@@ -267,27 +267,27 @@ int sys_stat(Handle handle, __user CrescentStat* stat) {
 }
 
 int sys_opendir(__user const char* path, size_t path_len, __user CrescentDir** ret) {
-	int status = sys_open(path, path_len, (__user Handle*) ret);
+	int status = sys_open(path, path_len, (__user CrescentHandle*) ret);
 	return status;
 }
 
 int sys_closedir(__user CrescentDir* dir) {
 	Task* task = arch_get_cur_task();
-	HandleEntry* entry = handle_tab_get(&task->process->handle_table, (Handle) dir);
+	HandleEntry* entry = handle_tab_get(&task->process->handle_table, (CrescentHandle) dir);
 	if (!entry || entry->type != HANDLE_TYPE_FILE) {
 		return ERR_INVALID_ARG;
 	}
 	FileData* data = (FileData*) entry->data;
 
 	data->node->ops.release(data->node);
-	handle_tab_close(&task->process->handle_table, (Handle) dir);
+	handle_tab_close(&task->process->handle_table, (CrescentHandle) dir);
 	kfree(data, sizeof(FileData));
 	return 0;
 }
 
 int sys_readdir(__user CrescentDir* dir, __user CrescentDirEntry* entry) {
 	Task* task = arch_get_cur_task();
-	HandleEntry* handle = handle_tab_get(&task->process->handle_table, (Handle) dir);
+	HandleEntry* handle = handle_tab_get(&task->process->handle_table, (CrescentHandle) dir);
 	if (!handle || handle->type != HANDLE_TYPE_FILE) {
 		return ERR_INVALID_ARG;
 	}

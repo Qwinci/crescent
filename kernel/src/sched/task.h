@@ -43,7 +43,7 @@ typedef struct Task {
 	Cpu* cpu;
 	void* map;
 	Process* process;
-	Handle tid;
+	CrescentHandle tid;
 	struct Task* signal_waiters;
 	Mutex signal_waiters_lock;
 	EventQueue event_queue;

@@ -41,8 +41,6 @@ static void x86_switch_from_init(X86Task* old_task) {
 
 extern void x86_usermode_ret();
 
-extern void* x86_create_user_map();
-
 usize USER_STACK_SIZE = 1024 * 1024 * 4;
 
 Task* arch_create_sysv_user_task(Process* process, const char* name, const SysvTaskInfo* info) {

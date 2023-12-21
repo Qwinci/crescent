@@ -6,7 +6,7 @@
 #include "sys/fs.h"
 #include "sched/task.h"
 
-Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
+CrescentHandle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 	assert(data);
 
 	mutex_lock(&self->lock);
@@ -22,7 +22,7 @@ Handle handle_tab_insert(HandleTable* self, void* data, HandleType type) {
 		return entry->handle;
 	}
 	else {
-		Handle id = self->size;
+		CrescentHandle id = self->size;
 		if (id & FREED_HANDLE) {
 			return INVALID_HANDLE;
 		}
@@ -63,7 +63,7 @@ void handle_tab_destroy(HandleTable* self) {
 	*self = (HandleTable) {};
 }
 
-HandleEntry* handle_tab_get(HandleTable* self, Handle handle) {
+HandleEntry* handle_tab_get(HandleTable* self, CrescentHandle handle) {
 	mutex_lock(&self->lock);
 	if (handle >= self->size) {
 		mutex_unlock(&self->lock);
@@ -78,7 +78,7 @@ HandleEntry* handle_tab_get(HandleTable* self, Handle handle) {
 	return entry;
 }
 
-bool handle_tab_close(HandleTable* self, Handle handle) {
+bool handle_tab_close(HandleTable* self, CrescentHandle handle) {
 	mutex_lock(&self->lock);
 	if (handle >= self->size) {
 		mutex_unlock(&self->lock);
@@ -101,7 +101,7 @@ bool handle_tab_close(HandleTable* self, Handle handle) {
 	return true;
 }
 
-void* handle_tab_open(HandleTable* self, Handle handle) {
+void* handle_tab_open(HandleTable* self, CrescentHandle handle) {
 	mutex_lock(&self->lock);
 	if (handle >= self->size || handle == INVALID_HANDLE) {
 		mutex_unlock(&self->lock);

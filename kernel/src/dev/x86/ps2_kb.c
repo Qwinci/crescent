@@ -10,7 +10,7 @@
 
 static OneByteScancodeTranslatorFn translator_fn = NULL;
 
-static Scancode ps2_scancode_set2_e0(u8 byte) {
+static CrescentScancode ps2_scancode_set2_e0(u8 byte) {
 	switch (byte) {
 		case 0x10:
 			return SCAN_FIND;
@@ -91,7 +91,7 @@ static Scancode ps2_scancode_set2_e0(u8 byte) {
 	}
 }
 
-static Scancode ps2_scancode_set2_e1(u8 byte1, u8 byte2) {
+static CrescentScancode ps2_scancode_set2_e1(u8 byte1, u8 byte2) {
 	if (byte1 == 0x14 && byte2 == 0x77) {
 		return SCAN_PAUSE;
 	}
@@ -106,7 +106,7 @@ static usize ps2_key_queue_int_ptr = 0;
 static usize ps2_key_queue_translator_ptr = 0;
 static usize ps2_key_queue_size = 0;
 static Task* ps2_translator_task = NULL;
-static Modifier ps2_modifiers = MOD_NONE;
+static CrescentModifier ps2_modifiers = MOD_NONE;
 static Spinlock ps2_spinlock = {};
 
 static IrqStatus ps2_kb_handler(void*, void*) {
@@ -160,7 +160,7 @@ NORETURN static void ps2_kb_translator(void*) {
 		u8 byte0 = queue_get_byte();
 
 		bool released = false;
-		Scancode key;
+		CrescentScancode key;
 
 		if (byte0 == 0xE0) {
 			u8 byte1 = queue_get_byte();
@@ -218,7 +218,7 @@ NORETURN static void ps2_kb_translator(void*) {
 
 		spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
 		if (ACTIVE_INPUT_TASK) {
-			Event event = {
+			CrescentEvent event = {
 				.type = EVENT_KEY,
 				.key = {
 					.key = key,
