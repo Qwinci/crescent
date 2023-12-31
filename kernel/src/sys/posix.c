@@ -193,3 +193,118 @@ int sys_posix_mmap(void* hint, size_t size, int prot, void* __user* window) {
 
 	return 0;
 }
+
+static Mutex FUTEX_MUTEX = {};
+static RbTree FUTEX_RB_TREE = {};
+
+typedef struct {
+	RbTreeNode hook;
+	usize phys;
+	Task* waiters;
+	Mutex waiters_lock;
+} FutexNode;
+
+static void futex_rb_tree_insert(FutexNode* node) {
+	if (!FUTEX_RB_TREE.root) {
+		rb_tree_insert_root(&FUTEX_RB_TREE, &node->hook);
+		return;
+	}
+
+	FutexNode* n = container_of(FUTEX_RB_TREE.root, FutexNode, hook);
+	while (true) {
+		if (node->phys < n->phys) {
+			if (!n->hook.left) {
+				rb_tree_insert_left(&FUTEX_RB_TREE, &n->hook, &node->hook);
+				break;
+			}
+			n = container_of(n->hook.left, FutexNode, hook);
+		}
+		else {
+			if (!n->hook.right) {
+				rb_tree_insert_right(&FUTEX_RB_TREE, &n->hook, &node->hook);
+				break;
+			}
+			n = container_of(n->hook.right, FutexNode, hook);
+		}
+	}
+}
+
+static FutexNode* futex_rb_tree_get(usize phys) {
+	FutexNode* node = container_of(FUTEX_RB_TREE.root, FutexNode, hook);
+	while (node) {
+		if (phys < node->phys) {
+			node = container_of(node->hook.left, FutexNode, hook);
+		}
+		else if (phys > node->phys) {
+			node = container_of(node->hook.right, FutexNode, hook);
+		}
+		else {
+			return node;
+		}
+	}
+	return NULL;
+}
+
+int sys_posix_futex_wait(__user int* ptr, int expected) {
+	int value;
+	if (!arch_mem_copy_to_kernel(&value, ptr, sizeof(int))) {
+		return ERR_FAULT;
+	}
+	if (value != expected) {
+		return ERR_TRY_AGAIN;
+	}
+
+	usize phys = to_phys_generic((void*) ptr);
+
+	mutex_lock(&FUTEX_MUTEX);
+	FutexNode* node = futex_rb_tree_get(phys);
+
+	if (!node) {
+		node = kcalloc(sizeof(FutexNode));
+		if (!node) {
+			mutex_unlock(&FUTEX_MUTEX);
+			return ERR_NO_MEM;
+		}
+		node->phys = phys;
+		futex_rb_tree_insert(node);
+	}
+
+	mutex_lock(&node->waiters_lock);
+	Task* self = arch_get_cur_task();
+	self->next = node->waiters;
+	node->waiters = self;
+	mutex_unlock(&node->waiters_lock);
+
+	mutex_unlock(&FUTEX_MUTEX);
+
+	sched_block(TASK_STATUS_WAITING);
+
+	return 0;
+}
+
+int sys_posix_futex_wake(__user int* ptr) {
+	usize phys = to_phys_generic((void*) ptr);
+
+	mutex_lock(&FUTEX_MUTEX);
+	FutexNode* node = futex_rb_tree_get(phys);
+	if (!node) {
+		mutex_unlock(&FUTEX_MUTEX);
+		return 0;
+	}
+
+	mutex_lock(&node->waiters_lock);
+	Task* task = node->waiters;
+	node->waiters = node->waiters->next;
+	if (!node->waiters) {
+		rb_tree_remove(&FUTEX_RB_TREE, &node->hook);
+		kfree(node, sizeof(FutexNode));
+	}
+	else {
+		mutex_unlock(&node->waiters_lock);
+	}
+
+	sched_unblock(task);
+
+	mutex_unlock(&FUTEX_MUTEX);
+	return 0;
+}

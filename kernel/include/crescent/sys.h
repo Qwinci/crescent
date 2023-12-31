@@ -43,6 +43,8 @@ typedef enum {
 #define SYS_POSIX_MMAP 1003
 #define SYS_POSIX_CLOSE 1004
 #define SYS_POSIX_WRITE 1005
+#define SYS_POSIX_FUTEX_WAIT 1006
+#define SYS_POSIX_FUTEX_WAKE 1007
 
 #define ERR_INVALID_ARG (-1)
 #define ERR_NO_PERMISSIONS (-2)
@@ -51,6 +53,7 @@ typedef enum {
 #define ERR_NOT_EXISTS (-5)
 #define ERR_OPERATION_NOT_SUPPORTED (-6)
 #define ERR_NOT_DIR (-7)
+#define ERR_TRY_AGAIN (-8)
 
 #define KPROT_READ (1 << 0)
 #define KPROT_WRITE (1 << 1)

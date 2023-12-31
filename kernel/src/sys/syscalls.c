@@ -77,7 +77,9 @@ __attribute__((used)) void* syscall_handlers[] = {
 	[SYS_POSIX_SEEK] = sys_posix_seek,
 	[SYS_POSIX_MMAP] = sys_posix_mmap,
 	[SYS_POSIX_CLOSE] = sys_posix_close,
-	[SYS_POSIX_WRITE] = sys_posix_write
+	[SYS_POSIX_WRITE] = sys_posix_write,
+	[SYS_POSIX_FUTEX_WAIT] = sys_posix_futex_wait,
+	[SYS_POSIX_FUTEX_WAKE] = sys_posix_futex_wake
 };
 
 __attribute__((used)) const usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);

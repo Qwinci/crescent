@@ -23,3 +23,5 @@ int sys_posix_read(int fd, __user void* buffer, size_t size);
 int sys_posix_write(int fd, __user const void* buffer, size_t size);
 CrescentSeekOff sys_posix_seek(int fd, CrescentSeekType type, CrescentSeekOff offset);
 int sys_posix_mmap(void* hint, size_t size, int prot, void* __user* window);
+int sys_posix_futex_wait(__user int* ptr, int expected);
+int sys_posix_futex_wake(__user int* ptr);
