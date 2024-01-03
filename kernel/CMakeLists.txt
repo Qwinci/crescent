@@ -16,7 +16,7 @@ target_compile_options(crescent PRIVATE
 		-mgeneral-regs-only
 		-fno-stack-protector
 		-fno-omit-frame-pointer
-		-fPIE -Werror=switch -Werror=return-type>)
+		-fPIE -Werror=switch -Werror=return-type -Werror=incompatible-pointer-types>)
 target_link_options(crescent PRIVATE -static -static-pie -nostdlib -Wl,--fatal-warnings)
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")

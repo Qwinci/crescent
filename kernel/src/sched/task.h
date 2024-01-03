@@ -49,6 +49,7 @@ typedef struct Task {
 	EventQueue event_queue;
 	void* handler_ip;
 	void* handler_sp;
+	void* executor_state;
 	TaskStatus status;
 	u32 caps;
 	u8 level;

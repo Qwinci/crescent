@@ -1,7 +1,7 @@
 #pragma once
 #include "types.h"
 
-typedef struct {
+typedef struct InterruptCtx {
 	u64 r15, r14, r13, r12, r11, r10, r9, r8, rbp, rsi, rdi, rdx, rcx, rbx, rax;
 	u64 error;
 	u64 ip;

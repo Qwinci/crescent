@@ -15,27 +15,33 @@
 #include "fs/vfs.h"
 #include "fs.h"
 #include "exe/elf_loader.h"
+#include "sched/signal.h"
+#include "arch/executor.h"
 
-void sys_exit(int status);
-int sys_create_process(__user const char* path, size_t path_len, __user CrescentHandle* ret);
-int sys_kill_process(CrescentHandle process_handle);
-CrescentHandle sys_create_thread(void (*fn)(void*), void* arg);
-int sys_kill_thread(CrescentHandle handle);
-int sys_dprint(__user const char* msg, size_t len);
-void sys_sleep(usize ms);
-int sys_wait_thread(CrescentHandle handle);
-int sys_wait_process(CrescentHandle handle);
-int sys_wait_for_event(__user CrescentEvent* res);
-int sys_poll_event(__user CrescentEvent* res);
-int sys_shutdown(CrescentShutdownType type);
-bool sys_request_cap(u32 cap);
-void* sys_mmap(size_t size, int protection);
-int sys_munmap(__user void* ptr, size_t size);
-int sys_close(CrescentHandle handle);
-int sys_write_fs_base(size_t value);
-int sys_write_gs_base(size_t value);
+void sys_exit(void* state);
+void sys_create_process(void* state);
+void sys_kill_process(void* state);
+void sys_create_thread(void* state);
+void sys_kill_thread(void* state);
+void sys_dprint(void* state);
+void sys_sleep(void* state);
+void sys_wait_thread(void* state);
+void sys_wait_process(void* state);
+void sys_wait_for_event(void* state);
+void sys_poll_event(void* state);
+void sys_shutdown(void* state);
+void sys_request_cap(void* state);
+void sys_mmap(void* state);
+void sys_munmap(void* state);
+void sys_close(void* state);
+void sys_raise_signal(void* state);
+void sys_sigleave(void* state);
+void sys_write_fs_base(void* state);
+void sys_write_gs_base(void* state);
 
-__attribute__((used)) void* syscall_handlers[] = {
+typedef void (*SyscallHandler)(void* state);
+
+static const SyscallHandler syscall_handlers[] = {
 	[SYS_CREATE_PROCESS] = sys_create_process,
 	[SYS_KILL_PROCESS] = sys_kill_process,
 	[SYS_WAIT_PROCESS] = sys_wait_process,
@@ -68,6 +74,10 @@ __attribute__((used)) void* syscall_handlers[] = {
 	[SYS_OPENDIR] = sys_opendir,
 	[SYS_READDIR] = sys_readdir,
 	[SYS_CLOSEDIR] = sys_closedir,
+	[SYS_ATTACH_SIGNAL] = sys_attach_signal,
+	[SYS_DETACH_SIGNAL] = sys_detach_signal,
+	[SYS_RAISE_SIGNAL] = sys_raise_signal,
+	[SYS_SIGLEAVE] = sys_sigleave,
 
 	[SYS_WRITE_FS_BASE] = sys_write_fs_base,
 	[SYS_WRITE_GS_BASE] = sys_write_gs_base,
@@ -82,16 +92,27 @@ __attribute__((used)) void* syscall_handlers[] = {
 	[SYS_POSIX_FUTEX_WAKE] = sys_posix_futex_wake
 };
 
-__attribute__((used)) const usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
+const usize syscall_handler_count = sizeof(syscall_handlers) / sizeof(*syscall_handlers);
+
+void syscall_dispatcher(void* state) {
+	size_t num = executor_num(state);
+	if (num >= syscall_handler_count) {
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
+	}
+	syscall_handlers[num](state);
+}
 
 static const char* CAP_STRS[CAP_MAX] = {
 	[CAP_DIRECT_FB_ACCESS] = "DIRECT_FB_ACCESS",
 	[CAP_MANAGE_POWER] = "MANAGE_POWER"
 };
 
-bool sys_request_cap(u32 cap) {
+void sys_request_cap(void* state) {
+	u32 cap = *executor_arg0(state);
 	if (cap >= CAP_MAX) {
-		return false;
+		*executor_ret0(state) = 0;
+		return;
 	}
 
 	kprintf("task '%s' is requesting cap '%s', allow?\n", arch_get_cur_task()->name, CAP_STRS[cap]);
@@ -126,10 +147,11 @@ bool sys_request_cap(u32 cap) {
 	spinlock_lock(&ACTIVE_INPUT_TASK_LOCK);
 	ACTIVE_INPUT_TASK = old;
 	spinlock_unlock(&ACTIVE_INPUT_TASK_LOCK);
-	return allow;
+	*executor_ret0(state) = allow;
 }
 
-int sys_shutdown(CrescentShutdownType type) {
+void sys_shutdown(void* state) {
+	CrescentShutdownType type = (CrescentShutdownType) *executor_arg0(state);
 	Task* task = arch_get_cur_task();
 	/*if (!(task->caps & CAP_MANAGE_POWER)) {
 		return ERR_NO_PERMISSIONS;
@@ -138,10 +160,12 @@ int sys_shutdown(CrescentShutdownType type) {
 	if (type == SHUTDOWN_TYPE_REBOOT) {
 		arch_reboot();
 	}
-	return ERR_INVALID_ARG;
+	*executor_ret0(state) = ERR_INVALID_ARG;
 }
 
-int sys_wait_for_event(__user CrescentEvent* res) {
+void sys_wait_for_event(void* state) {
+	__user CrescentEvent* res = (__user CrescentEvent*) *executor_arg0(state);
+
 	Task* self = arch_get_cur_task();
 
 	CrescentEvent kernel_res;
@@ -152,31 +176,39 @@ int sys_wait_for_event(__user CrescentEvent* res) {
 	}
 
 	if (!mem_copy_to_user(res, &kernel_res, sizeof(CrescentEvent))) {
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
 
-	return 0;
+	*executor_ret0(state) = 0;
 }
 
-int sys_poll_event(__user CrescentEvent* res) {
+void sys_poll_event(void* state) {
+	__user CrescentEvent* res = (__user CrescentEvent*) *executor_arg0(state);
+
 	Task* self = arch_get_cur_task();
 	CrescentEvent kernel_res;
 	bool result = event_queue_get(&self->event_queue, &kernel_res);
 	if (!mem_copy_to_user(res, &kernel_res, sizeof(CrescentEvent))) {
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
-	return !result;
+	*executor_ret0(state) = !result;
 }
 
-int sys_kill_thread(CrescentHandle handle) {
+void sys_kill_thread(void* state) {
+	CrescentHandle handle = (CrescentHandle) *executor_arg0(state);
+
 	if (handle == INVALID_HANDLE) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	Task* self = arch_get_cur_task();
 
 	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_open(&self->process->handle_table, handle);
 	if (t_handle == NULL) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	mutex_lock(&t_handle->lock);
 	int status;
@@ -190,18 +222,23 @@ int sys_kill_thread(CrescentHandle handle) {
 	}
 	mutex_unlock(&t_handle->lock);
 
-	return status;
+	*executor_ret0(state) = status;
+	return;
 }
 
-int sys_wait_thread(CrescentHandle handle) {
+void sys_wait_thread(void* state) {
+	CrescentHandle handle = (CrescentHandle) *executor_arg0(state);
+
 	if (handle == INVALID_HANDLE) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	Task* self = arch_get_cur_task();
 
 	ThreadHandle* t_handle = (ThreadHandle*) handle_tab_open(&self->process->handle_table, handle);
 	if (t_handle == NULL) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	mutex_lock(&t_handle->lock);
 	if (t_handle->exited) {
@@ -219,38 +256,49 @@ int sys_wait_thread(CrescentHandle handle) {
 	int status = t_handle->status;
 	assert(t_handle->exited);
 	handle_tab_close(&self->process->handle_table, handle);
-	return status;
+	*executor_ret0(state) = status;
 }
 
-void sys_sleep(usize ms) {
+void sys_sleep(void* state) {
+	usize ms = (usize) *executor_arg0(state);
 	sched_sleep(ms * US_IN_MS);
 }
 
-int sys_dprint(__user const char* msg, size_t len) {
+void sys_dprint(void* state) {
+	__user const char* msg = (__user const char*) *executor_arg0(state);
+	size_t len = (size_t) *executor_arg1(state);
+
 	char* buffer = kmalloc(len);
 	if (!buffer) {
-		return ERR_NO_MEM;
+		*executor_ret0(state) = ERR_NO_MEM;
+		return;
 	}
 	if (!mem_copy_to_kernel(buffer, msg, len)) {
 		kfree(buffer, len);
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
 
 	kputs(buffer, len);
 	kfree(buffer, len);
-	return 0;
+	*executor_ret0(state) = 0;
 }
 
-void sys_exit(int status) {
+void sys_exit(void* state) {
+	int status = (int) *executor_arg0(state);
 	Task* task = arch_get_cur_task();
 	kprintf("task '%s' exited with status %d\n", task->name, status);
 	arch_ipl_set(IPL_CRITICAL);
 	sched_exit(status, TASK_STATUS_EXITED);
 }
 
-CrescentHandle sys_create_thread(void (*fn)(void*), void* arg) {
+void sys_create_thread(void* state) {
+	void (*fn)(void*) = (void (*)(void*)) *executor_arg0(state);
+	void* arg = (void*) *executor_arg1(state);
+
 	if ((usize) fn >= HHDM_OFFSET) {
-		return INVALID_HANDLE;
+		*executor_ret0(state) = INVALID_HANDLE;
+		return;
 	}
 
 	Task* self = arch_get_cur_task();
@@ -258,13 +306,15 @@ CrescentHandle sys_create_thread(void (*fn)(void*), void* arg) {
 	mutex_lock(&process->threads_lock);
 	if (atomic_load_explicit(&process->killed, memory_order_acquire)) {
 		mutex_unlock(&process->threads_lock);
-		return INVALID_HANDLE;
+		*executor_ret0(state) = INVALID_HANDLE;
+		return;
 	}
 
 	ThreadHandle* handle = kmalloc(sizeof(ThreadHandle));
 	if (!handle) {
 		mutex_unlock(&process->threads_lock);
-		return INVALID_HANDLE;
+		*executor_ret0(state) = INVALID_HANDLE;
+		return;
 	}
 	handle->refcount = 1;
 
@@ -272,7 +322,8 @@ CrescentHandle sys_create_thread(void (*fn)(void*), void* arg) {
 	if (!task) {
 		kfree(handle, sizeof(ThreadHandle));
 		mutex_unlock(&process->threads_lock);
-		return INVALID_HANDLE;
+		*executor_ret0(state) = INVALID_HANDLE;
+		return;
 	}
 
 	Ipl old = arch_ipl_set(IPL_CRITICAL);
@@ -286,17 +337,23 @@ CrescentHandle sys_create_thread(void (*fn)(void*), void* arg) {
 	process_add_thread(self->process, task);
 	mutex_unlock(&process->threads_lock);
 	arch_ipl_set(old);
-	return id;
+	*executor_ret0(state) = (CrescentHandle) id;
 }
 
-int sys_create_process(__user const char* path, size_t path_len, __user CrescentHandle* ret) {
+void sys_create_process(void* state) {
+	__user const char* path = (__user const char*) *executor_arg0(state);
+	size_t path_len = (size_t) *executor_arg1(state);
+	__user CrescentHandle* ret = (__user CrescentHandle*) *executor_arg2(state);
+
 	char* buf = kmalloc(path_len + 1);
 	if (!buf) {
-		return ERR_NO_MEM;
+		*executor_ret0(state) = ERR_NO_MEM;
+		return;
 	}
 	if (!mem_copy_to_kernel(buf, path, path_len)) {
 		kfree(buf, path_len + 1);
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
 	buf[path_len] = 0;
 
@@ -304,14 +361,16 @@ int sys_create_process(__user const char* path, size_t path_len, __user Crescent
 	int status = kernel_fs_open(buf, &node);
 	if (status != 0) {
 		kfree(buf, path_len + 1);
-		return status;
+		*executor_ret0(state) = status;
+		return;
 	}
 
 	Process* process = process_new_user();
 	if (!process) {
 		kfree(buf, path_len + 1);
 		node->ops.release(node);
-		return ERR_NO_MEM;
+		*executor_ret0(state) = ERR_NO_MEM;
+		return;
 	}
 
 	const char* process_name = buf + path_len - 1;
@@ -322,7 +381,8 @@ int sys_create_process(__user const char* path, size_t path_len, __user Crescent
 	if (!thread) {
 		node->ops.release(node);
 		process_destroy(process);
-		return ERR_NO_MEM;
+		*executor_ret0(state) = ERR_NO_MEM;
+		return;
 	}
 
 	LoadedElf res;
@@ -332,7 +392,8 @@ int sys_create_process(__user const char* path, size_t path_len, __user Crescent
 	if (status != 0) {
 		thread->process->thread_count = 0;
 		arch_destroy_task(thread);
-		return status;
+		*executor_ret0(state) = status;
+		return;
 	}
 
 	void (*user_fn)(void*) = (void (*)(void*)) res.entry;
@@ -341,14 +402,16 @@ int sys_create_process(__user const char* path, size_t path_len, __user Crescent
 	ProcessHandle* h = kcalloc(sizeof(ProcessHandle));
 	if (!h) {
 		arch_destroy_task(thread);
-		return ERR_NO_MEM;
+		*executor_ret0(state) = ERR_NO_MEM;
+		return;
 	}
 
 	ThreadHandle* thread_h = kcalloc(sizeof(ThreadHandle));
 	if (!thread_h) {
 		arch_destroy_task(thread);
 		kfree(h, sizeof(ProcessHandle));
-		return ERR_NO_MEM;
+		*executor_ret0(state) = ERR_NO_MEM;
+		return;
 	}
 	thread_h->refcount = 1;
 	thread_h->task = thread;
@@ -363,7 +426,8 @@ int sys_create_process(__user const char* path, size_t path_len, __user Crescent
 		handle_tab_close(&task->process->handle_table, handle);
 		arch_destroy_task(thread);
 		kfree(h, sizeof(ProcessHandle));
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
 
 	process_add_thread(process, thread);
@@ -373,23 +437,28 @@ int sys_create_process(__user const char* path, size_t path_len, __user Crescent
 	sched_queue_task(thread);
 	arch_ipl_set(old);
 
-	return 0;
+	*executor_ret0(state) = 0;
 }
 
-int sys_wait_process(CrescentHandle handle) {
+void sys_wait_process(void* state) {
+	CrescentHandle handle = (CrescentHandle) *executor_arg0(state);
 	// todo implement
-	return ERR_OPERATION_NOT_SUPPORTED;
+	*executor_ret0(state) = ERR_OPERATION_NOT_SUPPORTED;
 }
 
-int sys_kill_process(CrescentHandle process_handle) {
+void sys_kill_process(void* state) {
+	CrescentHandle process_handle = (CrescentHandle) *executor_arg0(state);
+
 	Task* this_task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&this_task->process->handle_table, process_handle);
 	if (!entry || entry->type != HANDLE_TYPE_PROCESS) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	ProcessHandle* h = (ProcessHandle*) entry->data;
 	if (h->exited) {
-		return 0;
+		*executor_ret0(state) = 0;
+		return;
 	}
 
 	mutex_lock(&h->lock);
@@ -404,12 +473,16 @@ int sys_kill_process(CrescentHandle process_handle) {
 
 	mutex_unlock(&process->threads_lock);
 	mutex_unlock(&h->lock);
-	return 0;
+	*executor_ret0(state) = 0;
 }
 
-void* sys_mmap(size_t size, int protection) {
+void sys_mmap(void* state) {
+	size_t size = (size_t) *executor_arg0(state);
+	int protection = (int) *executor_arg1(state);
+
 	if (!size || (size & (PAGE_SIZE - 1))) {
-		return NULL;
+		*(void**) executor_ret0(state) = NULL;
+		return;
 	}
 
 	MappingFlags flags = 0;
@@ -425,37 +498,48 @@ void* sys_mmap(size_t size, int protection) {
 	Task* self = arch_get_cur_task();
 	void* res = vm_user_alloc_on_demand(self->process, NULL, size / PAGE_SIZE, flags, false, NULL);
 	if (!res) {
-		return NULL;
+		*(void**) executor_ret0(state) = NULL;
+		return;
 	}
-	return res;
+	*(void**) executor_ret0(state) = res;
 }
 
-int sys_munmap(__user void* ptr, size_t size) {
+void sys_munmap(void* state) {
+	__user void* ptr = (__user void*) *executor_arg0(state);
+	size_t size = (size_t) *executor_arg0(state);
+
 	if (!size || (size & (PAGE_SIZE - 1))) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 
 	Task* self = arch_get_cur_task();
 	Mapping* mapping = process_get_mapping_for_range(self->process, (const void*) ptr, 0);
 	if (!mapping || mapping->size != size) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 
 	if (!vm_user_dealloc_on_demand(self->process, (void*) ptr, size / PAGE_SIZE, false, NULL)) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	arch_invalidate_mapping(arch_get_cur_task()->process);
-	return 0;
+	*executor_ret0(state) = 0;
 }
 
-int sys_close(CrescentHandle handle) {
+void sys_close(void* state) {
+	CrescentHandle handle = (CrescentHandle) *executor_arg0(state);
+
 	if (handle == INVALID_HANDLE) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	Process* process = arch_get_cur_task()->process;
 	HandleEntry* entry = handle_tab_get(&process->handle_table, handle);
 	if (!entry || entry->type == HANDLE_TYPE_KERNEL_GENERIC) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	HandleType type = entry->type;
 	void* data = entry->data;
@@ -490,27 +574,40 @@ int sys_close(CrescentHandle handle) {
 				break;
 		}
 	}
-	return 0;
+	*executor_ret0(state) = 0;
+}
+
+void sys_raise_signal(void* state) {
+	int num = (int) *executor_arg0(state);
+	*executor_ret0(state) = raise_signal(arch_get_cur_task()->process, num);
+}
+
+void sys_sigleave(void* state) {
+	arch_signal_leave(state);
 }
 
 #ifdef __x86_64
 #include "arch/x86/cpu.h"
 #endif
 
-int sys_write_fs_base(size_t value) {
+void sys_write_fs_base(void* state) {
+	size_t value = (size_t) *executor_arg0(state);
+
 #ifdef __x86_64__
 	x86_set_msr(MSR_FSBASE, value);
-	return 0;
+	*executor_ret0(state) = 0;
 #else
-	return ERR_OPERATION_NOT_SUPPORTED;
+	*executor_ret0(state) = ERR_OPERATION_NOT_SUPPORTED;
 #endif
 }
 
-int sys_write_gs_base(size_t value) {
+void sys_write_gs_base(void* state) {
+	size_t value = (size_t) *executor_arg0(state);
+
 #ifdef __x86_64__
 	x86_set_msr(MSR_KERNELGSBASE, value);
-	return 0;
+	*executor_ret0(state) = 0;
 #else
-	return ERR_OPERATION_NOT_SUPPORTED;
+	*executor_ret0(state) = ERR_OPERATION_NOT_SUPPORTED;
 #endif
 }

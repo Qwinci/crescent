@@ -3,6 +3,7 @@
 #include "sys/posix.h"
 #include "utils/handle.h"
 #include "utils/rb_tree.h"
+#include "signal.h"
 
 typedef enum {
 	MAPPING_FLAG_R = 1 << 0,
@@ -27,6 +28,7 @@ typedef struct {
 typedef struct Process {
 	HandleTable handle_table;
 	FdTable fd_table;
+	SignalTable signals;
 	VMem low_vmem;
 	VMem high_vmem;
 	Mutex vmem_lock;

@@ -4,4 +4,6 @@ target_sources(crescent PRIVATE
         mutex.c
         event_queue.c
 		irq_mutex.c
-		process.c)
+		process.c
+		signal.c
+)

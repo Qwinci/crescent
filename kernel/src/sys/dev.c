@@ -1,12 +1,13 @@
 #include "dev.h"
 #include "arch/cpu.h"
+#include "arch/executor.h"
 #include "crescent/sys.h"
-#include "mem/allocator.h"
-#include "string.h"
-#include "mem/user.h"
-#include "utils/math.h"
 #include "dev/fb.h"
 #include "fs.h"
+#include "mem/allocator.h"
+#include "mem/user.h"
+#include "string.h"
+#include "utils/math.h"
 
 DeviceList DEVICES[DEVICE_TYPE_MAX] = {};
 
@@ -61,31 +62,41 @@ void dev_remove(GenericDevice* device, CrescentDeviceType type) {
 	mutex_unlock(&list->lock);
 }
 
-int sys_devmsg(CrescentHandle handle, size_t msg, __user void* data) {
+void sys_devmsg(void* state) {
+	CrescentHandle handle = (CrescentHandle) *executor_arg0(state);
+	size_t msg = (size_t) *executor_arg1(state);
+	__user void* data = (__user void*) *executor_arg2(state);
+
 	Task* task = arch_get_cur_task();
 	HandleEntry* entry = handle_tab_get(&task->process->handle_table, handle);
 	if (!entry) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 	GenericDevice* device = (GenericDevice*) entry->data;
 
 	switch (device->type) {
 		case DEVICE_TYPE_FB:
-			return fbdev_devmsg(container_of(device, FbDev, generic), msg, data);
+			*executor_ret0(state) = fbdev_devmsg(container_of(device, FbDev, generic), msg, data);
+			break;
 		case DEVICE_TYPE_SND:
 			assert(0 && "not implemented");
 		case DEVICE_TYPE_PARTITION:
 			assert(0 && "not implemented");
 		case DEVICE_TYPE_MAX:
-			return ERR_INVALID_ARG;
+			*executor_ret0(state) = ERR_INVALID_ARG;
+			break;
 	}
-
-	return 0;
 }
 
-int sys_devenum(CrescentDeviceType type, __user CrescentDeviceInfo* res, __user size_t* count) {
+void sys_devenum(void* state) {
+	CrescentDeviceType type = (CrescentDeviceType) *executor_arg0(state);
+	__user CrescentDeviceInfo* res = (__user CrescentDeviceInfo*) *executor_arg1(state);
+	__user size_t* count = (__user size_t*) *executor_arg2(state);
+
 	if (type >= DEVICE_TYPE_MAX) {
-		return ERR_INVALID_ARG;
+		*executor_ret0(state) = ERR_INVALID_ARG;
+		return;
 	}
 
 	DeviceList* list = &DEVICES[type];
@@ -96,15 +107,18 @@ int sys_devenum(CrescentDeviceType type, __user CrescentDeviceInfo* res, __user 
 
 		mutex_unlock(&list->lock);
 		if (!mem_copy_to_user(count, &kernel_count, sizeof(size_t))) {
-			return ERR_FAULT;
+			*executor_ret0(state) = ERR_FAULT;
+			return;
 		}
-		return 0;
+		*executor_ret0(state) = 0;
+		return;
 	}
 
 	size_t len;
 	if (!mem_copy_to_kernel(&len, count, sizeof(size_t))) {
 		mutex_unlock(&list->lock);
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
 	len = MIN(len, list->len);
 
@@ -120,15 +134,17 @@ int sys_devenum(CrescentDeviceType type, __user CrescentDeviceInfo* res, __user 
 		strncpy(info.name, ptr->name, sizeof(info.name));
 		if (!mem_copy_to_user(res + i, &info, sizeof(info))) {
 			mutex_unlock(&list->lock);
-			return ERR_FAULT;
+			*executor_ret0(state) = ERR_FAULT;
+			return;
 		}
 	}
 
 	mutex_unlock(&DEVICES[type].lock);
 
 	if (!mem_copy_to_user(count, &len, sizeof(size_t))) {
-		return ERR_FAULT;
+		*executor_ret0(state) = ERR_FAULT;
+		return;
 	}
 
-	return 0;
+	*executor_ret0(state) = 0;
 }

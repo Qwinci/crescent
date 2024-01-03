@@ -3,4 +3,6 @@ target_sources(crescent PRIVATE
         sched.c
 		sched.S
 		usermode.S
-        usermode.c)
+        usermode.c
+		signal.c
+)

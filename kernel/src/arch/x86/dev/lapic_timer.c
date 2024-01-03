@@ -1,11 +1,11 @@
 #include "lapic_timer.h"
 #include "arch/interrupts.h"
 #include "arch/x86/cpu.h"
+#include "arch/x86/sched/signal.h"
 #include "assert.h"
 #include "lapic.h"
-#include "mem/allocator.h"
-#include "utils/math.h"
 #include "sched/sched_internals.h"
+#include "utils/math.h"
 
 #define LAPIC_TIMER_ONESHOT 0
 #define LAPIC_TIMER_PERIODIC (1 << 17)
@@ -17,7 +17,7 @@ usize lapic_timer_get_ns() {
 	return x86_get_cur_cpu()->lapic_timer.us * NS_IN_US;
 }
 
-static IrqStatus lapic_timer_int(void*, void*) {
+static IrqStatus lapic_timer_int(void* ctx, void*) {
 	X86Cpu* cpu = x86_get_cur_cpu();
 
 	cpu->lapic_timer.us += cpu->lapic_timer.period_us;
@@ -37,6 +37,10 @@ static IrqStatus lapic_timer_int(void*, void*) {
 	}
 
 	Task* cur_task = cpu->common.current_task;
+
+	if (container_of(cur_task, X86Task, common)->user) {
+		process_possible_signals((InterruptCtx*) ctx);
+	}
 
 	if (cur_task->status == TASK_STATUS_RUNNING && cur_task->level && !cur_task->pin_level) {
 		cpu->common.current_task->level -= 1;

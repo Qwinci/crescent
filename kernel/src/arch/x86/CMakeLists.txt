@@ -22,6 +22,7 @@ target_sources(crescent PRIVATE
         acpi/madt.c
 		start.S
         )
+target_include_directories(crescent PRIVATE include)
 
 add_subdirectory(dev)
 add_subdirectory(sched)

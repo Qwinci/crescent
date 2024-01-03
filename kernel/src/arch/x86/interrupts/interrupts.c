@@ -188,7 +188,7 @@ void backtrace_display(bool lock) {
 }
 
 void x86_int_handler(InterruptCtx* ctx, u64 num) {
-	if (ctx->cs == 0x2b) {
+	if (ctx->cs == 0x2B) {
 		__asm__ volatile("swapgs");
 	}
 
@@ -207,7 +207,7 @@ void x86_int_handler(InterruptCtx* ctx, u64 num) {
 		backtrace_display(true);
 	}
 
-	if (ctx->cs == 0x2b) {
+	if (ctx->cs == 0x2B) {
 		__asm__ volatile("swapgs");
 	}
 }

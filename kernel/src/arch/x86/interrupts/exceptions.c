@@ -6,8 +6,6 @@
 #include "arch/interrupts.h"
 #include "exceptions.h"
 
-extern void* x86_syscall_entry_exit[];
-
 #define GENERIC_EX(ex_name, msg) \
 IrqStatus ex_##ex_name(void* void_ctx, void*) {\
 	InterruptCtx* ctx = (InterruptCtx*) void_ctx; \
@@ -19,13 +17,6 @@ IrqStatus ex_##ex_name(void* void_ctx, void*) {\
 		__asm__ volatile("sti"); \
 		sched_kill_cur(); \
 	} \
-	else { \
-		X86Task* x86_task = container_of(task, X86Task, common); \
-		ctx->ip = (u64) x86_syscall_entry_exit; \
-		ctx->sp = (u64) x86_task->kernel_stack_base + KERNEL_STACK_SIZE - 14 * 8; \
-		ctx->rax = 0xFA10ED; \
-		return IRQ_ACK; \
-    } \
 	lapic_ipi_all(LAPIC_MSG_PANIC);\
 	\
 	while (true) { \

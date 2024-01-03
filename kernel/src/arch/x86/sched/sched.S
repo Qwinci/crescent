@@ -14,8 +14,8 @@ x86_switch_task:
 	push %r14
 	push %r15
 
-    mov %rsp, X86Task.rsp(%rdi)
-    mov X86Task.rsp(%rsi), %rsp
+	mov %rsp, X86Task.rsp(%rdi)
+	mov X86Task.rsp(%rsi), %rsp
 
 	mov %rdi, %rax
 

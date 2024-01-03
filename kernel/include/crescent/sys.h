@@ -36,6 +36,10 @@ typedef enum {
 #define SYS_CLOSEDIR 26
 #define SYS_WRITE_FS_BASE 27
 #define SYS_WRITE_GS_BASE 28
+#define SYS_ATTACH_SIGNAL 29
+#define SYS_DETACH_SIGNAL 30
+#define SYS_RAISE_SIGNAL 31
+#define SYS_SIGLEAVE 32
 
 #define SYS_POSIX_OPEN 1000
 #define SYS_POSIX_READ 1001
@@ -54,6 +58,7 @@ typedef enum {
 #define ERR_OPERATION_NOT_SUPPORTED (-6)
 #define ERR_NOT_DIR (-7)
 #define ERR_TRY_AGAIN (-8)
+#define ERR_EXISTS (-9)
 
 #define KPROT_READ (1 << 0)
 #define KPROT_WRITE (1 << 1)

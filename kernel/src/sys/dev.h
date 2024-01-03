@@ -3,8 +3,8 @@
 #include "arch/misc.h"
 #include "crescent/dev.h"
 
-int sys_devmsg(CrescentHandle handle, size_t msg, __user void* data);
-int sys_devenum(CrescentDeviceType type, __user CrescentDeviceInfo* res, __user size_t* count);
+void sys_devmsg(void* state);
+void sys_devenum(void* state);
 
 typedef struct {
 	CrescentDeviceType type;

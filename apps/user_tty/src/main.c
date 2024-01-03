@@ -6,21 +6,28 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+num a0  a1  a2  a3  a4  a5
+rdi rsi rdx rcx r8  r9  stack
+rdi rsi rdx r10 r8  r9  rax
+*/
+
 size_t syscall1(size_t num, size_t a0) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0) : "r11", "rcx");
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "S"(a0) : "r11", "rcx");
 	return ret;
 }
 
 size_t syscall2(size_t num, size_t a0, size_t a1) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0), "S"(a1) : "r11", "rcx");
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "S"(a0), "d"(a1) : "r11", "rcx");
 	return ret;
 }
 
 size_t syscall3(size_t num, size_t a0, size_t a1, size_t a2) {
 	size_t ret;
-	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "a"(a0), "S"(a1), "d"(a2) : "r11", "rcx");
+	register size_t r10 __asm__("r10") = a2;
+	__asm__ volatile("syscall" : "=a"(ret) : "D"(num), "S"(a0), "d"(a1), "r"(r10) : "r11", "rcx");
 	return ret;
 }
 
@@ -485,9 +492,6 @@ int main() {
 			puts("works");
 		}
 	}
-
-	// num arg0 arg1 arg2 arg3 arg4 arg5
-	// rdi rax  rsi  rdx  r10  r8   r9
 
 	while (true) {
 		CrescentEvent event;

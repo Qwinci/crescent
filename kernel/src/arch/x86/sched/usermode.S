@@ -41,65 +41,49 @@ x86_syscall_entry:
 	mov %gs:X86Task.kernel_rsp, %rsp
 	sti
 
-    push %rbx
-    push %rcx
-    push %rdx
-    push %rdi
-    push %rsi
-    push %r8
-    push %r9
-    push %r10
+	push $0x23 // ss
+	pushq %gs:X86Task.syscall_save_rsp // rsp
+	push %r11 // rflags
+	push $0x2B // cs
+	push %rcx // rip
+
+	push %rax
+	push %rbx
+	push %rcx
+	push %rdx
+	push %rdi
+	push %rsi
+	push %rbp
+	push %r8
+	push %r9
+	push %r10
 	push %r11
 	push %r12
 	push %r13
 	push %r14
 	push %r15
-	push %rbp
 
-    cmp syscall_handler_count(%rip), %rdi
-	jb 0f
-	mov $-1, %rax
-	jmp x86_syscall_entry_exit
+	mov %rsp, %rdi
+	call syscall_dispatcher
 
-0:
-	// num arg0 arg1 arg2 arg3 arg4 arg5
-	// rdi rax  rsi  rdx  r10  r8   r9
+	pop %r15
+	pop %r14
+	pop %r13
+	pop %r12
+	pop %r11
+	pop %r10
+	pop %r9
+	pop %r8
+	pop %rbp
+	pop %rsi
+	pop %rdi
+	pop %rdx
+	pop %rcx
+	pop %rbx
+	pop %rax
 
-    mov %r10, %rcx
-
-	// multiply num by 8
-	shl $3, %rdi
-	lea syscall_handlers(%rip), %r10
-	add %rdi, %r10
-
-    // check for null because of posix syscalls having higher numbers
-    cmp $0, %r10
-    jne 1f
-    mov $-1, %rax
-    jmp x86_syscall_entry_exit
-1:
-    mov %rax, %rdi
-	call *(%r10)
-
-x86_syscall_entry_exit:
-    cli
-    pop %rbp
-    pop %r15
-    pop %r14
-    pop %r13
-    pop %r12
-    pop %r11
-    pop %r10
-    pop %r9
-    pop %r8
-    pop %rsi
-    pop %rdi
-    pop %rdx
-    pop %rcx
-    pop %rbx
-
-    mov %gs:X86Task.syscall_save_rsp, %rsp
+	cli
 	swapgs
-	sysretq
+	iretq
 
 .section .note.GNU-stack

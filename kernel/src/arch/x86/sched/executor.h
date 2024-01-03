@@ -3,6 +3,15 @@
 #include "assert.h"
 
 typedef struct {
+	u64 r15, r14, r13, r12, r11, r10, r9, r8, rbp, rsi, rdi, rdx, rcx, rbx, rax;
+	u64 rip;
+	u64 cs;
+	u64 rflags;
+	u64 rsp;
+	u64 ss;
+} ExecutorGpState;
+
+typedef struct {
 	u64 fs;
 	u64 gs;
 } ExecutorGenericState;
@@ -10,6 +19,7 @@ typedef struct {
 typedef struct {
 	ExecutorGenericState generic;
 	u8* simd;
+	ExecutorGpState* gp_state;
 } ExecutorState;
 
 typedef struct {
