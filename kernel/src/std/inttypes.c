@@ -30,7 +30,7 @@ uintmax_t strtoumax(const char* restrict str, const char** restrict end, int bas
 	uintmax_t value = 0;
 	if (base <= 36) {
 		for (; *str >= '0' && tolower(*str) <= chars[base - 1]; ++str) {
-			value = base * value + (*str <= '9' ? *str - '0' : tolower(*str) - 'a');
+			value = base * value + (*str <= '9' ? (*str - '0') : (tolower(*str) - 'a' + 10));
 		}
 	}
 
