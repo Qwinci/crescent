@@ -1,0 +1,3 @@
+[submodule "qacpi"]
+	path = qacpi
+	url = https://github.com/Qwinci/qacpi.git

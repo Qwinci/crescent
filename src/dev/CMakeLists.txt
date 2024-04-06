@@ -1,0 +1,14 @@
+target_sources(crescent PRIVATE
+	clock.cpp
+	event.cpp
+	dev.cpp
+)
+
+if(ARCH STREQUAL "x86_64")
+	target_sources(crescent PRIVATE pci.cpp)
+	add_subdirectory(nic)
+	add_subdirectory(sound)
+	add_subdirectory(usb)
+endif()
+
+add_subdirectory(fb)

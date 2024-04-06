@@ -1,0 +1,66 @@
+OUTPUT_FORMAT(elf64-x86-64)
+OUTPUT_ARCH(i386:x86-64)
+ENTRY(_start)
+
+PHDRS {
+	text    PT_LOAD     FLAGS(1 << 0 | 1 << 2);
+	rodata  PT_LOAD     FLAGS(1 << 2);
+	data    PT_LOAD     FLAGS(1 << 1 | 1 << 2);
+	dynamic PT_DYNAMIC  FLAGS(1 << 1 | 1 << 2);
+}
+
+SECTIONS {
+	KERNEL_START = 0xFFFFFFFF80000000;
+	. = 0xFFFFFFFF80000000;
+
+	TEXT_START = .;
+    .text : {
+        *(.text .text.*)
+    } :text
+    TEXT_END = .;
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+
+	RODATA_START = .;
+	.rodata : {
+		*(.rodata .rodata.*)
+	} :rodata
+	.drivers : {
+        DRIVERS_START = .;
+        KEEP(*(.drivers))
+        DRIVERS_END = .;
+    }
+	RODATA_END = .;
+
+	. = ALIGN(CONSTANT(MAXPAGESIZE));
+
+	DATA_START = .;
+    .data : {
+        *(.data .data.*)
+    } :data
+
+    .dynamic : {
+        *(.dynamic)
+    } :data :dynamic
+
+	.init_array : {
+        INIT_ARRAY_START = .;
+        crti.o(.init_array)
+        KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
+        KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
+        crtn.o(.init_array)
+        INIT_ARRAY_END = .;
+    } :data
+
+	.bss : {
+		*(.bss .bss.*)
+		*(COMMON)
+	} :data
+	DATA_END = .;
+
+	/DISCARD/ : {
+		*(.eh_frame)
+		*(.eh_frame_hdr)
+		*(.note .note.*)
+	}
+}

@@ -1,0 +1,3 @@
+#pragma once
+
+#cmakedefine CONFIG_MAX_CPUS @CONFIG_MAX_CPUS@
