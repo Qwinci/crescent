@@ -1,0 +1,30 @@
+#ifndef _NEW_H
+#define _NEW_H
+
+#include <stddef.h>
+#include <stdlib.h>
+
+constexpr void* operator new(size_t, void* __ptr) {
+	return __ptr;
+}
+
+inline void* operator new(size_t __size) {
+	return malloc(__size);
+}
+
+inline void operator delete(void* __ptr) {
+	free(__ptr);
+}
+
+inline void operator delete(void* __ptr, size_t) {
+	free(__ptr);
+}
+
+namespace std {
+	template<typename __T>
+	[[nodiscard]] constexpr __T* launder(__T* __ptr) noexcept {
+		return __builtin_launder(__ptr);
+	}
+}
+
+#endif

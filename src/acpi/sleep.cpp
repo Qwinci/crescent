@@ -15,9 +15,19 @@ namespace pm1_sts {
 
 namespace acpi {
 	extern ManuallyInit<qacpi::Context> GLOBAL_CTX;
-	extern Fadt* GLOBAL_FADT;
+
+	void reboot() {
+		write_to_addr(GLOBAL_FADT->reset_reg, GLOBAL_FADT->reset_value);
+#ifdef __x86_64__
+		asm volatile("xor %%eax, %%eax; mov %%rax, %%cr3" : : : "memory");
+#endif
+	}
 
 	void enter_sleep_state(SleepState state) {
+		if (!GLOBAL_CTX.is_initialized()) {
+			return;
+		}
+
 		switch (state) {
 			case SleepState::S5:
 			{

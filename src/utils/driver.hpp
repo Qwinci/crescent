@@ -58,7 +58,7 @@ struct Driver {
 		Pci
 	} type;
 	union {
-		PciDriver* pci;
+		const PciDriver* pci;
 	};
 };
 

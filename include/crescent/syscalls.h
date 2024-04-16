@@ -4,6 +4,11 @@
 
 typedef size_t CrescentHandle;
 
+typedef struct {
+	const char* str;
+	size_t len;
+} CrescentStringView;
+
 #define INVALID_CRESCENT_HANDLE ((size_t) -1)
 
 typedef enum {
@@ -20,7 +25,11 @@ typedef enum {
 	SYS_CLOSE_HANDLE,
 
 	SYS_MAP,
-	SYS_UNMAP
+	SYS_UNMAP,
+
+	SYS_POLL_EVENT,
+
+	SYS_SHUTDOWN
 } CrescentSyscall;
 
 typedef enum {
@@ -29,8 +38,15 @@ typedef enum {
 	ERR_UNSUPPORTED,
 	ERR_FAULT,
 	ERR_NO_MEM,
-	ERR_BUFFER_TOO_SMALL
+	ERR_BUFFER_TOO_SMALL,
+	ERR_TRY_AGAIN,
+	ERR_NOT_EXISTS
 } CrescentError;
+
+typedef enum {
+	SHUTDOWN_TYPE_POWER_OFF,
+	SHUTDOWN_TYPE_REBOOT
+} ShutdownType;
 
 #define CRESCENT_PROT_READ (1U << 0)
 #define CRESCENT_PROT_WRITE (1U << 1)

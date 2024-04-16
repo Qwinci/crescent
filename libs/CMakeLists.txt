@@ -8,7 +8,7 @@ macro(LIB NAME SRC)
 	add_library(${NAME} STATIC ${SRC})
 	target_compile_options(${NAME} PRIVATE
 		-Wall -Wextra
-		-fno-exceptions -fno-rtti
+		-fno-exceptions -fno-rtti -fno-strict-aliasing -fno-stack-protector
 		-ffreestanding
 	)
 	target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
@@ -22,3 +22,5 @@ macro(LIB NAME SRC)
 endmacro()
 
 add_subdirectory(common)
+add_subdirectory(libc)
+add_subdirectory(libcxx)

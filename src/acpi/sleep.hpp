@@ -5,5 +5,6 @@ namespace acpi {
 		S5
 	};
 
+	void reboot();
 	void enter_sleep_state(SleepState state);
 }

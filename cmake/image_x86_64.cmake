@@ -7,11 +7,12 @@ set(FILES
 )
 
 set(QEMU_FLAGS -m 4G -M q35,smm=off -smp 1
-	-no-reboot -cpu qemu64,+umip,+smep,+smap
+	-no-shutdown -no-reboot -cpu qemu64,+umip,+smep,+smap
 	#-d int
-	-device qemu-xhci
-	-device usb-kbd
-	-device usb-mouse
+	#-device qemu-xhci
+	-device virtio-net-pci-non-transitional
+	#-device usb-kbd
+	#-device usb-mouse
 	-trace "*xhci*"
 	#-device ich9-intel-hda,bus=pcie.0,addr=0x1B,debug=3
 	#-device hda-output,audiodev=hda,debug=3

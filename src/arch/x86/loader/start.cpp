@@ -117,7 +117,7 @@ static void setup_memory(usize max_addr) {
 	}
 
 	for (usize i = 0; i < max_addr; i += SIZE_2MB) {
-		(void) KERNEL_MAP.map_2mb(HHDM_START + i, i, PageFlags::Read | PageFlags::Write, CacheMode::Uncached);
+		(void) KERNEL_MAP.map_2mb(HHDM_START + i, i, PageFlags::Read | PageFlags::Write, CacheMode::WriteBack);
 	}
 
 	KERNEL_MAP.use();

@@ -1,0 +1,82 @@
+#ifndef _ARRAY_H
+#define _ARRAY_H
+
+#include <cstddef>
+
+namespace std {
+	template<typename __T, size_t _N>
+	struct array {
+		using value_type = __T;
+		using size_type = size_t;
+		using difference_type = ptrdiff_t;
+		using reference = value_type&;
+		using const_reference = const value_type&;
+		using pointer = value_type*;
+		using const_pointer = const value_type*;
+		using iterator = value_type*;
+		using const_iterator = const value_type*;
+
+		constexpr reference operator[](size_type __index) {
+			return __data[__index];
+		}
+
+		constexpr const_reference operator[](size_type __index) const {
+			return __data[__index];
+		}
+
+		constexpr reference front() {
+			return __data[0];
+		}
+
+		constexpr const_reference front() const {
+			return __data[0];
+		}
+
+		constexpr reference back() {
+			return __data[_N - 1];
+		}
+
+		constexpr const_reference back() const {
+			return __data[_N - 1];
+		}
+
+		constexpr __T* data() noexcept {
+			return __data;
+		}
+
+		constexpr const __T* data() const noexcept {
+			return __data;
+		}
+
+		constexpr iterator begin() {
+			return __data;
+		}
+
+		constexpr const_iterator begin() const {
+			return __data;
+		}
+
+		constexpr iterator end() {
+			return __data + _N;
+		}
+
+		constexpr const_iterator end() const {
+			return __data + _N;
+		}
+
+		constexpr bool empty() const {
+			return _N;
+		}
+
+		constexpr size_type size() const {
+			return _N;
+		}
+
+		__T __data[_N];
+	};
+
+	template<typename __T, typename... _Args>
+	array(__T, _Args...) -> array<__T, sizeof...(_Args) + 1>;
+}
+
+#endif

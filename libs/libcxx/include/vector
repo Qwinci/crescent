@@ -1,0 +1,242 @@
+#ifndef _VECTOR_H
+#define _VECTOR_H
+
+#include <new>
+#include <utility>
+#include <cstddef>
+
+namespace std {
+	template<typename __T>
+	class vector {
+	public:
+		using reference = __T&;
+		using const_reference = const __T&;
+		using iterator = __T*;
+		using const_iterator = const __T*;
+		using difference_type = ptrdiff_t;
+
+		constexpr vector() = default;
+		constexpr vector(vector&& __other) {
+			__ptr = __other.__ptr;
+			__size = __other.__size;
+			__cap = __other.__cap;
+			__other.__ptr = nullptr;
+			__other.__size = 0;
+			__other.__cap = 0;
+		}
+		constexpr vector(const vector&) = delete;
+
+		constexpr void reserve(size_t __new__cap) {
+			if (__new__cap <= __cap) {
+				return;
+			}
+
+			auto* __new_ptr = static_cast<__T*>(malloc(sizeof(__T) * __new__cap));
+			// todo
+			if (!__new_ptr) {
+				__builtin_trap();
+			}
+			for (size_t __i = 0; __i < __size; ++__i) {
+				new (&__new_ptr[__i]) __T {move(__ptr[__i])};
+				__ptr[__i].~__T();
+			}
+
+			free(__ptr);
+			__ptr = __new_ptr;
+			__cap = __new__cap;
+		}
+
+		constexpr void push_back(const __T& __value) {
+			if (__size + 1 > __cap) {
+				reserve(__cap < 8 ? 8 : __cap * 2);
+			}
+			new (&__ptr[__size++]) __T {__value};
+		}
+
+		constexpr void push_back(__T&& __value) {
+			if (__size + 1 > __cap) {
+				reserve(__cap < 8 ? 8 : __cap * 2);
+			}
+			new (&__ptr[__size++]) __T {move(__value)};
+		}
+
+		template<typename... __Args>
+		constexpr reference emplace_back(__Args&&... __args) {
+			if (__size + 1 > __cap) {
+				reserve(__cap < 8 ? 8 : __cap * 2);
+			}
+			return *new (&__ptr[__size++]) __T {forward<__Args>(__args)...};
+		}
+
+		constexpr void pop_back() {
+			if (!__size) {
+				return;
+			}
+			__ptr[--__size].~__T();
+		}
+
+		constexpr void resize(size_t __count) {
+			if (__count == __size) {
+				return;
+			}
+			if (__count > __cap) {
+				size_t __new_cap = __cap < 8 ? 8 : __cap * 2;
+				if (__new_cap < __count) {
+					__new_cap = __count;
+				}
+				reserve(__new_cap);
+			}
+			for (size_t __i = __size; __i < __count; ++__i) {
+				new (&__ptr[__i]) __T {};
+			}
+			__size = __count;
+		}
+
+		constexpr void resize(size_t __count, const __T& __value) {
+			if (__count == __size) {
+				return;
+			}
+			if (__count > __cap) {
+				size_t __new_cap = __cap < 8 ? 8 : __cap * 2;
+				if (__new_cap < __count) {
+					__new_cap = __count;
+				}
+				reserve(__new_cap);
+			}
+			for (size_t __i = __size; __i < __count; ++__i) {
+				new (&__ptr[__i]) __T {__value};
+			}
+			__size = __count;
+		}
+
+		constexpr void clear() {
+			for (size_t __i = 0; __i < __size; ++__i) {
+				__ptr[__i].~__T();
+			}
+			__size = 0;
+		}
+
+		constexpr __T& operator[](size_t __index) {
+			return __ptr[__index];
+		}
+
+		constexpr const __T& operator[](size_t __index) const {
+			return __ptr[__index];
+		}
+
+		constexpr __T* data() {
+			return __ptr;
+		}
+
+		constexpr const __T* data() const {
+			return __ptr;
+		}
+
+		constexpr size_t size() const {
+			return __size;
+		}
+
+		constexpr bool empty() const {
+			return !__size;
+		}
+
+		constexpr size_t capacity() const {
+			return __cap;
+		}
+
+		constexpr iterator begin() {
+			return __ptr;
+		}
+
+		constexpr const_iterator begin() const {
+			return __ptr;
+		}
+
+		constexpr iterator end() {
+			return __ptr + __size;
+		}
+
+		constexpr const_iterator end() const {
+			return __ptr + __size;
+		}
+
+		constexpr reference front() {
+			return *__ptr;
+		}
+
+		constexpr const_reference front() const {
+			return *__ptr;
+		}
+
+		constexpr reference back() {
+			return __ptr[__size - 1];
+		}
+
+		constexpr const_reference back() const {
+			return __ptr[__size - 1];
+		}
+
+		constexpr iterator erase(const_iterator __pos) {
+			auto* __pos_ptr = const_cast<__T*>(__pos);
+			__pos_ptr->~__T();
+			for (auto* __it = __pos_ptr + 1; __it < end(); ++__it) {
+				new (__it - 1) __T {move(*__it)};
+				__it->~__T();
+			}
+			--__size;
+			return __size ? __pos_ptr : end();
+		}
+
+		constexpr iterator erase(const_iterator __first, const_iterator __last) {
+			if (__first == __last) {
+				return const_cast<iterator>(__last);
+			}
+			auto __count = __last - __first;
+
+			auto* __pos_ptr = const_cast<__T*>(__first);
+			for (; __pos_ptr != __last; ++__pos_ptr) {
+				__pos_ptr->~__T();
+			}
+
+			for (auto* __it = __pos_ptr; __it < end(); ++__it) {
+				new (__it - __count) __T {move(*__it)};
+				__it->~__T();
+			}
+
+			bool __is_end = __last == end();
+			__size -= __count;
+			return __is_end ? end() : const_cast<__T*>(__first);
+		}
+
+		constexpr vector& operator=(const vector&) = delete;
+
+		constexpr vector& operator=(vector&& __other) {
+			for (size_t __i = 0; __i < __size; ++__i) {
+				__ptr[__i].~__T();
+			}
+			free(__ptr);
+
+			__ptr = __other.__ptr;
+			__size = __other.__size;
+			__cap = __other.__cap;
+			__other.__ptr = nullptr;
+			__other.__size = 0;
+			__other.__cap = 0;
+			return *this;
+		}
+
+		constexpr ~vector() {
+			for (size_t __i = 0; __i < __size; ++__i) {
+				__ptr[__i].~__T();
+			}
+			free(__ptr);
+		}
+
+	private:
+		__T* __ptr {};
+		size_t __size {};
+		size_t __cap {};
+	};
+}
+
+#endif

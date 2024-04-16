@@ -1,19 +1,19 @@
 #include "acpi/acpi.hpp"
-#include "acpi/sleep.hpp"
 #include "arch/cpu.hpp"
-#include "arch/x86/mod.hpp"
-#include "dev/fb/fb.hpp"
 #include "dev/fb/fb_dev.hpp"
 #include "dev/pci.hpp"
 #include "exe/elf_loader.hpp"
 #include "fs/tar.hpp"
 #include "fs/vfs.hpp"
-#include "mem/mem.hpp"
-#include "mem/register.hpp"
-#include "qacpi/context.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "stdio.hpp"
+#include "qacpi/context.hpp"
+#include "qacpi/ns.hpp"
+
+namespace acpi {
+	extern qacpi::Context GLOBAL_CTX;
+}
 
 [[noreturn, gnu::used]] void kmain(const void* initrd, usize initrd_size) {
     println("[kernel]: entered kmain");
@@ -22,12 +22,43 @@
 
 #if ARCH_X86_64
 	//println("[kernel]: enumerating pci devices...");
+	pci::acpi_init();
+	acpi::qacpi_init();
 	pci::acpi_enumerate();
+
+	kstd::vector<qacpi::NamespaceNode*> nodes;
+	nodes.push(acpi::GLOBAL_CTX.get_root());
+	while (!nodes.is_empty()) {
+		auto node = nodes.pop().value();
+
+		qacpi::EisaId id {"PNP0C0A"};
+		if (auto hid = node->get_child("_HID")) {
+			auto& obj = hid->get_object();
+			if (auto integer = obj->get<uint64_t>()) {
+				if (*integer == id.encode()) {
+					println("found battery");
+
+					auto ret = qacpi::ObjectRef::empty();
+					acpi::GLOBAL_CTX.evaluate(node, "_BST", ret);
+					auto& ret_pkg = ret->get_unsafe<qacpi::Package>();
+					auto state = ret_pkg.data->elements[0]->get_unsafe<uint64_t>();
+					auto present = ret_pkg.data->elements[1]->get_unsafe<uint64_t>();
+					auto remaining = ret_pkg.data->elements[2]->get_unsafe<uint64_t>();
+
+					auto remaining_h = remaining / present;
+					println("battery remaining h: ", remaining_h);
+					println("battery present rate: ", present, " remaining: ", remaining);
+				}
+			}
+		}
+
+		for (size_t i = 0; i < node->get_child_count(); ++i) {
+			nodes.push(node->get_children()[i]);
+		}
+	}
+
 	//println("[kernel]: done");
 #endif
-
-	acpi::qacpi_init();
-	acpi::enter_sleep_state(acpi::SleepState::S5);
 
 	tar_initramfs_init(initrd, initrd_size);
 

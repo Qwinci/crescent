@@ -55,6 +55,10 @@ void Scheduler::queue(Thread* thread) {
 
 void Scheduler::update_schedule() {
 	IrqGuard irq_guard {};
+	if (us_to_next_schedule > current_irq_period) {
+		us_to_next_schedule -= current_irq_period;
+		return;
+	}
 
 	Thread* next;
 
@@ -94,6 +98,7 @@ void Scheduler::update_schedule() {
 
 	prev = current;
 	current = next;
+	us_to_next_schedule = levels[current->level_index].slice_us;
 }
 
 void Scheduler::do_schedule() const {
@@ -186,16 +191,18 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 		}
 		sleeping_threads.remove(&thread);
 		unblock(&thread);
-		println("[kernel][sched]: thread ", thread.name, " unblocked (sleep expired)");
 	}
 
 	auto time_before_sleep_end = first_sleep_end - now;
 	auto slice_us = levels[current->level_index].slice_us;
-	cpu->cpu_tick_source->oneshot(kstd::min(time_before_sleep_end, slice_us));
+	auto amount = kstd::min(time_before_sleep_end, slice_us);
+	current_irq_period = amount;
+	cpu->cpu_tick_source->oneshot(amount);
 }
 
 void Scheduler::sleep(u64 us) {
 	IrqGuard irq_guard {};
+	current->cpu->cpu_tick_source->reset();
 
 	usize sleep_end;
 	{
@@ -215,6 +222,8 @@ void Scheduler::sleep(u64 us) {
 	current->sleep_end = sleep_end;
 	sleeping_threads.insert_before(prev_sleeping, current);
 	current->status = Thread::Status::Sleeping;
+
 	update_schedule();
+	enable_preemption(current->cpu);
 	do_schedule();
 }

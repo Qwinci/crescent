@@ -37,14 +37,14 @@ inline void xsave(u8* area, u64 mask) {
 	assert(reinterpret_cast<usize>(area) % 64 == 0);
 	u32 low = mask & 0xFFFFFFFF;
 	u32 high = mask >> 32;
-	asm volatile("xsave %0" : : "m"(*area), "a"(low), "d"(high) : "memory");
+	asm volatile("xsaveq %0" : : "m"(*area), "a"(low), "d"(high) : "memory");
 }
 
 inline void xrstor(u8* area, u64 mask) {
 	assert(reinterpret_cast<usize>(area) % 64 == 0);
 	u32 low = mask & 0xFFFFFFFF;
 	u32 high = mask >> 32;
-	asm volatile("xrstor %0" : : "m"(*area), "a"(low), "d"(high) : "memory");
+	asm volatile("xrstorq %0" : : "m"(*area), "a"(low), "d"(high) : "memory");
 }
 
 inline void wrxcr(u32 index, u64 value) {

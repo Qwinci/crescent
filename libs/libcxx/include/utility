@@ -1,0 +1,31 @@
+#ifndef _UTILITY_H
+#define _UTILITY_H
+
+#include <type_traits>
+
+namespace std {
+	template<typename __T>
+	constexpr remove_reference_t<__T>&& move(__T&& __value) noexcept {
+		return static_cast<remove_reference_t<__T>&&>(__value);
+	}
+
+	template<typename __T>
+	constexpr __T&& forward(remove_reference_t<__T>& value) noexcept {
+		return static_cast<__T&&>(value);
+	}
+	template<typename __T>
+	constexpr __T&& forward(remove_reference_t<__T>&& value) noexcept {
+		return static_cast<__T&&>(value);
+	}
+
+	template<typename __T1, typename __T2>
+	struct pair {
+		using first_type = __T1;
+		using second_type = __T2;
+
+		first_type first;
+		second_type second;
+	};
+}
+
+#endif

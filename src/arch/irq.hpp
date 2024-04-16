@@ -5,7 +5,7 @@
 
 struct IrqHandler {
 	DoubleListHook hook {};
-	kstd::small_function<bool(IrqFrame* frame)> fn;
+	kstd::small_function<bool(IrqFrame* frame)> fn {};
 	bool can_be_shared {};
 };
 

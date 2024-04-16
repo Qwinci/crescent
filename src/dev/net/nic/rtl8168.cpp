@@ -1,5 +1,7 @@
 #include "arch/irq.hpp"
+#include "dev/net/ethernet.hpp"
 #include "mem/iospace.hpp"
+#include "mem/mem.hpp"
 #include "mem/vspace.hpp"
 #include "nic.hpp"
 #include "sched/process.hpp"
@@ -12,18 +14,21 @@ namespace regs {
 	static constexpr BasicRegister<u8> IDR3 {0x3};
 	static constexpr BasicRegister<u8> IDR4 {0x4};
 	static constexpr BasicRegister<u8> IDR5 {0x5};
-	static constexpr BasicRegister<u64> TNPDS {0x20};
+	static constexpr BasicRegister<u32> TNPDS_LOW {0x20};
+	static constexpr BasicRegister<u32> TNPDS_HIGH {0x24};
 	static constexpr BitRegister<u8> CMD {0x37};
 	static constexpr BitRegister<u8> TPPOLL {0x38};
 	static constexpr BitRegister<u16> IMR {0x3C};
 	static constexpr BitRegister<u16> ISR {0x3E};
 	static constexpr BitRegister<u32> TR_CFG {0x40};
 	static constexpr BitRegister<u32> RX_CFG {0x44};
+	static constexpr BitRegister<u8> CMD_9346 {0x50};
 	static constexpr BitRegister<u32> PHYAR {0x60};
 	static constexpr BitRegister<u8> PHY_STS {0x6C};
 	static constexpr BitRegister<u16> RMS {0xDA};
 	static constexpr BitRegister<u16> CPCR {0xE0};
-	static constexpr BasicRegister<u64> RDSAR {0xE4};
+	static constexpr BasicRegister<u32> RDSAR_LOW {0xE4};
+	static constexpr BasicRegister<u32> RDSAR_HIGH {0xE8};
 	static constexpr BitRegister<u8> MTPS {0xEC};
 }
 
@@ -67,6 +72,13 @@ namespace rx_config {
 	static constexpr BitField<u32, bool> AER {5, 1};
 	static constexpr BitField<u32, u8> MX_DMA {8, 3};
 	static constexpr BitField<u32, u8> RX_FTH {13, 3};
+}
+
+namespace cmd_9346 {
+	static constexpr BitField<u8, u8> EEM {6, 2};
+
+	static constexpr u8 EEM_NORMAL = 0b00;
+	static constexpr u8 EEM_CONFIG_WRITE = 0b11;
 }
 
 namespace phyar {
@@ -151,6 +163,7 @@ namespace rx_full_flags {
 	static constexpr BitField<u32, bool> LS {28, 1};
 	static constexpr BitField<u32, bool> FS {29, 1};
 	static constexpr BitField<u32, bool> EOR {30, 1};
+	static constexpr BitField<u32, bool> OWN {31, 1};
 }
 
 struct RxDescriptor {
@@ -167,6 +180,7 @@ struct Rtl : public Nic {
 		device.enable_mem_space(true);
 		device.enable_io_space(true);
 		device.enable_bus_master(true);
+		device.enable_legacy_irq(true);
 		assert(device.alloc_irqs(1, 1, pci::IrqFlags::All));
 		auto irq_num = device.get_irq(0);
 		register_irq_handler(irq_num, &irq_handler);
@@ -226,7 +240,7 @@ struct Rtl : public Nic {
 
 		while (space.load(regs::CMD) & cmd::RST);
 
-		/*auto imr = space.load(regs::IMR);
+		auto imr = space.load(regs::IMR);
 		imr &= ~imr_isr::TIME_OUT;
 		imr &= ~imr_isr::FIFO_EMPTY;
 		imr |= imr_isr::SW_INT(true);
@@ -238,17 +252,7 @@ struct Rtl : public Nic {
 		imr |= imr_isr::TOK(true);
 		imr |= imr_isr::RER(true);
 		imr |= imr_isr::ROK(true);
-		space.store(regs::IMR, imr);*/
-		space.store(regs::IMR, 0);
-
-		auto tr_config = space.load(regs::TR_CFG);
-		tr_config &= ~tr_config::IFG1_0;
-		tr_config &= ~tr_config::IFG2;
-		tr_config |= tr_config::IFG1_0(0b11);
-		tr_config &= ~tr_config::NO_CRC;
-		tr_config &= ~tr_config::MX_DMA;
-		tr_config |= tr_config::MX_DMA(0b111);
-		space.store(regs::TR_CFG, tr_config);
+		space.store(regs::IMR, imr);
 
 		auto rx_config = space.load(regs::RX_CFG);
 		rx_config &= ~rx_config::RX_FTH;
@@ -256,7 +260,7 @@ struct Rtl : public Nic {
 		rx_config &= ~rx_config::MX_DMA;
 		rx_config |= rx_config::MX_DMA(0b111);
 		rx_config &= ~rx_config::AER;
-		rx_config |= ~rx_config::AR;
+		rx_config &= ~rx_config::AR;
 		rx_config |= rx_config::AB(true);
 		rx_config |= rx_config::AM(true);
 		rx_config |= rx_config::APM(true);
@@ -277,8 +281,10 @@ struct Rtl : public Nic {
 		auto tx_desc_phys = pmalloc(1);
 		assert(rx_desc_phys);
 		assert(tx_desc_phys);
-		space.store(regs::RDSAR, rx_desc_phys);
-		space.store(regs::TNPDS, tx_desc_phys);
+		space.store(regs::RDSAR_HIGH, rx_desc_phys >> 32);
+		space.store(regs::RDSAR_LOW, rx_desc_phys);
+		space.store(regs::TNPDS_HIGH, tx_desc_phys >> 32);
+		space.store(regs::TNPDS_LOW, tx_desc_phys);
 
 		auto* rx_desc_virt = KERNEL_VSPACE.alloc(PAGE_SIZE);
 		auto* tx_desc_virt = KERNEL_VSPACE.alloc(PAGE_SIZE);
@@ -306,8 +312,7 @@ struct Rtl : public Nic {
 			assert(tx_buffer_phys);
 			assert(rx_buffer_phys);
 
-			tx_desc[i].flags |= tx_flags::OWN(true);
-			rx_desc[i].flags |= rx_empty_flags::BUFFER_SIZE(PAGE_SIZE);
+			rx_desc[i].flags |= rx_empty_flags::OWN(true) | rx_empty_flags::BUFFER_SIZE(PAGE_SIZE);
 
 			if (i == DESC_COUNT - 1) {
 				tx_desc[i].flags |= tx_flags::EOR(true);
@@ -318,42 +323,86 @@ struct Rtl : public Nic {
 			rx_desc[i].buffer = rx_buffer_phys;
 		}
 
-		auto bmsr = phy_read(phy_regs::BMSR);
-		assert(bmsr & bmsr::AUTO_NEG_ABILITY);
+		cmd = space.load(regs::CMD);
+		cmd |= cmd::TE(true);
+		space.store(regs::CMD, cmd);
 
-		auto bmcr = phy_read(phy_regs::BMCR);
-		bmcr &= ~bmcr::ISOLATE;
-		bmcr &= ~bmcr::PWD;
-		bmcr &= ~bmcr::LOOPBACK;
-		bmcr |= bmcr::RESET(true);
-		bmcr |= bmcr::ANE(true);
-		phy_write(phy_regs::BMCR, bmcr);
-
-		println("[kernel][nic]: waiting for auto-negotiation to complete");
-		while (!(phy_read(phy_regs::BMSR) & bmsr::AUTO_NEG_COMPLETE));
-		println("[kernel][nic]: done");
-
-		device.enable_irqs(true);
+		auto tr_config = space.load(regs::TR_CFG);
+		tr_config &= ~tr_config::IFG1_0;
+		tr_config &= ~tr_config::IFG2;
+		tr_config |= tr_config::IFG1_0(0b11);
+		tr_config &= ~tr_config::NO_CRC;
+		tr_config &= ~tr_config::MX_DMA;
+		tr_config |= tr_config::MX_DMA(0b111);
+		space.store(regs::TR_CFG, tr_config);
 
 		cmd = space.load(regs::CMD);
 		cmd |= cmd::TE(true);
 		cmd |= cmd::RE(true);
 		space.store(regs::CMD, cmd);
+
+		device.enable_irqs(true);
+	}
+
+	void send(const void* data, u32 size) override {
+		assert(size <= PAGE_SIZE);
+
+		auto& desc = tx_desc[tx_desc_ptr];
+		if (desc.flags & tx_flags::OWN) {
+			println("[kernel][nic]: rtl send buffer overflow");
+			return;
+		}
+
+		desc.flags = {tx_flags::OWN(true) | tx_flags::FS(true) | tx_flags::LS(true)};
+		if (tx_desc_ptr == DESC_COUNT - 1) {
+			desc.flags |= tx_flags::EOR(true);
+		}
+		desc.vlan = 0;
+		desc.frame_len = size;
+		memcpy(to_virt<void>(desc.buffer), data, size);
+
+		tx_desc_ptr = (tx_desc_ptr + 1) % DESC_COUNT;
+
+		space.store(regs::TPPOLL, tppoll::NPQ(true));
 	}
 
 	bool on_irq() {
-		println("[kernel][nic]: rtl irq");
-
 		auto isr = space.load(regs::ISR);
 		space.store(regs::ISR, isr);
 
 		if ((isr & imr_isr::ROK) || (isr & imr_isr::RER)) {
-			for (usize i = 0; i < DESC_COUNT; ++i) {
-				auto& desc = rx_desc[i];
-				if (!(desc.flags & rx_full_flags::EOR)) {
-					desc.flags.value = rx_empty_flags::OWN(true);
-					desc.vlan = 0;
+			while (true) {
+				auto& desc = rx_desc[rx_desc_ptr];
+				if (desc.flags & rx_full_flags::OWN) {
+					break;
 				}
+
+				auto size = desc.flags & rx_full_flags::FRAME_LEN;
+				ethernet_process_packet(*this, to_virt<void>(desc.buffer), size);
+
+				desc.flags = {rx_empty_flags::OWN(true) | rx_empty_flags::BUFFER_SIZE(PAGE_SIZE)};
+				if (rx_desc_ptr == DESC_COUNT - 1) {
+					desc.flags |= rx_empty_flags::EOR(true);
+				}
+
+				rx_desc_ptr = (rx_desc_ptr + 1) % DESC_COUNT;
+			}
+		}
+		else if (isr & imr_isr::TER) {
+			println("[kernel][nic]: rtl packet send error");
+		}
+		else if (isr & imr_isr::LINK_CHG) {
+			println("[kernel][nic]: rtl link change");
+			auto state = space.load(regs::PHY_STS) & phy_sts::LINK_STS;
+			if (state) {
+				println("[kernel][nic]: cable connected, starting auto-negotiation");
+				auto bmcr = phy_read(phy_regs::BMCR);
+				bmcr |= bmcr::RESTART_AN(true);
+				phy_write(phy_regs::BMCR, bmcr);
+
+				while (!(phy_read(phy_regs::BMSR) & bmsr::AUTO_NEG_COMPLETE));
+				println("[kernel][nic]: done");
+				space.store(regs::ISR, imr_isr::LINK_CHG(true));
 			}
 		}
 
@@ -371,8 +420,9 @@ struct Rtl : public Nic {
 	TxDescriptor* tx_desc {};
 	RxDescriptor* rx_desc {};
 	int tx_desc_ptr {};
+	int rx_desc_ptr {};
 
-	static constexpr usize DESC_COUNT = PAGE_SIZE / sizeof(TxDescriptor);
+	static constexpr int DESC_COUNT = PAGE_SIZE / sizeof(TxDescriptor);
 };
 
 static bool rtl_init(pci::Device& device) {

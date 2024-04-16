@@ -8,6 +8,7 @@
 #include "qacpi/os.hpp"
 #include "sched/mutex.hpp"
 #include "sched/sched.hpp"
+#include "x86/io.hpp"
 
 namespace pm1_ctrl {
 	static constexpr BitField<u64, bool> SCI_EN {0, 1};
@@ -15,12 +16,8 @@ namespace pm1_ctrl {
 
 namespace acpi {
 	ManuallyInit<qacpi::Context> GLOBAL_CTX;
-	Fadt* GLOBAL_FADT;
 
 	void qacpi_init() {
-		GLOBAL_FADT = static_cast<Fadt*>(acpi::get_table("FACP"));
-		assert(GLOBAL_FADT);
-
 		auto* dsdt_ptr = to_virt<acpi::SdtHeader>(GLOBAL_FADT->dsdt);
 		auto* dsdt_aml_ptr = offset(dsdt_ptr, const u8*, sizeof(acpi::SdtHeader));
 		u32 dsdt_aml_size = dsdt_ptr->length - sizeof(acpi::SdtHeader);
@@ -126,19 +123,8 @@ void* qacpi_os_get_tid() {
 	return get_current_thread();
 }
 
-//static u8 STORAGE[1024 * 1024 * 500] {};
-//static u8* PTR = STORAGE;
-
 void* qacpi_os_malloc(size_t size) {
 	return ALLOCATOR.alloc(size);
-	/*size = ALIGNUP(size, 16);
-
-	auto ptr = PTR;
-	if (ptr + size > STORAGE + 1024 * 1024 * 500) {
-		return nullptr;
-	}
-	PTR += size;
-	return ptr;*/
 }
 
 void qacpi_os_free(void* ptr, size_t size) {
@@ -183,13 +169,17 @@ qacpi::Status qacpi_os_mmio_read(uint64_t phys, uint8_t size, uint64_t& res) {
 		return qacpi::Status::InvalidArgs;
 	}
 
+#if CONFIG_TRACING
 	println("qacpi_os_mmio_read", size, " ", Fmt::Hex, phys, " = ", res, Fmt::Reset);
+#endif
 
 	return qacpi::Status::Success;
 }
 
 qacpi::Status qacpi_os_mmio_write(uint64_t phys, uint8_t size, uint64_t value) {
+#if CONFIG_TRACING
 	println("qacpi_os_mmio_write", size, " ", Fmt::Hex, phys, " = ", value, Fmt::Reset);
+#endif
 
 	if (size == 1) {
 		*to_virt<volatile u8>(phys) = value;
@@ -209,66 +199,40 @@ qacpi::Status qacpi_os_mmio_write(uint64_t phys, uint8_t size, uint64_t value) {
 	return qacpi::Status::Success;
 }
 
-static inline u8 in1(u16 port) {
-	u8 value;
-	asm volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
-	return value;
-}
-
-static inline u16 in2(u16 port) {
-	u16 value;
-	asm volatile("inw %1, %0" : "=a"(value) : "Nd"(port));
-	return value;
-}
-
-static inline u32 in4(u16 port) {
-	u32 value;
-	asm volatile("inl %1, %0" : "=a"(value) : "Nd"(port));
-	return value;
-}
-
-static inline void out1(u16 port, u8 value) {
-	asm volatile("outb %1, %0" : : "Nd"(port), "a"(value));
-}
-
-static inline void out2(u16 port, u16 value) {
-	asm volatile("outw %1, %0" : : "Nd"(port), "a"(value));
-}
-
-static inline void out4(u16 port, u32 value) {
-	asm volatile("outl %1, %0" : : "Nd"(port), "a"(value));
-}
-
 qacpi::Status qacpi_os_io_read(uint32_t port, uint8_t size, uint64_t& res) {
 	if (size == 1) {
-		res = in1(port);
+		res = x86::in1(port);
 	}
 	else if (size == 2) {
-		res = in2(port);
+		res = x86::in2(port);
 	}
 	else if (size == 4) {
-		res = in4(port);
+		res = x86::in4(port);
 	}
 	else {
 		return qacpi::Status::InvalidArgs;
 	}
 
+#if CONFIG_TRACING
 	println("qacpi_os_io_read", size, " ", Fmt::Hex, port, " = ", res, Fmt::Reset);
+#endif
 
 	return qacpi::Status::Success;
 }
 
 qacpi::Status qacpi_os_io_write(uint32_t port, uint8_t size, uint64_t value) {
+#if CONFIG_TRACING
 	println("qacpi_os_io_write", size, " ", Fmt::Hex, port, " = ", value, Fmt::Reset);
+#endif
 
 	if (size == 1) {
-		out1(port, value);
+		x86::out1(port, value);
 	}
 	else if (size == 2) {
-		out2(port, value);
+		x86::out2(port, value);
 	}
 	else if (size == 4) {
-		out4(port, value);
+		x86::out4(port, value);
 	}
 	else {
 		return qacpi::Status::InvalidArgs;

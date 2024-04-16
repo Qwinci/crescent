@@ -76,14 +76,12 @@ i32 psci_cpu_on(u64 target_mpidr, u64 entry_phys, u64 ctx) {
 	return static_cast<i32>(psci_call(0xC4000003, target_mpidr, entry_phys, ctx));
 }
 
-[[noreturn]] void psci_system_off() {
+void psci_system_off() {
 	psci_call(0x84000008);
-	__builtin_unreachable();
 }
 
-[[noreturn]] void psci_system_reset() {
+void psci_system_reset() {
 	psci_call(0x84000009);
-	__builtin_unreachable();
 }
 
 static bool psci_init(dtb::Node node, dtb::Node) {

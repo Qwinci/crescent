@@ -8,23 +8,29 @@ class ManuallyInit {
 public:
 	void initialize(T&& value) {
 		new (storage.data) T {std::move(value)};
+		initialized = true;
 	}
 
 	template<typename... Args>
 	void initialize(Args... args) {
 		new (storage.data) T {std::forward<Args>(args)...};
+		initialized = true;
 	}
 
 	void destroy() {
-		reinterpret_cast<T*>(storage.data)->~T();
+		kstd::launder(reinterpret_cast<T*>(storage.data))->~T();
 	}
 
 	T* operator->() {
-		return reinterpret_cast<T*>(storage.data);
+		return kstd::launder(reinterpret_cast<T*>(storage.data));
 	}
 
 	T& operator*() {
-		return *reinterpret_cast<T*>(storage.data);
+		return *kstd::launder(reinterpret_cast<T*>(storage.data));
+	}
+
+	[[nodiscard]] constexpr bool is_initialized() const {
+		return initialized;
 	}
 
 private:
@@ -33,4 +39,5 @@ private:
 	};
 
 	Storage storage;
+	bool initialized;
 };

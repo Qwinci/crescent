@@ -1,0 +1,22 @@
+#ifndef _TYPE_TRAITS_H
+#define _TYPE_TRAITS_H
+
+namespace std {
+	template<typename __T>
+	struct remove_reference {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_reference<__T&> {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_reference<__T&&> {
+		using type = __T;
+	};
+
+	template<typename __T>
+	using remove_reference_t = typename remove_reference<__T>::type;
+}
+
+#endif

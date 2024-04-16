@@ -31,7 +31,7 @@ usize HandleTable::insert(Handle&& handle) {
 
 	table[index] = kstd::shared_ptr<Handle> {std::move(handle)};
 
-	return 0;
+	return index;
 }
 
 bool HandleTable::remove(usize handle) {

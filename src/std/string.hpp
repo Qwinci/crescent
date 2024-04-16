@@ -6,6 +6,8 @@ namespace kstd {
 	template<typename T>
 	class basic_string : public vector<T> {
 	public:
+		static constexpr size_t npos = static_cast<size_t>(-1);
+
 		constexpr basic_string() = default;
 		constexpr basic_string(basic_string_view<T> str) { // NOLINT(*-explicit-constructor)
 			vector<T>::resize(str.size() + 1);

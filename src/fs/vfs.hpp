@@ -22,6 +22,8 @@ struct VNode {
 
 struct Vfs {
 	virtual kstd::shared_ptr<VNode> get_root() = 0;
+
+	kstd::shared_ptr<VNode> lookup(kstd::string_view path);
 };
 
 extern Vfs* INITRD_VFS;

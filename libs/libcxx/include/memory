@@ -1,0 +1,92 @@
+#ifndef _MEMORY_H
+#define _MEMORY_H
+
+#include <utility>
+
+namespace std {
+	template<typename __T>
+	class unique_ptr {
+	public:
+		constexpr unique_ptr() noexcept = default;
+		constexpr unique_ptr(const unique_ptr&) = delete;
+
+		constexpr unique_ptr(__T* __pointer) {
+			__ptr = __pointer;
+		}
+
+		template<typename __U>
+		constexpr unique_ptr(unique_ptr<__U>&& __other) {
+			__ptr = __other.__ptr;
+			__other.__ptr = nullptr;
+		}
+
+		constexpr unique_ptr(unique_ptr&& __other) {
+			__ptr = __other.__ptr;
+			__other.__ptr = nullptr;
+		}
+
+		constexpr ~unique_ptr() {
+			if (__ptr) {
+				delete __ptr;
+			}
+		}
+
+		constexpr unique_ptr& operator=(unique_ptr&& __other) noexcept {
+			if (__ptr) {
+				delete __ptr;
+			}
+			__ptr = __other.__ptr;
+			__other.__ptr = nullptr;
+			return *this;
+		}
+
+		template<typename __U>
+		constexpr unique_ptr& operator=(unique_ptr<__U>&& __other) noexcept {
+			if (__ptr) {
+				delete __ptr;
+			}
+			__ptr = __other.__ptr;
+			__other.__ptr = nullptr;
+			return *this;
+		}
+
+		constexpr unique_ptr& operator=(const unique_ptr&) = delete;
+
+		constexpr __T& operator*() {
+			return *__ptr;
+		}
+
+		constexpr const __T& operator*() const {
+			return *__ptr;
+		}
+
+		constexpr __T* operator->() {
+			return __ptr;
+		}
+
+		constexpr const __T* operator->() const {
+			return __ptr;
+		}
+
+		constexpr __T* get() {
+			return __ptr;
+		}
+
+		constexpr const __T* get() const {
+			return __ptr;
+		}
+
+		constexpr operator bool() const {
+			return __ptr;
+		}
+
+		__T* __ptr {};
+	};
+
+	template<typename __T, typename... __Args>
+	constexpr unique_ptr<__T> make_unique(__Args&&... __args) {
+		return unique_ptr<__T> {new __T {forward<__Args>(__args)...}};
+	}
+}
+
+#endif

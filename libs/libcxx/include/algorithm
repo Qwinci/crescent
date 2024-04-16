@@ -1,0 +1,98 @@
+#ifndef _ALGORITHM_H
+#define _ALGORITHM_H
+
+#include <initializer_list>
+
+namespace std {
+	template<typename __T>
+	constexpr const __T& max(const __T& __a, const __T& __b) {
+		return __a > __b ? __a : __b;
+	}
+
+	template<typename __T, typename __Compare>
+	constexpr const __T& max(const __T& __a, const __T& __b, __Compare __comp) {
+		return __comp(__b, __a) ? __a : __b;
+	}
+
+	template<typename __T>
+	constexpr __T max(initializer_list<__T> __list) {
+		auto* __ptr = __list.begin();
+		for (auto* __it = __ptr + 1; __it != __list.end(); ++__it) {
+			if (*__it > *__ptr) {
+				__ptr = __it;
+			}
+		}
+		return *__ptr;
+	}
+
+	template<typename __T, typename __Compare>
+	constexpr __T max(initializer_list<__T> __list, __Compare __comp) {
+		auto* __ptr = __list.begin();
+		for (auto* __it = __ptr + 1; __it != __list.end(); ++__it) {
+			if (__comp(*__ptr, *__it)) {
+				__ptr = __it;
+			}
+		}
+		return *__ptr;
+	}
+
+	template<typename __T>
+	constexpr const __T& min(const __T& __a, const __T& __b) {
+		return __a < __b ? __a : __b;
+	}
+
+	template<typename __T, typename __Compare>
+	constexpr const __T& min(const __T& __a, const __T& __b, __Compare __comp) {
+		return __comp(__a, __b) ? __a : __b;
+	}
+
+	template<typename __T>
+	constexpr __T min(initializer_list<__T> __list) {
+		auto* __ptr = __list.begin();
+		for (auto* __it = __ptr + 1; __it != __list.end(); ++__it) {
+			if (*__it < *__ptr) {
+				__ptr = __it;
+			}
+		}
+		return *__ptr;
+	}
+
+	template<typename __T, typename __Compare>
+	constexpr __T min(initializer_list<__T> __list, __Compare __comp) {
+		auto* __ptr = __list.begin();
+		for (auto* __it = __ptr + 1; __it != __list.end(); ++__it) {
+			if (__comp(*__it, *__ptr)) {
+				__ptr = __it;
+			}
+		}
+		return *__ptr;
+	}
+
+	template<typename __T>
+	constexpr const __T& clamp(const __T& __value, const __T& __low, const __T& __high) {
+		if (__value < __low) {
+			return __low;
+		}
+		else if (__value > __high) {
+			return __high;
+		}
+		else {
+			return __value;
+		}
+	}
+
+	template<typename __T, typename __Compare>
+	constexpr const __T& clamp(const __T& __value, const __T& __low, const __T& __high, __Compare __comp) {
+		if (__comp(__value, __low)) {
+			return __low;
+		}
+		else if (__comp(__high, __value)) {
+			return __high;
+		}
+		else {
+			return __value;
+		}
+	}
+}
+
+#endif

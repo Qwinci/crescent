@@ -27,7 +27,7 @@ namespace acpi {
 	};
 
 	struct [[gnu::packed]] Fadt {
-		acpi::SdtHeader hdr;
+		SdtHeader hdr;
 		u32 fw_ctrl;
 		u32 dsdt;
 		u8 reserved0;
@@ -72,17 +72,25 @@ namespace acpi {
 		u8 fadt_minor_version;
 		u64 x_firmware_ctrl;
 		u64 x_dsdt;
-		acpi::Address x_pm1a_evt_blk;
-		acpi::Address x_pm1b_evt_blk;
-		acpi::Address x_pm1a_cnt_blk;
-		acpi::Address x_pm1b_cnt_blk;
-		acpi::Address x_pm2_cnt_blk;
-		acpi::Address x_pm_tmr_blk;
-		acpi::Address x_gpe0_blk;
-		acpi::Address x_gpe1_blk;
-		acpi::Address sleep_ctrl_reg;
-		acpi::Address sleep_sts_reg;
+		Address x_pm1a_evt_blk;
+		Address x_pm1b_evt_blk;
+		Address x_pm1a_cnt_blk;
+		Address x_pm1b_cnt_blk;
+		Address x_pm2_cnt_blk;
+		Address x_pm_tmr_blk;
+		Address x_gpe0_blk;
+		Address x_gpe1_blk;
+		Address sleep_ctrl_reg;
+		Address sleep_sts_reg;
 		u64 hypervisor_vendor;
+	};
+
+	struct Madt {
+		SdtHeader hdr;
+		u32 lapic_addr;
+		u32 flags;
+
+		static constexpr u32 FLAG_LEGACY_PIC = 1;
 	};
 
 	void init(void* rsdp);
@@ -93,4 +101,6 @@ namespace acpi {
 
 	void write_to_addr(const Address& addr, u64 value);
 	u64 read_from_addr(const acpi::Address& addr);
+
+	extern Fadt* GLOBAL_FADT;
 }

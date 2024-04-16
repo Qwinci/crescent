@@ -29,6 +29,9 @@ struct FbDev : public Device {
 				auto process = get_current_thread()->process;
 				usize size = fb->height * fb->pitch;
 				auto mem = process->allocate(nullptr, size, MemoryAllocFlags::Read | MemoryAllocFlags::Write, nullptr);
+				if (size && !mem) {
+					return ERR_NO_MEM;
+				}
 
 				for (usize i = 0; i < size; i += PAGE_SIZE) {
 					if (!process->page_map.map(

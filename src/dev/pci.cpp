@@ -136,15 +136,16 @@ namespace pci {
 		Mcfg* GLOBAL_MCFG = nullptr;
 	}
 
-	void acpi_enumerate() {
+	void acpi_init() {
 		auto* table = static_cast<Mcfg*>(acpi::get_table("MCFG"));
 		assert(table && "no MCFG found");
 		GLOBAL_MCFG = table;
-		return;
+	}
 
-		u16 entries = (table->hdr.length - sizeof(Mcfg)) / sizeof(Mcfg::Entry);
+	void acpi_enumerate() {
+		u16 entries = (GLOBAL_MCFG->hdr.length - sizeof(Mcfg)) / sizeof(Mcfg::Entry);
 		for (u32 i = 0; i < entries; ++i) {
-			auto entry = table->entries[i];
+			auto entry = GLOBAL_MCFG->entries[i];
 
 			for (u8 bus_i = entry.start; bus_i < entry.end; ++bus_i) {
 				enumerate_bus(to_virt<void>(entry.base), bus_i - entry.start);

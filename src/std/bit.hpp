@@ -22,6 +22,26 @@ namespace kstd {
 		}
 	}
 
+	template<integral T>
+	constexpr T to_ne_from_be(T value) noexcept {
+		if constexpr (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
+			return byteswap(value);
+		}
+		else {
+			return value;
+		}
+	}
+
+	template<integral T>
+	constexpr T to_be(T value) noexcept {
+		if constexpr (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__) {
+			return byteswap(value);
+		}
+		else {
+			return value;
+		}
+	}
+
 	template<typename T>
 	constexpr bool has_single_bit(T value) {
 		return value && !(value & (value - 1));

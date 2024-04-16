@@ -4,6 +4,7 @@
 #include "qacpi/op_region.hpp"
 #include "qacpi/os.hpp"
 #include "stdio.hpp"
+#include "assert.hpp"
 
 namespace acpi {
 	struct [[gnu::packed]] Rsdt {
@@ -36,6 +37,8 @@ namespace acpi {
 		u8 reserved[3];
 	};
 
+	Fadt* GLOBAL_FADT;
+
 	void init(void* rsdp_ptr) {
 		Rsdp* rsdp = static_cast<Rsdp*>(rsdp_ptr);
 		GLOBAL_RSDP = rsdp;
@@ -48,6 +51,9 @@ namespace acpi {
 			ROOT.rsdt = to_virt<Rsdt>(rsdp->rsdt_address);
 			println("[acpi]: using RSDT");
 		}
+
+		GLOBAL_FADT = static_cast<Fadt*>(acpi::get_table("FACP"));
+		assert(GLOBAL_FADT);
 	}
 
 	void* get_rsdp() {

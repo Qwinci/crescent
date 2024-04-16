@@ -1,0 +1,37 @@
+#ifndef _INITIALIZER_LIST_H
+#define _INITIALIZER_LIST_H
+
+#include <cstddef>
+
+namespace std {
+	template<typename __T>
+	class initializer_list {
+	public:
+		constexpr initializer_list() = default;
+
+		using value_type = __T;
+		using reference = const __T&;
+		using const_reference = const __T&;
+		using size_type = std::size_t;
+		using iterator = const __T*;
+		using const_iterator = const __T*;
+
+		constexpr size_type size() const noexcept {
+			return _size;
+		}
+
+		constexpr const_iterator begin() const noexcept {
+			return _ptr;
+		}
+
+		constexpr const_iterator end() const noexcept {
+			return _ptr + _size;
+		}
+
+	private:
+		const __T* _ptr;
+		size_t _size;
+	};
+}
+
+#endif

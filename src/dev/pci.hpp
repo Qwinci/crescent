@@ -3,6 +3,7 @@
 #include "vector.hpp"
 
 namespace pci {
+	void acpi_init();
 	void acpi_enumerate();
 
 	enum class Cap : u8 {
@@ -161,6 +162,15 @@ namespace pci {
 		[[nodiscard]] u32 get_irq(u32 index) const;
 
 		void enable_irqs(bool enable);
+
+		inline void enable_legacy_irq(bool enable) const {
+			if (enable) {
+				hdr0->common.command &= ~(1U << 10);
+			}
+			else {
+				hdr0->common.command |= 1U << 10;
+			}
+		}
 
 		inline void enable_io_space(bool enable) const {
 			if (enable) {

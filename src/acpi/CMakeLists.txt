@@ -1,5 +1,7 @@
-target_sources(crescent PRIVATE
-	acpi.cpp
-	qacpi.cpp
-	sleep.cpp
-)
+if(ARCH STREQUAL "x86_64")
+	target_sources(crescent PRIVATE
+		acpi.cpp
+		qacpi.cpp
+		sleep.cpp
+	)
+endif()

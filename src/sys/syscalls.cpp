@@ -2,9 +2,20 @@
 #include "arch/cpu.hpp"
 #include "crescent/devlink.h"
 #include "crescent/syscalls.h"
+#include "event_queue.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "stdio.hpp"
+#include "fs/vfs.hpp"
+#include "exe/elf_loader.hpp"
+
+#ifdef __x86_64__
+#include "acpi/sleep.hpp"
+#elif defined(__aarch64__)
+#include "arch/aarch64/dev/psci.hpp"
+#include "exe/elf_loader.hpp"
+#include "fs/vfs.hpp"
+#endif
 
 extern "C" bool mem_copy_to_user(usize user, const void* kernel, usize size);
 extern "C" bool mem_copy_to_kernel(void* kernel, usize user, usize size);
@@ -38,8 +49,6 @@ private:
 
 extern "C" void syscall_handler(SyscallFrame* frame) {
 	auto num = *frame->num();
-	println("[kernel]: syscall ", Fmt::Hex, num, Fmt::Reset);
-
 	auto thread = get_current_thread();
 
 	switch (static_cast<CrescentSyscall>(num)) {
@@ -87,8 +96,87 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		}
 		case SYS_CREATE_PROCESS:
 		{
-			// todo
-			*frame->ret() = ERR_UNSUPPORTED;
+			kstd::string path;
+			usize path_len = *frame->arg2();
+			path.resize_without_null(path_len);
+			if (!UserAccessor(*frame->arg1()).load(path.data(), path_len)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+			usize arg_count = *frame->arg4();
+			kstd::vector<kstd::string> args;
+			args.resize(arg_count);
+			bool success = true;
+			for (usize i = 0; i < arg_count; ++i) {
+				CrescentStringView view;
+				if (!UserAccessor(*frame->arg3() + i * sizeof(CrescentStringView)).load(view)) {
+					*frame->ret() = ERR_FAULT;
+					success = false;
+					break;
+				}
+				args[i].resize_without_null(view.len);
+				if (!UserAccessor(view.str).load(view.len)) {
+					*frame->ret() = ERR_FAULT;
+					success = false;
+					break;
+				}
+			}
+
+			if (!success) {
+				break;
+			}
+
+			auto path_view = path.as_view();
+			auto name_start = path_view.rfind('/');
+			if (name_start == kstd::string_view::npos) {
+				name_start = 0;
+			}
+			else {
+				++name_start;
+			}
+			auto name = path_view.substr(name_start);
+
+			auto node = INITRD_VFS->lookup(path_view);
+			if (!node) {
+				*frame->ret() = ERR_NOT_EXISTS;
+				break;
+			}
+
+			auto* process = new Process {name, true};
+			auto elf_result = elf_load(process, node);
+			if (!elf_result) {
+				switch (elf_result.error()) {
+					case ElfLoadError::Invalid:
+						*frame->ret() = ERR_INVALID_ARGUMENT;
+						break;
+					case ElfLoadError::NoMemory:
+						*frame->ret() = ERR_NO_MEM;
+						break;
+				}
+				break;
+			}
+
+			CrescentHandle handle = thread->process->handles.insert(process);
+
+			if (!UserAccessor(*frame->arg0()).store(handle)) {
+				thread->process->handles.remove(handle);
+				delete process;
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			IrqGuard irq_guard {};
+			auto cpu = get_current_thread()->cpu;
+			auto* new_thread = new Thread {
+				name,
+				cpu,
+				process,
+				elf_result.value().entry,
+				nullptr
+			};
+			cpu->scheduler.queue(new_thread);
+
+			*frame->ret() = 0;
 			break;
 		}
 		case SYS_EXIT_PROCESS:
@@ -102,6 +190,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_SLEEP:
 		{
 			auto us = *frame->arg0();
+			if (us > SCHED_MAX_SLEEP_US) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
 			println("[kernel]: thread ", thread->name, " sleeping for ", us, "us");
 			thread->sleep_for(us);
 			*frame->ret() = 0;
@@ -251,7 +344,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					name.resize_without_null(req.data.open_device.device_len);
 					name[req.data.open_device.device_len] = 0;
 					if (!UserAccessor(req.data.open_device.device).load(name.data(), req.data.open_device.device_len)) {
-
+						*frame->ret() = ERR_FAULT;
+						break;
 					}
 
 					auto guard = DEVICES[static_cast<int>(req.data.open_device.type)]->lock();
@@ -340,8 +434,89 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 			break;
 		}
+		case SYS_POLL_EVENT:
+		{
+			InputEvent event {};
+			size_t timeout_us = *frame->arg1();
+			if (timeout_us != SIZE_MAX && timeout_us > SCHED_MAX_SLEEP_US) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			while (true) {
+				auto ret = GLOBAL_EVENT_QUEUE.consume(event);
+
+				if (ret) {
+					if (!UserAccessor(*frame->arg0()).store(event)) {
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+					else {
+						*frame->ret() = 0;
+						break;
+					}
+				}
+				else {
+					if (!timeout_us) {
+						*frame->ret() = ERR_TRY_AGAIN;
+						break;
+					}
+					else {
+						if (timeout_us == SIZE_MAX) {
+							GLOBAL_EVENT_QUEUE.produce_event.wait();
+						}
+						else {
+							if (!GLOBAL_EVENT_QUEUE.produce_event.wait_with_timeout(timeout_us)) {
+								*frame->ret() = ERR_TRY_AGAIN;
+								break;
+							}
+						}
+						GLOBAL_EVENT_QUEUE.produce_event.reset();
+					}
+				}
+			}
+
+			break;
+		}
+		case SYS_SHUTDOWN:
+		{
+			auto type = static_cast<ShutdownType>(*frame->arg0());
+#ifdef __x86_64__
+			switch (type) {
+				case SHUTDOWN_TYPE_POWER_OFF:
+				{
+					acpi::enter_sleep_state(acpi::SleepState::S5);
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				}
+				case SHUTDOWN_TYPE_REBOOT:
+					acpi::reboot();
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				default:
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+			}
+#elif defined(__aarch64__)
+			switch (type) {
+				case SHUTDOWN_TYPE_POWER_OFF:
+				{
+					psci_system_off();
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				}
+				case SHUTDOWN_TYPE_REBOOT:
+					psci_system_reset();
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+			}
+#else
+#error Shutdown is not implemented
+#endif
+			break;
+		}
 		default:
-			println("[kernel]: invalid syscall");
+			println("[kernel]: invalid syscall ", num);
 			*frame->ret() = ERR_INVALID_ARGUMENT;
 			break;
 	}

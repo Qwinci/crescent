@@ -9,6 +9,8 @@
 struct Cpu;
 struct Process;
 
+static constexpr usize SCHED_MAX_SLEEP_US = US_IN_S * 60 * 60 * 24;
+
 struct Scheduler {
 	Scheduler();
 
@@ -39,6 +41,8 @@ struct Scheduler {
 
 	Thread* prev {};
 	Thread* current {};
+	u64 current_irq_period {};
+	u64 us_to_next_schedule {};
 	DeferredIrqWork irq_work {.fn = [this]() {
 		do_schedule();
 	}};

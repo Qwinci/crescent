@@ -15,15 +15,15 @@ public:
 	}
 
 	void destroy() {
-		reinterpret_cast<T*>(storage.data)->~T();
+		kstd::launder(reinterpret_cast<T*>(storage.data))->~T();
 	}
 
 	T* operator->() {
-		return reinterpret_cast<T*>(storage.data);
+		return kstd::launder(reinterpret_cast<T*>(storage.data));
 	}
 
 	T& operator*() {
-		return *reinterpret_cast<T*>(storage.data);
+		return *kstd::launder(reinterpret_cast<T*>(storage.data));
 	}
 
 private:

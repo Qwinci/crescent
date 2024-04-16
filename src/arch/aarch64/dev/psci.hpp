@@ -21,5 +21,5 @@ u64 psci_call(u64 a0, u64 a1, u64 a2, u64 a3);
 
 u32 psci_version();
 i32 psci_cpu_on(u64 target_mpidr, u64 entry_phys, u64 ctx);
-[[noreturn]] void psci_system_off();
-[[noreturn]] void psci_system_reset();
+void psci_system_off();
+void psci_system_reset();

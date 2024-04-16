@@ -1,23 +1,30 @@
-#include "crescent/syscall.h"
-#include "crescent/devlink.h"
+#include "button.hpp"
+#include "context.hpp"
+#include "desktop.hpp"
+#include "sys.hpp"
+#include <stdio.h>
 
-int sys_devlink(const DevLink& dev_link) {
-	return static_cast<int>(syscall(SYS_DEVLINK, &dev_link));
-}
+static constexpr size_t US_IN_MS = 1000;
+static constexpr size_t US_IN_S = US_IN_MS * 1000;
 
-int sys_close_handle(CrescentHandle handle) {
-	return static_cast<int>(syscall(SYS_CLOSE_HANDLE, handle));
-}
-
-int sys_map(void** addr, size_t size, int protection) {
-	return static_cast<int>(syscall(SYS_MAP, addr, size, protection));
-}
-
-int sys_unmap(void* ptr, size_t size) {
-	return static_cast<int>(syscall(SYS_UNMAP, ptr, size));
+[[noreturn]] void dumb_loop() {
+	while (true) {
+		InputEvent event;
+		sys_poll_event(event, SIZE_MAX);
+		if (event.type == EVENT_TYPE_KEY) {
+			if (event.key.code == SCANCODE_F1) {
+				sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
+			}
+			else if (event.key.code == SCANCODE_R) {
+				sys_shutdown(SHUTDOWN_TYPE_REBOOT);
+			}
+		}
+	}
 }
 
 int main() {
+	//dumb_loop();
+
 	DevLinkRequest request {
 		.type = DevLinkRequestType::GetDevices,
 		.data {
@@ -37,6 +44,10 @@ int main() {
 	request.data.open_device.device = link.response->get_devices.names[0];
 	request.data.open_device.device_len = link.response->get_devices.name_sizes[0];
 	status = sys_devlink(link);
+	if (status != 0) {
+		puts("failed to open device");
+		return 1;
+	}
 	auto handle = link.response->open_device.handle;
 
 	FbLink fb_link {
@@ -46,19 +57,120 @@ int main() {
 	link.request = &fb_link.request;
 	fb_link.request.handle = handle;
 	status = sys_devlink(link);
+	if (status != 0) {
+		puts("devlink failed");
+		return 1;
+	}
 	auto* fb_resp = static_cast<FbLinkResponse*>(link.response->specific);
 	auto info = fb_resp->info;
 	fb_link.op = FbLinkOp::Map;
 	status = sys_devlink(link);
-	void* mapping = fb_resp->map.mapping;
-	for (int y = 0; y < 80; ++y) {
-		for (int x = 0; x < 80; ++x) {
-			*reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(mapping) + y * info.pitch + x * (info.bpp / 8)) = 0xFF0000;
-		}
+	if (status != 0) {
+		puts("failed to map fb");
+		return 1;
 	}
-
+	void* mapping = fb_resp->map.mapping;
 	sys_close_handle(handle);
-	sys_unmap(mapping, info.pitch * info.height * 4);
 
-	return 0;
+	Context ctx {
+		.fb = static_cast<uint32_t*>(mapping),
+		.pitch_32 = info.pitch / 4,
+		.width = info.width,
+		.height = info.height
+	};
+	Desktop desktop {ctx};
+
+	auto window1 = std::make_unique<Window>();
+	window1->set_pos(0, 0);
+	window1->set_size(100, 100);
+	window1->bg_color = 0x00FF00;
+
+	auto window2 = std::make_unique<Window>();
+	window2->set_pos(200, 0);
+	window2->set_size(50, 50);
+	window2->bg_color = 0x0000FF;
+
+	auto window3 = std::make_unique<ButtonWindow>();
+	window3->set_pos(0, TITLEBAR_HEIGHT);
+	window3->set_size(50, 50);
+	window3->bg_color = 0x00FFFF;
+	window3->callback = [](void*) {
+		sys_shutdown(SHUTDOWN_TYPE_REBOOT);
+	};
+
+	window1->add_child(std::move(window3));
+
+	desktop.root_window->add_child(std::move(window1));
+	desktop.root_window->add_child(std::move(window2));
+
+	auto window4 = std::make_unique<ButtonWindow>();
+	window4->set_pos(ctx.width - 50, 0);
+	window4->set_size(50, 50);
+	window4->bg_color = 0x00FFFF;
+	window4->callback = [](void*) {
+		sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
+	};
+
+	desktop.root_window->add_child(std::move(window4));
+
+	desktop.handle_mouse({
+		.pos {
+			.x = info.width / 2,
+			.y = info.height / 2
+		},
+		.left_pressed = false,
+		.right_pressed = false,
+		.middle_pressed = false
+	});
+
+	auto mouse_x = static_cast<int32_t>(info.width / 2);
+	auto mouse_y = static_cast<int32_t>(info.height / 2);
+
+	while (true) {
+		InputEvent event;
+		if (sys_poll_event(event, US_IN_MS * 500) == ERR_TRY_AGAIN) {
+
+		}
+		else if (event.type == EVENT_TYPE_MOUSE) {
+			if (mouse_x + event.mouse.x_movement < 0) {
+				mouse_x = 0;
+			}
+			else {
+				mouse_x += event.mouse.x_movement;
+				if (mouse_x > static_cast<int32_t>(info.width)) {
+					mouse_x = static_cast<int32_t>(info.width);
+				}
+			}
+			if (mouse_y + -event.mouse.y_movement < 0) {
+				mouse_y = 0;
+			}
+			else {
+				mouse_y += -event.mouse.y_movement;
+				if (mouse_y > static_cast<int32_t>(info.height)) {
+					mouse_y = static_cast<int32_t>(info.height);
+				}
+			}
+
+			desktop.handle_mouse({
+				.pos {
+					.x = static_cast<uint32_t>(mouse_x),
+					.y = static_cast<uint32_t>(mouse_y)
+				},
+				.left_pressed = event.mouse.left_pressed,
+				.right_pressed = event.mouse.right_pressed,
+				.middle_pressed = event.mouse.middle_pressed
+			});
+		}
+		else if (event.type == EVENT_TYPE_KEY) {
+			if (event.key.code == SCANCODE_F1) {
+				sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
+			}
+			else if (event.key.code == SCANCODE_F5) {
+				sys_shutdown(SHUTDOWN_TYPE_REBOOT);
+			}
+			continue;
+		}
+
+		desktop.draw();
+	}
 }

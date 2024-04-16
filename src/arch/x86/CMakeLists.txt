@@ -10,6 +10,8 @@ target_sources(crescent PRIVATE
 	smp.cpp
 	arch_sched.cpp
 	mod.cpp
+
+	acpi/madt.cpp
 )
 target_include_directories(crescent PRIVATE include)
 

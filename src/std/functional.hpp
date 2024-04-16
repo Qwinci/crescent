@@ -63,19 +63,19 @@ namespace kstd {
 	private:
 		template<typename F>
 		R specific_invoke(Args... args) {
-			return (*static_cast<kstd::remove_reference_t<F>*>(static_cast<void*>(storage)))(std::forward<Args>(args)...);
+			return (*kstd::launder(reinterpret_cast<kstd::remove_reference_t<F>*>(&storage)))(std::forward<Args>(args)...);
 		}
 
 		template<typename F>
 		void specific_destroy() {
 			using type = kstd::remove_reference_t<F>;
-			(*static_cast<type*>(static_cast<void*>(storage))).~type();
+			kstd::launder(reinterpret_cast<type*>(&storage))->~type();
 		}
 
 		template<typename F>
 		void specific_move(small_function& other) {
 			using type = kstd::remove_reference_t<F>;
-			new (other.storage) type {std::move(*static_cast<type*>(static_cast<void*>(storage)))};
+			new (other.storage) type {std::move(*kstd::launder(reinterpret_cast<type*>(&storage)))};
 			other.invoke = invoke;
 			other.destroy = destroy;
 			other.move_to = move_to;

@@ -9,9 +9,8 @@ namespace kstd {
 		constexpr unique_ptr() = default;
 		constexpr unique_ptr(kstd::nullptr_t) : ptr {nullptr} {} // NOLINT(*-explicit-constructor)
 
-		template<typename U = T>
-		unique_ptr(U&& value) requires(!is_same_v<remove_reference_t<U>, unique_ptr>) { // NOLINT(*-explicit-constructor)
-			ptr = new U {move(value)};
+		constexpr unique_ptr(T* new_ptr) {
+			ptr = new_ptr;
 		}
 
 		unique_ptr(unique_ptr&& other) { // NOLINT(*-explicit-constructor)
@@ -64,4 +63,9 @@ namespace kstd {
 	private:
 		T* ptr {};
 	};
+
+	template<typename T, typename... Args>
+	unique_ptr<T> make_unique(Args&&... args) {
+		return unique_ptr<T> {new T {std::forward<Args&&>(args)...}};
+	}
 }

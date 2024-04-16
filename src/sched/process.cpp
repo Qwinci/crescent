@@ -37,6 +37,10 @@ usize Process::allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKe
 	auto real_base = ALIGNDOWN(reinterpret_cast<usize>(base), PAGE_SIZE);
 	size = ALIGNUP(size, PAGE_SIZE);
 
+	if (!size) {
+		return 0;
+	}
+
 	auto virt = vmem.xalloc(size, real_base, real_base);
 	if (!virt) {
 		return 0;

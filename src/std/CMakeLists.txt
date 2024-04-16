@@ -5,7 +5,7 @@ target_sources(crescent PRIVATE
 	cxx.cpp
 )
 
-if(NOT CMAKE_CROSSCOMPILING)
+if(ARCH STREQUAL "user")
 	include(FetchContent)
 	FetchContent_Declare(
 		googletest
