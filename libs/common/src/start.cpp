@@ -56,6 +56,6 @@ extern "C" void _start() {
 	for (auto* fn = __fini_array_start; fn != __fini_array_end; ++fn) {
 		(*fn)();
 	}
-	syscall(SYS_EXIT_PROCESS, status);
+	syscall(SYS_PROCESS_EXIT, status);
 	__builtin_trap();
 }

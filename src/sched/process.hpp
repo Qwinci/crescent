@@ -62,6 +62,14 @@ private:
 	usize size {};
 };
 
+struct ProcessDescriptor {
+	~ProcessDescriptor();
+
+	DoubleListHook hook {};
+	Spinlock<Process*> process {};
+	int exit_status {};
+};
+
 struct Process {
 	explicit Process(kstd::string_view name, bool user);
 	~Process();
@@ -71,6 +79,10 @@ struct Process {
 
 	void add_thread(Thread* thread);
 	void remove_thread(Thread* thread);
+
+	void add_descriptor(ProcessDescriptor* descriptor);
+	void remove_descriptor(ProcessDescriptor* descriptor);
+	void exit(int status, ProcessDescriptor* skip_lock = nullptr);
 
 	[[nodiscard]] bool handle_pagefault(usize addr);
 
@@ -99,6 +111,7 @@ private:
 	VMem vmem {};
 	Spinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
 	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
+	Spinlock<DoubleList<ProcessDescriptor, &ProcessDescriptor::hook>> descriptors {};
 };
 
 extern ManuallyInit<Process> KERNEL_PROCESS;

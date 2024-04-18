@@ -64,6 +64,10 @@ public:
 		return Guard {this};
 	}
 
+	T& get_unsafe() {
+		return data.value;
+	}
+
 private:
 	__spinlock_detail::Data<T> data {};
 };

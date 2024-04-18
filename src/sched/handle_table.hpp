@@ -6,23 +6,25 @@
 #include "utils/spinlock.hpp"
 #include "dev/dev.hpp"
 
-struct Process;
+struct ProcessDescriptor;
+struct ThreadDescriptor;
 
 using Handle = kstd::variant<
 	kstd::monostate,
 	kstd::shared_ptr<Device>,
-	Process*
+	ProcessDescriptor,
+	ThreadDescriptor
 	>;
 
 class HandleTable {
 public:
-	kstd::shared_ptr<Handle> get(usize handle);
-	usize insert(Handle&& handle);
-	bool remove(usize handle);
+	kstd::shared_ptr<Handle> get(CrescentHandle handle);
+	CrescentHandle insert(Handle&& handle);
+	bool remove(CrescentHandle handle);
 
 private:
 	kstd::vector<kstd::shared_ptr<Handle>> table;
-	usize count {};
-	kstd::vector<usize> free_handles;
+	CrescentHandle count {};
+	kstd::vector<CrescentHandle> free_handles;
 	Spinlock<void> lock {};
 };

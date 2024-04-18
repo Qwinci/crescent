@@ -140,6 +140,7 @@ void Scheduler::block() {
 void Scheduler::exit_process(int status) {
 	IrqGuard irq_guard {};
 	current->process->killed = true;
+	current->process->exit(status);
 	current->status = Thread::Status::Blocked;
 	current->cpu->cpu_tick_source->reset();
 	update_schedule();
@@ -151,6 +152,7 @@ void Scheduler::exit_process(int status) {
 void Scheduler::exit_thread(int status) {
 	IrqGuard irq_guard {};
 	current->exited = true;
+	current->exit(status);
 	current->status = Thread::Status::Blocked;
 	current->cpu->cpu_tick_source->reset();
 	update_schedule();

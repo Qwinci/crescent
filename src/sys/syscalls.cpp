@@ -52,23 +52,23 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 	auto thread = get_current_thread();
 
 	switch (static_cast<CrescentSyscall>(num)) {
-		case SYS_CREATE_THREAD:
+		case SYS_THREAD_CREATE:
 		{
 			if (thread->process->killed) {
-				println("[kernel]: cancelling sys_create_thread because process is exiting");
+				println("[kernel]: cancelling sys_thread_create because process is exiting");
 				*frame->ret() = ERR_UNSUPPORTED;
 				break;
 			}
 
 			kstd::string name;
-			usize size = *frame->arg1();
+			usize size = *frame->arg2();
 			name.resize_without_null(size);
-			if (!UserAccessor(*frame->arg0()).load(name.data(), size)) {
+			if (!UserAccessor(*frame->arg1()).load(name.data(), size)) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
-			auto fn = reinterpret_cast<void (*)(void*)>(*frame->arg2());
-			auto arg = reinterpret_cast<void*>(*frame->arg3());
+			auto fn = reinterpret_cast<void (*)(void*)>(*frame->arg3());
+			auto arg = reinterpret_cast<void*>(*frame->arg4());
 
 			Cpu* cpu;
 			{
@@ -78,6 +78,20 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			auto* new_thread = new Thread {name, cpu, thread->process, fn, arg};
 
+			CrescentHandle handle = thread->process->handles.insert(ThreadDescriptor {
+				.thread {new_thread},
+				.exit_status = 0
+			});
+			auto descriptor = thread->process->handles.get(handle)->get<ThreadDescriptor>();
+			new_thread->add_descriptor(descriptor);
+
+			if (!UserAccessor(*frame->arg0()).store(handle)) {
+				thread->process->handles.remove(handle);
+				delete new_thread;
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
 			println("[kernel]: create thread ", name);
 
 			IrqGuard guard {};
@@ -86,7 +100,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			*frame->ret() = 0;
 			break;
 		}
-		case SYS_EXIT_THREAD:
+		case SYS_THREAD_EXIT:
 		{
 			IrqGuard guard {};
 			Cpu* cpu = thread->cpu;
@@ -94,7 +108,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			println("[kernel]: thread ", thread->name, " exited with status ", status);
 			cpu->scheduler.exit_thread(status);
 		}
-		case SYS_CREATE_PROCESS:
+		case SYS_PROCESS_CREATE:
 		{
 			kstd::string path;
 			usize path_len = *frame->arg2();
@@ -156,7 +170,12 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			CrescentHandle handle = thread->process->handles.insert(process);
+			CrescentHandle handle = thread->process->handles.insert(ProcessDescriptor {
+				.process {process},
+				.exit_status = 0
+			});
+			auto descriptor = thread->process->handles.get(handle)->get<ProcessDescriptor>();
+			process->add_descriptor(descriptor);
 
 			if (!UserAccessor(*frame->arg0()).store(handle)) {
 				thread->process->handles.remove(handle);
@@ -179,13 +198,81 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			*frame->ret() = 0;
 			break;
 		}
-		case SYS_EXIT_PROCESS:
+		case SYS_PROCESS_EXIT:
 		{
 			auto status = static_cast<int>(*frame->arg0());
 			println("[kernel]: process ", thread->process->name, " exited with status ", status);
 			IrqGuard guard {};
 			Cpu* cpu = thread->cpu;
 			cpu->scheduler.exit_process(status);
+		}
+		case SYS_KILL:
+		{
+			CrescentHandle user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+			if (!handle) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+			IrqGuard irq_guard {};
+			if (auto proc_desc = handle->get<ProcessDescriptor>()) {
+				*frame->ret() = 0;
+
+				auto guard = proc_desc->process.lock();
+				if (!guard) {
+					break;
+				}
+				(*guard)->killed = true;
+				(*guard)->exit(-1, proc_desc);
+			}
+			else if (auto thread_desc = handle->get<ThreadDescriptor>()) {
+				*frame->ret() = 0;
+
+				auto guard = thread_desc->thread.lock();
+				if (!guard) {
+					break;
+				}
+				(*guard)->exited = true;
+				(*guard)->exit(-1, thread_desc);
+			}
+			else {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			break;
+		}
+		case SYS_GET_STATUS:
+		{
+			CrescentHandle user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+			if (!handle) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+			IrqGuard irq_guard {};
+			if (auto proc_desc = handle->get<ProcessDescriptor>()) {
+				auto guard = proc_desc->process.lock();
+				if (!guard) {
+					*frame->ret() = proc_desc->exit_status;
+					break;
+				}
+				*frame->ret() = ERR_TRY_AGAIN;
+			}
+			else if (auto thread_desc = handle->get<ThreadDescriptor>()) {
+				auto guard = thread_desc->thread.lock();
+				if (!guard) {
+					*frame->ret() = thread_desc->exit_status;
+					break;
+				}
+				*frame->ret() = ERR_TRY_AGAIN;
+			}
+			else {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			break;
 		}
 		case SYS_SLEEP:
 		{

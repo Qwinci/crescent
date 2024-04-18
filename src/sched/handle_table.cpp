@@ -1,6 +1,7 @@
 #include "handle_table.hpp"
+#include "process.hpp"
 
-kstd::shared_ptr<Handle> HandleTable::get(usize handle) {
+kstd::shared_ptr<Handle> HandleTable::get(CrescentHandle handle) {
 	auto guard = lock.lock();
 
 	if (handle >= count) {
@@ -14,10 +15,10 @@ kstd::shared_ptr<Handle> HandleTable::get(usize handle) {
 	return loc;
 }
 
-usize HandleTable::insert(Handle&& handle) {
+CrescentHandle HandleTable::insert(Handle&& handle) {
 	auto guard = lock.lock();
 
-	usize index;
+	CrescentHandle index;
 	if (!free_handles.is_empty()) {
 		index = free_handles.pop().value();
 	}
@@ -34,7 +35,7 @@ usize HandleTable::insert(Handle&& handle) {
 	return index;
 }
 
-bool HandleTable::remove(usize handle) {
+bool HandleTable::remove(CrescentHandle handle) {
 	auto guard = lock.lock();
 
 	if (handle >= count) {

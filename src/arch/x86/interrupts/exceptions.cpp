@@ -38,6 +38,7 @@ bool x86_ ##handler_name ## _handler(IrqFrame* frame) { \
 	if (current->process->user) { \
 		println("[kernel][x86]: killing user process ", current->process->name); \
 		current->process->killed = true; \
+		current->process->exit(-1); \
 		auto& scheduler = current->cpu->scheduler; \
 		scheduler.update_schedule(); \
 		current->cpu->deferred_work.push(&scheduler.irq_work); \
@@ -132,6 +133,7 @@ bool x86_pagefault_handler(IrqFrame* frame) {
 
 		println("[kernel][x86]: killing user process ", current->process->name);
 		current->process->killed = true;
+		current->process->exit(-1);
 		auto& scheduler = current->cpu->scheduler;
 		scheduler.update_schedule();
 		current->cpu->deferred_work.push(&scheduler.irq_work);

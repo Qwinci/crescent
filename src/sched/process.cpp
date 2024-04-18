@@ -138,11 +138,42 @@ void Process::free(usize ptr, usize) {
 }
 
 void Process::add_thread(Thread* thread) {
+	IrqGuard irq_guard {};
 	threads.lock()->push(thread);
 }
 
 void Process::remove_thread(Thread* thread) {
+	IrqGuard irq_guard {};
 	threads.lock()->remove(thread);
+}
+
+void Process::add_descriptor(ProcessDescriptor* descriptor) {
+	IrqGuard irq_guard {};
+	descriptors.lock()->push(descriptor);
+}
+
+void Process::remove_descriptor(ProcessDescriptor* descriptor) {
+	IrqGuard irq_guard {};
+	descriptors.lock()->remove(descriptor);
+}
+
+void Process::exit(int status, ProcessDescriptor* skip_lock) {
+	IrqGuard irq_guard {};
+	auto guard = descriptors.lock();
+	for (auto& desc : *guard) {
+		if (&desc != skip_lock) {
+			auto proc_guard = desc.process.lock();
+			assert(proc_guard == this);
+			*proc_guard = nullptr;
+		}
+		else {
+			assert(skip_lock->process.get_unsafe() == this);
+			skip_lock->process.get_unsafe() = nullptr;
+		}
+
+		desc.exit_status = status;
+	}
+	guard->clear();
 }
 
 bool Process::handle_pagefault(usize addr) {
@@ -167,6 +198,13 @@ UniqueKernelMapping::~UniqueKernelMapping() {
 			KERNEL_MAP.unmap(reinterpret_cast<u64>(ptr) + i);
 		}
 		KERNEL_VSPACE.free(ptr, size);
+	}
+}
+
+ProcessDescriptor::~ProcessDescriptor() {
+	auto guard = process.lock();
+	if (guard) {
+		(*guard)->remove_descriptor(this);
 	}
 }
 

@@ -1,22 +1,30 @@
 #include "sys.hpp"
 #include "crescent/syscall.h"
 
-int sys_create_thread(const char* name, size_t name_len, void (*fn)(void* arg), void* arg) {
-	return static_cast<int>(syscall(SYS_CREATE_THREAD, name, name_len, fn, arg));
+int sys_thread_create(CrescentHandle& handle, const char* name, size_t name_len, void (*fn)(void* arg), void* arg) {
+	return static_cast<int>(syscall(SYS_THREAD_CREATE, &handle, name, name_len, fn, arg));
 }
 
-[[noreturn]] void sys_exit_thread(int status) {
-	syscall(SYS_EXIT_THREAD, status);
+[[noreturn]] void sys_thread_exit(int status) {
+	syscall(SYS_THREAD_EXIT, status);
 	__builtin_unreachable();
 }
 
-int sys_create_process(CrescentHandle& handle, const char* path, size_t path_len, CrescentStringView* args, size_t arg_count) {
-	return static_cast<int>(syscall(SYS_CREATE_PROCESS, &handle, path, path_len, args, arg_count));
+int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len, CrescentStringView* args, size_t arg_count) {
+	return static_cast<int>(syscall(SYS_PROCESS_CREATE, &handle, path, path_len, args, arg_count));
 }
 
-[[noreturn]] void sys_exit_process(int status) {
-	syscall(SYS_EXIT_PROCESS, status);
+[[noreturn]] void sys_process_exit(int status) {
+	syscall(SYS_PROCESS_EXIT, status);
 	__builtin_unreachable();
+}
+
+int sys_kill(CrescentHandle handle) {
+	return static_cast<int>(syscall(SYS_KILL, handle));
+}
+
+int sys_get_status(CrescentHandle handle) {
+	return static_cast<int>(syscall(SYS_GET_STATUS, handle));
 }
 
 int sys_sleep(uint64_t us) {
