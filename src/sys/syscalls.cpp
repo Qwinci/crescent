@@ -313,6 +313,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 			println(str);
+
+			*frame->ret() = 0;
 			break;
 		}
 		case SYS_MAP:
@@ -451,6 +453,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 						break;
 					}
 
+					bool success = false;
+
 					auto guard = DEVICES[static_cast<int>(req.data.open_device.type)]->lock();
 					for (auto& device : *guard) {
 						if (device->name == name) {
@@ -464,12 +468,18 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 							if (!UserAccessor(link.response).store(resp)) {
 								thread->process->handles.remove(handle);
 								*frame->ret() = ERR_FAULT;
+								success = true;
 								break;
 							}
 
+							success = true;
 							*frame->ret() = 0;
 							break;
 						}
+					}
+
+					if (!success) {
+						*frame->ret() = ERR_NOT_EXISTS;
 					}
 
 					break;
@@ -874,6 +884,147 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
+
+			break;
+		}
+		case SYS_SHARED_MEM_ALLOC:
+		{
+			usize size = *frame->arg1();
+			auto mem = kstd::make_shared<SharedMemory>();
+			bool success = true;
+
+			for (usize i = 0; i < size; i += PAGE_SIZE) {
+				auto page = pmalloc(1);
+				if (!page) {
+					success = false;
+					*frame->ret() = ERR_NO_MEM;
+					break;
+				}
+				mem->pages.push(page);
+			}
+
+			if (!success) {
+				break;
+			}
+
+			auto handle = thread->process->handles.insert(std::move(mem));
+			if (!UserAccessor(*frame->arg0()).store(handle)) {
+				thread->process->handles.remove(handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_SHARED_MEM_MAP:
+		{
+			CrescentHandle user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<SharedMemory>* shared_mem_ptr;
+			if (!handle || !(shared_mem_ptr = handle->get<kstd::shared_ptr<SharedMemory>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			SharedMemory* shared_mem = shared_mem_ptr->data();
+
+			auto mem = thread->process->allocate(
+				nullptr,
+				shared_mem->pages.size() * PAGE_SIZE,
+				MemoryAllocFlags::Read | MemoryAllocFlags::Write,
+				nullptr);
+			if (!mem) {
+				*frame->ret() = ERR_NO_MEM;
+				break;
+			}
+
+			bool success = true;
+
+			for (usize i = 0; i < shared_mem->pages.size() * PAGE_SIZE; i += PAGE_SIZE) {
+				bool ret = thread->process->page_map.map(
+					mem + i,
+					shared_mem->pages[i / PAGE_SIZE],
+					PageFlags::Read | PageFlags::Write | PageFlags::User,
+					CacheMode::WriteBack);
+				if (!ret) {
+					for (usize j = 0; j < i; j += PAGE_SIZE) {
+						thread->process->page_map.unmap(mem + j);
+					}
+
+					success = false;
+					thread->process->free(mem, shared_mem->pages.size() * PAGE_SIZE);
+					*frame->ret() = ERR_NO_MEM;
+					break;
+				}
+			}
+
+			if (!success) {
+				break;
+			}
+
+			if (!UserAccessor(*frame->arg1()).store(reinterpret_cast<void*>(mem))) {
+				for (usize i = 0; i < shared_mem->pages.size() * PAGE_SIZE; i += PAGE_SIZE) {
+					thread->process->page_map.unmap(mem + i);
+				}
+				thread->process->free(mem, shared_mem->pages.size() * PAGE_SIZE);
+
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			auto guard = shared_mem->usage_count.lock();
+			++*guard;
+
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_SHARED_MEM_SHARE:
+		{
+			CrescentHandle user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<SharedMemory>* shared_mem_ptr;
+			if (!handle || !(shared_mem_ptr = handle->get<kstd::shared_ptr<SharedMemory>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			CrescentHandle user_proc_handle = *frame->arg1();
+			auto proc_handle = thread->process->handles.get(user_proc_handle);
+			if (!proc_handle) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			Spinlock<Process*>* process_lock;
+			if (auto proc_desc_ptr = proc_handle->get<kstd::shared_ptr<ProcessDescriptor>>()) {
+				process_lock = &proc_desc_ptr->data()->process;
+			}
+			else if (auto proc_desc = proc_handle->get<ProcessDescriptor>()) {
+				process_lock = &proc_desc->process;
+			}
+			else {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto copy = *shared_mem_ptr;
+			auto guard = process_lock->lock();
+			if (!*guard) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+			auto res_handle = (*guard)->handles.insert(std::move(copy));
+
+			if (!UserAccessor(*frame->arg2()).store(res_handle)) {
+				(*guard)->handles.remove(res_handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
 
 			break;
 		}

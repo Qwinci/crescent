@@ -90,3 +90,15 @@ int sys_socket_send(CrescentHandle handle, const void* data, size_t size) {
 int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& actual) {
 	return static_cast<int>(syscall(SYS_SOCKET_RECEIVE, handle, data, size, &actual));
 }
+
+int sys_shared_mem_alloc(CrescentHandle& handle, size_t size) {
+	return static_cast<int>(syscall(SYS_SHARED_MEM_ALLOC, &handle, size));
+}
+
+int sys_shared_mem_map(CrescentHandle handle, void** ptr) {
+	return static_cast<int>(syscall(SYS_SHARED_MEM_MAP, handle, ptr));
+}
+
+int sys_shared_mem_share(CrescentHandle handle, CrescentHandle process_handle, CrescentHandle& result_handle) {
+	return static_cast<int>(syscall(SYS_SHARED_MEM_SHARE, handle, process_handle, &result_handle));
+}

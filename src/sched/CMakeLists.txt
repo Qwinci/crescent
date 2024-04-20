@@ -4,4 +4,5 @@ target_sources(crescent PRIVATE
 	sched.cpp
 	thread.cpp
 	ipc.cpp
+	shared_mem.cpp
 )

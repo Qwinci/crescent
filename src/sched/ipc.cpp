@@ -98,7 +98,7 @@ int IpcSocket::send(const void* data, usize size) {
 
 	auto target_guard = target->lock.lock();
 
-	target->buf_size -= size;
+	target->buf_size += size;
 
 	auto remaining_at_end = IPC_BUFFER_SIZE - target->buf_write_ptr;
 	auto copy = kstd::min(size, remaining_at_end);

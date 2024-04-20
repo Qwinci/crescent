@@ -7,6 +7,7 @@
 #include "dev/dev.hpp"
 #include "sys/socket.hpp"
 #include "sched/ipc.hpp"
+#include "sched/shared_mem.hpp"
 
 struct ProcessDescriptor;
 struct ThreadDescriptor;
@@ -17,7 +18,8 @@ using Handle = kstd::variant<
 	ProcessDescriptor,
 	kstd::shared_ptr<ProcessDescriptor>,
 	ThreadDescriptor,
-	kstd::shared_ptr<Socket>
+	kstd::shared_ptr<Socket>,
+	kstd::shared_ptr<SharedMemory>
 	>;
 
 class HandleTable {
