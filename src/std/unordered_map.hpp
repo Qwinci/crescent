@@ -7,6 +7,25 @@ namespace kstd {
 	template<typename T, typename K>
 	class unordered_map {
 	public:
+		void remove(K key) {
+			auto hash = fnv_hash(&key, sizeof(K));
+
+			size_t table_size = table.size();
+			size_t bucket_index = hash % table_size;
+			size_t start = bucket_index;
+			while (true) {
+				auto& bucket = table[bucket_index];
+				if (bucket && bucket.value().key == key) {
+					bucket.reset();
+					return;
+				}
+				bucket_index = (bucket_index + 1) % table_size;
+				if (bucket_index == start) {
+					break;
+				}
+			}
+		}
+
 		void insert(K key, const T& value) {
 			auto hash = fnv_hash(&key, sizeof(K));
 			if (table.is_empty()) {

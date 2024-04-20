@@ -23,6 +23,49 @@ static constexpr size_t US_IN_S = US_IN_MS * 1000;
 }
 
 int main() {
+	CrescentStringView features[] {
+		{.str = "window_manager", .len = sizeof("window_manager") - 1}
+	};
+	auto res = sys_service_create(features, sizeof(features) / sizeof(*features));
+	if (res != 0) {
+		puts("failed to create desktop service");
+		return 1;
+	}
+
+	CrescentHandle console_handle;
+	res = sys_process_create(console_handle, "/bin/console", sizeof("/bin/console") - 1, nullptr, 0);
+	if (res != 0) {
+		puts("failed to create console process");
+		return 1;
+	}
+	CrescentHandle ipc_listen_socket;
+	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC);
+	if (res != 0) {
+		puts("failed to create ipc socket");
+		return 1;
+	}
+	res = sys_socket_listen(ipc_listen_socket, 0);
+	if (res != 0) {
+		puts("failed to listen for connections");
+		return 1;
+	}
+	puts("[desktop]: got a connection");
+	CrescentHandle connection_socket;
+	res = sys_socket_accept(ipc_listen_socket, connection_socket);
+	if (res != 0) {
+		puts("failed to accept connection");
+		return 1;
+	}
+	puts("[desktop]: connection accepted");
+	sys_close_handle(ipc_listen_socket);
+	res = sys_socket_send(connection_socket, "hello from desktop to console", sizeof("hello from desktop to console"));
+	if (res != 0) {
+		puts("failed to send data");
+		return 1;
+	}
+	puts("[desktop]: data sent");
+	sys_close_handle(connection_socket);
+
 	//dumb_loop();
 
 	DevLinkRequest request {

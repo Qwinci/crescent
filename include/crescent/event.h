@@ -1,4 +1,6 @@
-#pragma once
+#ifndef CRESCENT_EVENT_H
+#define CRESCENT_EVENT_H
+
 #include <stdint.h>
 
 typedef enum {
@@ -262,3 +264,5 @@ typedef struct {
 		MouseEvent mouse;
 	};
 } InputEvent;
+
+#endif

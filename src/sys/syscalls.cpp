@@ -2,12 +2,15 @@
 #include "arch/cpu.hpp"
 #include "crescent/devlink.h"
 #include "crescent/syscalls.h"
+#include "crescent/socket.h"
 #include "event_queue.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "stdio.hpp"
 #include "fs/vfs.hpp"
 #include "exe/elf_loader.hpp"
+#include "service.hpp"
+#include "sched/ipc.hpp"
 
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
@@ -46,6 +49,19 @@ struct UserAccessor {
 private:
 	usize addr;
 };
+
+static usize socket_address_type_to_size(SocketAddressType type) {
+	switch (type) {
+		case SOCKET_ADDRESS_TYPE_IPC:
+			return sizeof(IpcSocketAddress);
+		case SOCKET_ADDRESS_TYPE_IPV4:
+			return sizeof(Ipv4SocketAddress);
+		case SOCKET_ADDRESS_TYPE_IPV6:
+			return sizeof(Ipv6SocketAddress);
+		default:
+			return sizeof(SocketAddress);
+	}
+}
 
 extern "C" void syscall_handler(SyscallFrame* frame) {
 	auto num = *frame->num();
@@ -129,7 +145,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					break;
 				}
 				args[i].resize_without_null(view.len);
-				if (!UserAccessor(view.str).load(view.len)) {
+				if (!UserAccessor(view.str).load(args[i].data(), view.len)) {
 					*frame->ret() = ERR_FAULT;
 					success = false;
 					break;
@@ -157,7 +173,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			auto* process = new Process {name, true};
-			auto elf_result = elf_load(process, node);
+			auto elf_result = elf_load(process, node.data());
 			if (!elf_result) {
 				switch (elf_result.error()) {
 					case ElfLoadError::Invalid:
@@ -600,6 +616,265 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 #else
 #error Shutdown is not implemented
 #endif
+			break;
+		}
+		case SYS_SERVICE_CREATE:
+		{
+			if (thread->process->service) {
+				*frame->ret() = ERR_ALREADY_EXISTS;
+				break;
+			}
+
+			usize feature_count = *frame->arg1();
+			kstd::vector<kstd::string> features;
+			features.resize(feature_count);
+			bool success = true;
+			for (usize i = 0; i < feature_count; ++i) {
+				CrescentStringView view;
+				if (!UserAccessor(*frame->arg0() + i * sizeof(CrescentStringView)).load(view)) {
+					*frame->ret() = ERR_FAULT;
+					success = false;
+					break;
+				}
+				features[i].resize_without_null(view.len);
+				if (!UserAccessor(view.str).load(features[i].data(), view.len)) {
+					*frame->ret() = ERR_FAULT;
+					success = false;
+					break;
+				}
+			}
+
+			if (!success) {
+				break;
+			}
+
+			println("[kernel]: process ", thread->process->name, " advertises features: ");
+			for (auto& feature : features) {
+				println("\t", feature);
+			}
+
+			service_create(std::move(features), thread->process);
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_SERVICE_GET:
+		{
+			usize feature_count = *frame->arg2();
+			kstd::vector<kstd::string> needed_features;
+			needed_features.resize(feature_count);
+			bool success = true;
+			for (usize i = 0; i < feature_count; ++i) {
+				CrescentStringView view;
+				if (!UserAccessor(*frame->arg1() + i * sizeof(CrescentStringView)).load(view)) {
+					*frame->ret() = ERR_FAULT;
+					success = false;
+					break;
+				}
+				needed_features[i].resize_without_null(view.len);
+				if (!UserAccessor(view.str).load(needed_features[i].data(), view.len)) {
+					*frame->ret() = ERR_FAULT;
+					success = false;
+					break;
+				}
+			}
+
+			if (!success) {
+				break;
+			}
+
+			auto service = service_get(needed_features);
+			if (!service) {
+				*frame->ret() = ERR_NOT_EXISTS;
+				break;
+			}
+			auto handle = thread->process->handles.insert(std::move(service));
+
+			if (!UserAccessor(*frame->arg0()).store(handle)) {
+				thread->process->handles.remove(handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_SOCKET_CREATE:
+		{
+			auto type = static_cast<SocketType>(*frame->arg1());
+
+			switch (type) {
+				case SOCKET_TYPE_IPC:
+				{
+					auto ipc_guard = thread->process->ipc_socket.lock();
+					if (!*ipc_guard) {
+						*ipc_guard = kstd::make_shared<IpcSocket>();
+					}
+					kstd::shared_ptr<Socket> copy {*ipc_guard};
+					auto handle = thread->process->handles.insert(std::move(copy));
+
+					if (!UserAccessor(*frame->arg0()).store(handle)) {
+						thread->process->handles.remove(handle);
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+
+					*frame->ret() = 0;
+					break;
+				}
+				case SOCKET_TYPE_UDP:
+				case SOCKET_TYPE_TCP:
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+			}
+
+			break;
+		}
+		case SYS_SOCKET_CONNECT:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			SocketAddress generic_addr;
+			if (!UserAccessor(*frame->arg1()).load(generic_addr)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			auto socket = socket_ptr->data();
+
+			AnySocketAddress addr {};
+			if (generic_addr.type == SOCKET_ADDRESS_TYPE_IPC) {
+				IpcSocketAddress ipc;
+				if (!UserAccessor(*frame->arg1()).load(ipc)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+
+				auto target = thread->process->handles.get(ipc.target);
+				kstd::shared_ptr<ProcessDescriptor>* target_desc;
+				if (!target || !(target_desc = target->get<kstd::shared_ptr<ProcessDescriptor>>())) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				}
+				addr.ipc.generic.type = SOCKET_ADDRESS_TYPE_IPC;
+				addr.ipc.descriptor = target_desc->data();
+			}
+			else {
+				if (!UserAccessor(*frame->arg1()).load(&addr, socket_address_type_to_size(generic_addr.type))) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+
+			*frame->ret() = socket->connect(addr);
+
+			break;
+		}
+		case SYS_SOCKET_LISTEN:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto port = static_cast<uint32_t>(*frame->arg1());
+
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto socket = socket_ptr->data();
+			*frame->ret() = socket->listen(port);
+
+			break;
+		}
+		case SYS_SOCKET_ACCEPT:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto socket = socket_ptr->data();
+			kstd::shared_ptr<Socket> connection {nullptr};
+			auto ret = socket->accept(connection);
+
+			if (ret == 0) {
+				auto connection_handle = thread->process->handles.insert(std::move(connection));
+
+				if (!UserAccessor(*frame->arg1()).store(connection_handle)) {
+					thread->process->handles.remove(connection_handle);
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+
+			*frame->ret() = ret;
+
+			break;
+		}
+		case SYS_SOCKET_SEND:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto size = *frame->arg2();
+
+			kstd::vector<u8> data;
+			data.resize(size);
+			if (!UserAccessor(*frame->arg1()).load(data.data(), size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			auto socket = socket_ptr->data();
+			*frame->ret() = socket->send(data.data(), size);
+
+			break;
+		}
+		case SYS_SOCKET_RECEIVE:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			usize size = *frame->arg2();
+
+			auto socket = socket_ptr->data();
+
+			kstd::vector<u8> data;
+			data.resize(size);
+			*frame->ret() = socket->receive(data.data(), size);
+
+			if (!UserAccessor(*frame->arg1()).store(data.data(), size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			if (!UserAccessor(*frame->arg3()).store(size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
 			break;
 		}
 		default:

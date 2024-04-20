@@ -5,6 +5,8 @@
 #include "unique_ptr.hpp"
 #include "utils/spinlock.hpp"
 #include "dev/dev.hpp"
+#include "sys/socket.hpp"
+#include "sched/ipc.hpp"
 
 struct ProcessDescriptor;
 struct ThreadDescriptor;
@@ -13,7 +15,9 @@ using Handle = kstd::variant<
 	kstd::monostate,
 	kstd::shared_ptr<Device>,
 	ProcessDescriptor,
-	ThreadDescriptor
+	kstd::shared_ptr<ProcessDescriptor>,
+	ThreadDescriptor,
+	kstd::shared_ptr<Socket>
 	>;
 
 class HandleTable {

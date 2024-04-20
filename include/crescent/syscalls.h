@@ -9,7 +9,7 @@ typedef struct {
 	size_t len;
 } CrescentStringView;
 
-#define INVALID_CRESCENT_HANDLE ((size_t) -1)
+#define INVALID_CRESCENT_HANDLE ((CrescentHandle) -1)
 
 typedef enum {
 	SYS_THREAD_CREATE,
@@ -32,7 +32,17 @@ typedef enum {
 
 	SYS_POLL_EVENT,
 
-	SYS_SHUTDOWN
+	SYS_SHUTDOWN,
+
+	SYS_SERVICE_CREATE,
+	SYS_SERVICE_GET,
+
+	SYS_SOCKET_CREATE,
+	SYS_SOCKET_CONNECT,
+	SYS_SOCKET_LISTEN,
+	SYS_SOCKET_ACCEPT,
+	SYS_SOCKET_SEND,
+	SYS_SOCKET_RECEIVE
 } CrescentSyscall;
 
 typedef enum {
@@ -43,7 +53,8 @@ typedef enum {
 	ERR_NO_MEM,
 	ERR_BUFFER_TOO_SMALL,
 	ERR_TRY_AGAIN,
-	ERR_NOT_EXISTS
+	ERR_ALREADY_EXISTS,
+	ERR_NOT_EXISTS,
 } CrescentError;
 
 typedef enum {

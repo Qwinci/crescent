@@ -9,35 +9,18 @@ namespace kstd {
 		constexpr shared_ptr() = default;
 		constexpr shared_ptr(kstd::nullptr_t) : ptr {nullptr}, refs {nullptr} {} // NOLINT(*-explicit-constructor)
 
-		template<typename U = T>
-		explicit shared_ptr(U&& value) requires(!is_same_v<remove_reference_t<U>, shared_ptr>) { // NOLINT(*-explicit-constructor)
-			ptr = new U {std::forward<U>(value)};
-			refs = new size_t {1};
-		}
-		template<typename U = T>
-		explicit shared_ptr(const U& value) {
-			ptr = new U {value};
+		constexpr explicit shared_ptr(T* ptr) : ptr {ptr} {
 			refs = new size_t {1};
 		}
 
-		template<typename U> requires(__is_base_of(U, T))
-		constexpr operator shared_ptr<U>() { // NOLINT(*-explicit-constructor)
-			shared_ptr<U> new_ptr {};
-			new_ptr.ptr = ptr;
-			new_ptr.refs = refs;
-			if (ptr) {
-				++*refs;
-			}
-			return new_ptr;
-		}
-
-		shared_ptr(shared_ptr&& other) { // NOLINT(*-explicit-constructor)
+		constexpr shared_ptr(shared_ptr&& other) {
 			ptr = other.ptr;
 			refs = other.refs;
 			other.ptr = nullptr;
 			other.refs = nullptr;
 		}
-		shared_ptr(const shared_ptr& other) { // NOLINT(*-explicit-constructor)
+
+		constexpr shared_ptr(const shared_ptr& other) {
 			ptr = other.ptr;
 			refs = other.refs;
 			if (ptr) {
@@ -45,9 +28,24 @@ namespace kstd {
 			}
 		}
 
-		shared_ptr& operator=(shared_ptr&& other) {
-			assert(this != &other);
+		template<typename U>
+		constexpr shared_ptr(shared_ptr<U>&& other) { // NOLINT(*-explicit-constructor)
+			ptr = other.ptr;
+			refs = other.refs;
+			other.ptr = nullptr;
+			other.refs = nullptr;
+		}
+		template<typename U>
+		shared_ptr(const shared_ptr<U>& other) { // NOLINT(*-explicit-constructor)
+			ptr = other.ptr;
+			refs = other.refs;
+			if (ptr) {
+				++*refs;
+			}
+		}
 
+		template<typename U = T>
+		shared_ptr& operator=(shared_ptr<U>&& other) {
 			if (ptr && --*refs == 0) {
 				delete ptr;
 			}
@@ -57,9 +55,8 @@ namespace kstd {
 			other.refs = nullptr;
 			return *this;
 		}
-		shared_ptr& operator=(const shared_ptr& other) {
-			assert(this != &other);
-
+		template<typename U = T>
+		shared_ptr& operator=(const shared_ptr<U>& other) {
 			if (ptr && --*refs == 0) {
 				delete ptr;
 			}
@@ -72,15 +69,11 @@ namespace kstd {
 			return *this;
 		}
 
-		constexpr T* data() const {
+		constexpr T* data() {
 			return ptr;
 		}
 
-		constexpr operator T*() { // NOLINT(*-explicit-constructor)
-			return ptr;
-		}
-
-		constexpr operator const T*() const { // NOLINT(*-explicit-constructor)
+		constexpr const T* data() const {
 			return ptr;
 		}
 
@@ -102,6 +95,10 @@ namespace kstd {
 			return ptr;
 		}
 
+		constexpr explicit operator bool() const {
+			return ptr;
+		}
+
 		~shared_ptr() {
 			if (ptr && --*refs == 0) {
 				delete ptr;
@@ -109,12 +106,16 @@ namespace kstd {
 			}
 		}
 
+	private:
+		template<typename>
+		friend class shared_ptr;
+
 		T* ptr {};
 		size_t* refs {};
 	};
 
 	template<typename T, typename... Args>
 	shared_ptr<T> make_shared(Args&&... args) {
-		return shared_ptr<T> {T {std::forward<Args&&>(args)...}};
+		return shared_ptr<T> {new T {std::forward<Args&&>(args)...}};
 	}
 }

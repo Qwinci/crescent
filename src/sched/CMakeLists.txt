@@ -3,4 +3,5 @@ target_sources(crescent PRIVATE
 	process.cpp
 	sched.cpp
 	thread.cpp
+	ipc.cpp
 )

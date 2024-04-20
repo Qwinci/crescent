@@ -1,6 +1,7 @@
 #pragma once
 #include "crescent/devlink.h"
 #include "crescent/event.h"
+#include "crescent/socket.h"
 
 int sys_thread_create(CrescentHandle& handle, const char* name, size_t name_len, void (*fn)(void* arg), void* arg);
 [[noreturn]] void sys_thread_exit(int status);
@@ -16,3 +17,13 @@ int sys_devlink(const DevLink& dev_link);
 int sys_close_handle(CrescentHandle handle);
 int sys_poll_event(InputEvent& event, size_t timeout_us);
 int sys_shutdown(ShutdownType type);
+
+int sys_service_create(const CrescentStringView* features, size_t feature_count);
+int sys_service_get(CrescentHandle& handle, const CrescentStringView* needed_features, size_t feature_count);
+
+int sys_socket_create(CrescentHandle& handle, SocketType type);
+int sys_socket_connect(CrescentHandle handle, SocketAddress& address);
+int sys_socket_listen(CrescentHandle handle, uint32_t port);
+int sys_socket_accept(CrescentHandle handle, CrescentHandle& connection_handle);
+int sys_socket_send(CrescentHandle handle, const void* data, size_t size);
+int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& actual);

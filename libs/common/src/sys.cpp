@@ -58,3 +58,35 @@ int sys_poll_event(InputEvent& event, size_t timeout_us) {
 int sys_shutdown(ShutdownType type) {
 	return static_cast<int>(syscall(SYS_SHUTDOWN, type));
 }
+
+int sys_service_create(const CrescentStringView* features, size_t feature_count) {
+	return static_cast<int>(syscall(SYS_SERVICE_CREATE, features, feature_count));
+}
+
+int sys_service_get(CrescentHandle& handle, const CrescentStringView* needed_features, size_t feature_count) {
+	return static_cast<int>(syscall(SYS_SERVICE_GET, &handle, needed_features, feature_count));
+}
+
+int sys_socket_create(CrescentHandle& handle, SocketType type) {
+	return static_cast<int>(syscall(SYS_SOCKET_CREATE, &handle, type));
+}
+
+int sys_socket_connect(CrescentHandle handle, SocketAddress& address) {
+	return static_cast<int>(syscall(SYS_SOCKET_CONNECT, handle, &address));
+}
+
+int sys_socket_listen(CrescentHandle handle, uint32_t port) {
+	return static_cast<int>(syscall(SYS_SOCKET_LISTEN, handle, port));
+}
+
+int sys_socket_accept(CrescentHandle handle, CrescentHandle& connection_handle) {
+	return static_cast<int>(syscall(SYS_SOCKET_ACCEPT, handle, &connection_handle));
+}
+
+int sys_socket_send(CrescentHandle handle, const void* data, size_t size) {
+	return static_cast<int>(syscall(SYS_SOCKET_SEND, handle, data, size));
+}
+
+int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& actual) {
+	return static_cast<int>(syscall(SYS_SOCKET_RECEIVE, handle, data, size, &actual));
+}

@@ -70,7 +70,7 @@ namespace acpi {
 	auto root = INITRD_VFS->get_root();
 	auto bin = root->lookup("bin");
 	auto desktop_file = bin->lookup("desktop");
-	auto elf_result = elf_load(user_process, desktop_file);
+	auto elf_result = elf_load(user_process, desktop_file.data());
 	assert(elf_result);
 
 	auto user_arg = reinterpret_cast<void*>(1234);

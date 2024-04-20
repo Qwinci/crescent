@@ -30,7 +30,7 @@ CrescentHandle HandleTable::insert(Handle&& handle) {
 		index = count++;
 	}
 
-	table[index] = kstd::shared_ptr<Handle> {std::move(handle)};
+	table[index] = kstd::make_shared<Handle>(std::move(handle));
 
 	return index;
 }
@@ -46,7 +46,7 @@ bool HandleTable::remove(CrescentHandle handle) {
 	if (loc->get<kstd::monostate>()) {
 		return false;
 	}
-	loc = kstd::shared_ptr<Handle> {Handle {kstd::monostate {}}};
+	loc = kstd::make_shared<Handle>(kstd::monostate {});
 	free_handles.push(handle);
 
 	return true;

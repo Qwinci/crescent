@@ -7,6 +7,8 @@
 #include "manually_init.hpp"
 #include "handle_table.hpp"
 
+struct IpcSocket;
+
 enum class MemoryAllocFlags {
 	Read = 1 << 0,
 	Write = 1 << 1,
@@ -94,6 +96,8 @@ struct Process {
 
 	PageMap page_map;
 	HandleTable handles {};
+	struct Service* service {};
+	Spinlock<kstd::shared_ptr<IpcSocket>> ipc_socket {nullptr};
 	bool user;
 	bool killed {};
 private:

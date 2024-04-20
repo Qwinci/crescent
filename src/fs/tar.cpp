@@ -56,7 +56,7 @@ struct TarFileNode : public VNode {
 			next_name.remove_suffix("/");
 
 			if (next_name == name) {
-				return kstd::shared_ptr<VNode> {std::move(TarFileNode {next})};
+				return kstd::make_shared<TarFileNode>(next);
 			}
 
 			offset += 512 + ALIGNUP(parse_oct(next->size), 512);
@@ -93,7 +93,7 @@ struct TarFileNode : public VNode {
 
 struct TarVfs : public Vfs {
 	kstd::shared_ptr<VNode> get_root() override {
-		return kstd::shared_ptr<VNode> {std::move(TarFileNode {hdr})};
+		return kstd::make_shared<TarFileNode>(hdr);
 	}
 
 	const TarHeader* hdr {};

@@ -2,6 +2,8 @@
 #include "mem/mem.hpp"
 #include "mem/pmalloc.hpp"
 #include "mem/vspace.hpp"
+#include "sys/service.hpp"
+#include "ipc.hpp"
 
 Process::Process(kstd::string_view name, bool user)
 	: name {name}, page_map {user ? &KERNEL_PROCESS->page_map : nullptr}, user {user} {
@@ -10,6 +12,10 @@ Process::Process(kstd::string_view name, bool user)
 }
 
 Process::~Process() {
+	if (service) {
+		service_remove(this);
+	}
+
 	auto guard = mappings.lock();
 
 	Mapping* next;

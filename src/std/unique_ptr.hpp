@@ -9,33 +9,35 @@ namespace kstd {
 		constexpr unique_ptr() = default;
 		constexpr unique_ptr(kstd::nullptr_t) : ptr {nullptr} {} // NOLINT(*-explicit-constructor)
 
-		constexpr unique_ptr(T* new_ptr) {
+		constexpr explicit unique_ptr(T* new_ptr) {
 			ptr = new_ptr;
 		}
 
-		unique_ptr(unique_ptr&& other) { // NOLINT(*-explicit-constructor)
+		template<typename U = T>
+		unique_ptr(unique_ptr<U>&& other) { // NOLINT(*-explicit-constructor)
 			ptr = other.ptr;
 			other.ptr = nullptr;
 		}
 		unique_ptr(const unique_ptr&) = delete;
 
-		unique_ptr& operator=(unique_ptr&& other) {
+		template<typename U = T>
+		unique_ptr& operator=(unique_ptr<U>&& other) {
 			ptr = other.ptr;
 			return *this;
 		}
 
 		constexpr unique_ptr& operator=(const unique_ptr&) = delete;
 
-		constexpr T* data() const {
+		constexpr T* data() {
 			return ptr;
 		}
 
-		constexpr operator T*() { // NOLINT(*-explicit-constructor)
-			return &ptr;
+		constexpr const T* data() const {
+			return ptr;
 		}
 
-		constexpr operator const T*() const { // NOLINT(*-explicit-constructor)
-			return &ptr;
+		constexpr explicit operator bool() const {
+			return ptr;
 		}
 
 		constexpr T& operator*() {
@@ -61,6 +63,9 @@ namespace kstd {
 		}
 
 	private:
+		template<typename>
+		friend class unique_ptr;
+
 		T* ptr {};
 	};
 
