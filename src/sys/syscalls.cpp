@@ -713,13 +713,14 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_SOCKET_CREATE:
 		{
 			auto type = static_cast<SocketType>(*frame->arg1());
+			int flags = static_cast<int>(*frame->arg2());
 
 			switch (type) {
 				case SOCKET_TYPE_IPC:
 				{
 					auto ipc_guard = thread->process->ipc_socket.lock();
 					if (!*ipc_guard) {
-						*ipc_guard = kstd::make_shared<IpcSocket>();
+						*ipc_guard = kstd::make_shared<IpcSocket>(flags);
 					}
 					kstd::shared_ptr<Socket> copy {*ipc_guard};
 					auto handle = thread->process->handles.insert(std::move(copy));
@@ -807,6 +808,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_SOCKET_ACCEPT:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			int connection_flags = static_cast<int>(*frame->arg2());
 
 			auto handle = thread->process->handles.get(user_handle);
 			kstd::shared_ptr<Socket>* socket_ptr;
@@ -817,7 +819,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			auto socket = socket_ptr->data();
 			kstd::shared_ptr<Socket> connection {nullptr};
-			auto ret = socket->accept(connection);
+			auto ret = socket->accept(connection, connection_flags);
 
 			if (ret == 0) {
 				auto connection_handle = thread->process->handles.insert(std::move(connection));

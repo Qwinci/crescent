@@ -3,6 +3,8 @@
 #include "dev/event.hpp"
 
 struct IpcSocket final : public Socket {
+	constexpr explicit IpcSocket(int flags) : Socket {flags} {}
+
 	~IpcSocket() override;
 
 	static constexpr usize IPC_BUFFER_SIZE = 512;
@@ -10,17 +12,17 @@ struct IpcSocket final : public Socket {
 	int connect(AnySocketAddress& address) override;
 	int disconnect() override;
 	int listen(uint32_t port) override;
-	int accept(kstd::shared_ptr<Socket>& connection) override;
+	int accept(kstd::shared_ptr<Socket>& connection, int connection_flags) override;
 	int send(const void* data, usize size) override;
 	int receive(void* data, usize& size) override;
 
-	IpcSocket* pending;
-	IpcSocket* target;
-	Event pending_event;
-	u8 buf[IPC_BUFFER_SIZE];
-	usize buf_read_ptr;
-	usize buf_write_ptr;
-	usize buf_size;
-	Event buf_event;
-	Spinlock<void> lock;
+	IpcSocket* pending {};
+	IpcSocket* target {};
+	Event pending_event {};
+	u8 buf[IPC_BUFFER_SIZE] {};
+	usize buf_read_ptr {};
+	usize buf_write_ptr {};
+	usize buf_size {};
+	Event buf_event {};
+	Spinlock<void> lock {};
 };

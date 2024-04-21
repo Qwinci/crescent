@@ -37,4 +37,9 @@ typedef struct {
 	uint32_t port;
 } Ipv6SocketAddress;
 
+typedef enum {
+	SOCK_NONE = 0,
+	SOCK_NONBLOCK = 1 << 0
+} SocketFlag;
+
 #endif

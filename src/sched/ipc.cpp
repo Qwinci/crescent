@@ -21,7 +21,7 @@ int IpcSocket::connect(AnySocketAddress& address) {
 		}
 		auto target_socket_guard = (*process_guard)->ipc_socket.lock();
 		if (!*target_socket_guard) {
-			*target_socket_guard = kstd::make_shared<IpcSocket>();
+			*target_socket_guard = kstd::make_shared<IpcSocket>(flags);
 		}
 		auto target_guard = (*target_socket_guard)->lock.lock();
 		(*target_socket_guard)->pending = this;
@@ -34,6 +34,7 @@ int IpcSocket::connect(AnySocketAddress& address) {
 }
 
 int IpcSocket::disconnect() {
+	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 
 	if (!target) {
@@ -49,20 +50,31 @@ int IpcSocket::disconnect() {
 }
 
 int IpcSocket::listen(uint32_t) {
+	if (flags & SOCK_NONBLOCK) {
+		IrqGuard irq_guard {};
+		auto guard = lock.lock();
+		if (!pending) {
+			return ERR_TRY_AGAIN;
+		}
+		return 0;
+	}
+
 	pending_event.wait();
 	pending_event.reset();
+	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 	assert(pending);
 	return 0;
 }
 
-int IpcSocket::accept(kstd::shared_ptr<Socket>& connection) {
+int IpcSocket::accept(kstd::shared_ptr<Socket>& connection, int connection_flags) {
+	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 	if (!pending) {
 		return ERR_INVALID_ARGUMENT;
 	}
 
-	auto ipc_socket = kstd::make_shared<IpcSocket>();
+	auto ipc_socket = kstd::make_shared<IpcSocket>(connection_flags);
 	auto target_guard = pending->lock.lock();
 
 	ipc_socket->target = pending;
@@ -74,6 +86,7 @@ int IpcSocket::accept(kstd::shared_ptr<Socket>& connection) {
 }
 
 int IpcSocket::send(const void* data, usize size) {
+	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 
 	if (!target) {
@@ -85,6 +98,10 @@ int IpcSocket::send(const void* data, usize size) {
 		{
 			auto target_guard = target->lock.lock();
 			wait = target->buf_size + size > IPC_BUFFER_SIZE;
+		}
+
+		if (wait && (flags & SOCK_NONBLOCK)) {
+			return ERR_TRY_AGAIN;
 		}
 
 		if (wait) {
@@ -118,6 +135,7 @@ int IpcSocket::send(const void* data, usize size) {
 int IpcSocket::receive(void* data, usize& size) {
 	bool wait;
 	{
+		IrqGuard irq_guard {};
 		auto guard = lock.lock();
 		if (!target && !buf_size) {
 			return ERR_INVALID_ARGUMENT;
@@ -125,11 +143,16 @@ int IpcSocket::receive(void* data, usize& size) {
 		wait = !buf_size;
 	}
 
+	if (wait && (flags & SOCK_NONBLOCK)) {
+		return ERR_TRY_AGAIN;
+	}
+
 	if (wait) {
 		buf_event.wait();
 		buf_event.reset();
 	}
 
+	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 
 	auto orig_buf_size = buf_size;

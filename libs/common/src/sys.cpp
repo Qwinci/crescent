@@ -67,8 +67,8 @@ int sys_service_get(CrescentHandle& handle, const CrescentStringView* needed_fea
 	return static_cast<int>(syscall(SYS_SERVICE_GET, &handle, needed_features, feature_count));
 }
 
-int sys_socket_create(CrescentHandle& handle, SocketType type) {
-	return static_cast<int>(syscall(SYS_SOCKET_CREATE, &handle, type));
+int sys_socket_create(CrescentHandle& handle, SocketType type, int flags) {
+	return static_cast<int>(syscall(SYS_SOCKET_CREATE, &handle, type, flags));
 }
 
 int sys_socket_connect(CrescentHandle handle, SocketAddress& address) {
@@ -79,8 +79,8 @@ int sys_socket_listen(CrescentHandle handle, uint32_t port) {
 	return static_cast<int>(syscall(SYS_SOCKET_LISTEN, handle, port));
 }
 
-int sys_socket_accept(CrescentHandle handle, CrescentHandle& connection_handle) {
-	return static_cast<int>(syscall(SYS_SOCKET_ACCEPT, handle, &connection_handle));
+int sys_socket_accept(CrescentHandle handle, CrescentHandle& connection_handle, int connection_flags) {
+	return static_cast<int>(syscall(SYS_SOCKET_ACCEPT, handle, &connection_handle, connection_flags));
 }
 
 int sys_socket_send(CrescentHandle handle, const void* data, size_t size) {
