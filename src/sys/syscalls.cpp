@@ -95,7 +95,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto* new_thread = new Thread {name, cpu, thread->process, fn, arg};
 
 			CrescentHandle handle = thread->process->handles.insert(ThreadDescriptor {
-				.thread {new_thread},
+				.thread {Spinlock {new_thread}},
 				.exit_status = 0
 			});
 			auto descriptor = thread->process->handles.get(handle)->get<ThreadDescriptor>();
@@ -187,7 +187,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			CrescentHandle handle = thread->process->handles.insert(ProcessDescriptor {
-				.process {process},
+				.process {Spinlock {process}},
 				.exit_status = 0
 			});
 			auto descriptor = thread->process->handles.get(handle)->get<ProcessDescriptor>();

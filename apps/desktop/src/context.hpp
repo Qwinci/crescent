@@ -10,9 +10,13 @@ struct Context {
 	uint32_t height {};
 	uint32_t x_off {};
 	uint32_t y_off {};
-	Rect clip_rect {};
 	std::vector<Rect> dirty_rects {};
+
+	void set_clip_rect(const Rect& rect);
 
 	void draw_filled_rect(const Rect& rect, uint32_t color) const;
 	void draw_rect_outline(const Rect& rect, uint32_t color, uint32_t thickness) const;
+
+private:
+	Rect clip_rect {};
 };

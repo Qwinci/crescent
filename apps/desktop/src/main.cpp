@@ -2,7 +2,9 @@
 #include "context.hpp"
 #include "desktop.hpp"
 #include "sys.hpp"
+#include "windower/protocol.hpp"
 #include <stdio.h>
+#include <string.h>
 
 static constexpr size_t US_IN_MS = 1000;
 static constexpr size_t US_IN_S = US_IN_MS * 1000;
@@ -22,50 +24,83 @@ static constexpr size_t US_IN_S = US_IN_MS * 1000;
 	}
 }
 
-int main() {
+template<typename T>
+struct NoDestroy {
+	template<typename... Args>
+	constexpr NoDestroy(Args&&... args) : data {.value {std::forward<Args&&>(args)...}} {}
+
+	constexpr T* operator->() {
+		return &data.value;
+	}
+
+	constexpr const T* operator->() const {
+		return &data.value;
+	}
+
+	constexpr T& operator*() {
+		return data.value;
+	}
+
+	constexpr const T& operator*() const {
+		return data.value;
+	}
+
+private:
+	union Data {
+		constexpr ~Data() {}
+
+		T value;
+	} data;
+};
+
+static NoDestroy<std::vector<std::pair<CrescentHandle, CrescentHandle>>> CONNECTIONS {};
+
+void listener_thread(void* arg) {
+	auto* desktop = static_cast<Desktop*>(arg);
+
 	CrescentStringView features[] {
 		{.str = "window_manager", .len = sizeof("window_manager") - 1}
 	};
 	auto res = sys_service_create(features, sizeof(features) / sizeof(*features));
 	if (res != 0) {
 		puts("failed to create desktop service");
-		return 1;
+		sys_thread_exit(1);
 	}
 
 	CrescentHandle console_handle;
 	res = sys_process_create(console_handle, "/bin/console", sizeof("/bin/console") - 1, nullptr, 0);
 	if (res != 0) {
 		puts("failed to create console process");
-		return 1;
+		sys_thread_exit(1);
 	}
 	CrescentHandle ipc_listen_socket;
-	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC);
+	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC, SOCK_NONE);
 	if (res != 0) {
 		puts("failed to create ipc socket");
-		return 1;
+		sys_thread_exit(1);
 	}
-	res = sys_socket_listen(ipc_listen_socket, 0);
-	if (res != 0) {
-		puts("failed to listen for connections");
-		return 1;
-	}
-	puts("[desktop]: got a connection");
-	CrescentHandle connection_socket;
-	res = sys_socket_accept(ipc_listen_socket, connection_socket);
-	if (res != 0) {
-		puts("failed to accept connection");
-		return 1;
-	}
-	puts("[desktop]: connection accepted");
-	sys_close_handle(ipc_listen_socket);
-	res = sys_socket_send(connection_socket, "hello from desktop to console", sizeof("hello from desktop to console"));
-	if (res != 0) {
-		puts("failed to send data");
-		return 1;
-	}
-	puts("[desktop]: data sent");
-	sys_close_handle(connection_socket);
 
+	while (true) {
+		res = sys_socket_listen(ipc_listen_socket, 0);
+		if (res != 0) {
+			puts("failed to listen for connections");
+			sys_thread_exit(1);
+		}
+		puts("[desktop]: got a connection");
+		CrescentHandle connection_socket;
+		res = sys_socket_accept(ipc_listen_socket, connection_socket, SOCK_NONBLOCK);
+		if (res != 0) {
+			puts("failed to accept connection");
+			sys_thread_exit(1);
+		}
+		puts("[desktop]: connection accepted");
+		CONNECTIONS->push_back({console_handle, connection_socket});
+	}
+}
+
+namespace protocol = windower::protocol;
+
+int main() {
 	//dumb_loop();
 
 	DevLinkRequest request {
@@ -115,13 +150,19 @@ int main() {
 	void* mapping = fb_resp->map.mapping;
 	sys_close_handle(handle);
 
-	Context ctx {
-		.fb = static_cast<uint32_t*>(mapping),
-		.pitch_32 = info.pitch / 4,
-		.width = info.width,
-		.height = info.height
-	};
+	Context ctx {};
+	ctx.fb = static_cast<uint32_t*>(mapping);
+	ctx.pitch_32 = info.pitch / 4;
+	ctx.width = info.width;
+	ctx.height = info.height;
 	Desktop desktop {ctx};
+
+	CrescentHandle listener_thread_handle;
+	status = sys_thread_create(listener_thread_handle, "listener", sizeof("listener") - 1, listener_thread, &desktop);
+	if (status != 0) {
+		puts("[desktop]: failed to create listener thread");
+		return 1;
+	}
 
 	auto window1 = std::make_unique<Window>();
 	window1->set_pos(0, 0);
@@ -170,6 +211,58 @@ int main() {
 	auto mouse_y = static_cast<int32_t>(info.height / 2);
 
 	while (true) {
+		for (auto [proc_handle, connection] : *CONNECTIONS) {
+			protocol::Request req {};
+			size_t received;
+			auto req_status = sys_socket_receive(connection, &req, sizeof(req), received);
+			if (req_status == ERR_TRY_AGAIN) {
+				continue;
+			}
+
+			// todo check status and size
+
+			protocol::Response resp {};
+
+			switch (req.type) {
+				case protocol::Request::CreateWindow:
+				{
+					auto window = std::make_unique<Window>();
+					window->set_pos(req.create_window.x, req.create_window.y);
+					window->set_size(req.create_window.width, req.create_window.height);
+
+					// todo check errors
+					CrescentHandle fb_shared_mem_handle;
+					sys_shared_mem_alloc(fb_shared_mem_handle, window->rect.width * window->rect.height * 4);
+					CrescentHandle fb_shareable_handle;
+					sys_shared_mem_share(fb_shared_mem_handle, proc_handle, fb_shareable_handle);
+					sys_shared_mem_map(fb_shared_mem_handle, reinterpret_cast<void**>(&window->fb));
+					memset(window->fb, 0, window->rect.width * window->rect.height * 4);
+					sys_close_handle(fb_shared_mem_handle);
+
+					desktop.root_window->add_child(std::move(window));
+
+					desktop.ctx.dirty_rects.push_back({
+						.x = req.create_window.x,
+						.y = req.create_window.y,
+						.width = req.create_window.width,
+						.height = req.create_window.height
+					});
+
+					resp.type = protocol::Response::WindowCreated;
+					// todo
+					resp.window_created.window_handle = reinterpret_cast<void*>(1);
+					resp.window_created.fb_handle = fb_shareable_handle;
+
+					// todo check status
+					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+
+					break;
+				}
+				case protocol::Request::CloseWindow:
+					break;
+			}
+		}
+
 		InputEvent event;
 		if (sys_poll_event(event, US_IN_MS * 500) == ERR_TRY_AGAIN) {
 

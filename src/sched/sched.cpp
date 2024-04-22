@@ -113,7 +113,7 @@ void Scheduler::do_schedule() const {
 		prev->cpu->sched_destroy_list.lock()->push(prev);
 		prev->cpu->sched_destroy_event.signal_one();
 	}
-	else if (prev->status == Thread::Status::Running) {
+	else if (prev != &prev->cpu->idle_thread && prev->status == Thread::Status::Running) {
 		prev->status = Thread::Status::Waiting;
 		prev->cpu->scheduler.queue(prev);
 	}

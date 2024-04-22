@@ -1,40 +1,30 @@
 #include <stdio.h>
-#include "sys.hpp"
+#include "windower/windower.hpp"
 
 int main() {
-	CrescentHandle desktop_handle;
-	CrescentStringView features[] {
-		{.str = "window_manager", .len = sizeof("window_manager") - 1}
-	};
-	auto ret = sys_service_get(desktop_handle, features, sizeof(features) / sizeof(*features));
-	if (ret != 0) {
-		puts("failed to get window manager service");
+	windower::Windower windower;
+	if (auto status = windower::Windower::connect(windower); status != 0) {
+		puts("[console]: failed to connect to window manager");
 		return 1;
 	}
-	puts("[console]: found window manager service");
-	CrescentHandle connection;
-	ret = sys_socket_create(connection, SOCKET_TYPE_IPC);
-	if (ret != 0) {
-		puts("failed to create ipc socket");
+	windower::Window window;
+	if (auto status = windower.create_window(window, 0, 0, 400, 300); status != 0) {
+		puts("[console]: failed to create window");
 		return 1;
 	}
-	IpcSocketAddress addr {
-		.generic {.type = SOCKET_ADDRESS_TYPE_IPC},
-		.target = desktop_handle
-	};
-	puts("[console]: connecting to window manager");
-	ret = sys_socket_connect(connection, addr.generic);
-	if (ret != 0) {
-		puts("failed to connect to window manager");
+
+	if (window.map_fb() != 0) {
+		puts("[console]: failed to map fb");
+		return 1;
 	}
-	puts("[console]: connected to window manager");
-	char buf[128] {};
-	size_t received;
-	ret = sys_socket_receive(connection, buf, 128, received);
-	if (ret != 0) {
-		puts("failed to receive data");
+	auto* fb = static_cast<uint32_t*>(window.get_fb_mapping());
+	for (uint32_t y = 0; y < 32; ++y) {
+		for (uint32_t x = 0; x < 32; ++x) {
+			fb[y * 400 + x] = 0xFF0000;
+		}
 	}
-	puts("[console]: received data from window manager:");
-	puts(buf);
-	return 0;
+
+	while (true) {
+		asm volatile("");
+	}
 }

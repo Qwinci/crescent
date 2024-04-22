@@ -1,4 +1,5 @@
 #include "window.hpp"
+#include <string.h>
 
 void Window::draw(Context& ctx) {
 	if (!parent) {
@@ -102,16 +103,53 @@ void Window::draw_generic(Context& ctx) {
 
 	if (!no_decorations) {
 		for (auto& clip_rect : clip_rects) {
-			ctx.clip_rect = clip_rect;
+			ctx.set_clip_rect(clip_rect);
 			ctx.draw_filled_rect(titlebar_rect, TITLEBAR_ACTIVE_COLOR);
 		}
 
 		ctx.y_off += TITLEBAR_HEIGHT;
 	}
 
+	Rect ctx_rect {
+		.x = 0,
+		.y = 0,
+		.width = ctx.width,
+		.height = ctx.height
+	};
+
 	for (auto& clip_rect : clip_rects) {
-		ctx.clip_rect = clip_rect;
+		ctx.set_clip_rect(clip_rect);
 		draw(ctx);
+
+		if (fb && clip_rect.intersects(ctx_rect)) {
+			auto res_rect = clip_rect.intersect(ctx_rect);
+
+			auto rect_x = rect.x + ctx.x_off;
+			auto rect_y = rect.y + ctx.y_off;
+
+			if (rect_x + rect.width <= res_rect.x || rect_y >= res_rect.y + res_rect.height) {
+				continue;
+			}
+
+			res_rect = res_rect.intersect({
+				.x = rect_x,
+				.y = rect_y,
+				.width = rect.width,
+				.height = rect.height
+			});
+
+			auto abs_pos_offset = get_abs_pos_offset();
+
+			for (uint32_t y = res_rect.y; y < res_rect.y + res_rect.height; ++y) {
+				uint32_t rel_y = y - abs_pos_offset.y - rect.y;
+				if (!no_decorations) {
+					rel_y -= TITLEBAR_HEIGHT;
+				}
+				uint32_t rel_x = res_rect.x - abs_pos_offset.x - rect.x;
+				size_t to_copy = std::min(res_rect.width, rect.width) * 4;
+				memcpy(&ctx.fb[y * ctx.pitch_32 + res_rect.x], &fb[rel_y * rect.width + rel_x], to_copy);
+			}
+		}
 	}
 
 	for (auto& child : children) {

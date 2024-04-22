@@ -1,6 +1,20 @@
 #include "context.hpp"
 #include <algorithm>
 
+void Context::set_clip_rect(const Rect& rect) {
+	Rect ctx_rect {
+		.x = 0,
+		.y = 0,
+		.width = width,
+		.height = height
+	};
+	if (!rect.intersects(ctx_rect)) {
+		clip_rect = {.x = 0, .y = 0, .width = 0, .height = 0};
+		return;
+	}
+	clip_rect = rect.intersect(ctx_rect);
+}
+
 void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 	auto rect_x = rect.x + x_off;
 	auto rect_y = rect.y + y_off;

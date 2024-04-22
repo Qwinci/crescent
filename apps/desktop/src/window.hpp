@@ -52,6 +52,7 @@ struct Window {
 
 	Window* parent;
 	std::vector<std::unique_ptr<Window>> children;
+	uint32_t* fb {};
 	Rect rect {};
 	uint32_t bg_color {};
 	bool no_decorations {};

@@ -15,7 +15,7 @@ static void backtrace_display() {
 	asm volatile("mov %%rbp, %0" : "=rm"(frame_ptr));
 	int limit = 20;
 	while (limit--) {
-		if (reinterpret_cast<usize>(frame_ptr) < 0xFFFF800000000000) {
+		if (reinterpret_cast<usize>(frame_ptr) < 0xFFFFFFFF80000000) {
 			return;
 		}
 		frame = *frame_ptr;

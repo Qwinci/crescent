@@ -14,6 +14,7 @@ set(QEMU_FLAGS -m 4G -M q35,smm=off -smp 1
 	#-device usb-kbd
 	#-device usb-mouse
 	-trace "*xhci*"
+	-serial stdio
 	#-device ich9-intel-hda,bus=pcie.0,addr=0x1B,debug=3
 	#-device hda-output,audiodev=hda,debug=3
 	#-audiodev pa,id=hda

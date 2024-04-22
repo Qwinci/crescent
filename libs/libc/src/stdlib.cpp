@@ -46,7 +46,33 @@ struct Arena {
 };
 
 namespace {
+	struct Spinlock {
+		struct Guard {
+			~Guard() {
+				__atomic_store_n(&owner->_lock, false, __ATOMIC_RELEASE);
+			}
+
+			Spinlock* owner;
+		};
+
+		Guard lock() {
+			while (true) {
+				if (!__atomic_exchange_n(&_lock, true, __ATOMIC_ACQUIRE)) {
+					break;
+				}
+				while (__atomic_load_n(&_lock, __ATOMIC_RELAXED)) {
+					asm volatile("pause" : : : "memory");
+				}
+			}
+
+			return Guard {this};
+		}
+
+		bool _lock;
+	};
+
 	Arena* FREE_ARENAS[SIZE_COUNT];
+	Spinlock LOCK {};
 }
 
 void* malloc(size_t size) {
@@ -64,6 +90,8 @@ void* malloc(size_t size) {
 		};
 		return &hdr[1];
 	}
+
+	auto guard = LOCK.lock();
 
 	auto index = size_to_index(size);
 	auto& arena = FREE_ARENAS[index];
@@ -97,6 +125,7 @@ void* malloc(size_t size) {
 	}
 
 	auto* hdr = arena->freelist;
+
 	arena->freelist = hdr->next;
 	--arena->num_free;
 	if (!arena->num_free) {
@@ -156,6 +185,8 @@ void free(void* ptr) {
 	auto* hdr = static_cast<Header*>(ptr) - 1;
 	if (hdr->magic != ALLOC_MAGIC) {
 		puts("invalid allocation magic");
+		auto ret = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+		printf("%d %d\n", (int) (ret & 0xFFFFFFFF), (int) (ret >> 32 & 0xFFFFFFFF));
 		__builtin_trap();
 	}
 	hdr->magic = 0;
@@ -165,6 +196,8 @@ void free(void* ptr) {
 	}
 	else {
 		auto index = size_to_index(hdr->size);
+
+		auto guard = LOCK.lock();
 
 		auto* arena = hdr->arena;
 		if (!arena->num_free) {

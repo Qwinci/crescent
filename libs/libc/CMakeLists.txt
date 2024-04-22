@@ -4,6 +4,7 @@ LIB(libc
 target_sources(libc PRIVATE
 	src/string.cpp
 	src/stdlib.cpp
+	src/cxx.cpp
 )
 
 target_include_directories(libc SYSTEM PUBLIC include)

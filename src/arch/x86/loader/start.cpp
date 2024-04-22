@@ -9,6 +9,7 @@
 #include "mem/vspace.hpp"
 #include "new.hpp"
 #include "sched/process.hpp"
+#include "x86/io.hpp"
 
 LIMINE_BASE_REVISION(1)
 
@@ -135,8 +136,19 @@ static void run_constructors() {
 
 extern "C" [[noreturn]] void arch_start(BootInfo info);
 
+struct SerialLog : LogSink {
+	void write(kstd::string_view str) override {
+		for (auto c : str) {
+			x86::out1(0x3F8, c);
+		}
+	}
+};
+ManuallyDestroy<SerialLog> SERIAL_LOG {};
+
 extern "C" [[noreturn, gnu::used]] void early_start() {
 	run_constructors();
+
+	LOG.lock()->register_sink(&*SERIAL_LOG);
 
 	usize max_addr = 0;
 	for (usize i = 0; i < MMAP_REQUEST.response->entry_count; ++i) {

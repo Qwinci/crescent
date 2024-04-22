@@ -19,7 +19,7 @@ void Desktop::draw() {
 
 	root_window->draw_generic(ctx);
 
-	ctx.clip_rect = {.x = 0, .y = 0, .width = ctx.width, .height = ctx.height};
+	ctx.set_clip_rect({.x = 0, .y = 0, .width = ctx.width, .height = ctx.height});
 	ctx.x_off = 0;
 	ctx.y_off = 0;
 	Rect mouse_rect {
@@ -144,16 +144,23 @@ void Desktop::handle_mouse(MouseState new_state) {
 			.height = dragging->rect.height + (!dragging->no_decorations ? TITLEBAR_HEIGHT : 0)
 		};
 
+		Rect ctx_rect {
+			.x = 0,
+			.y = 0,
+			.width = ctx.width,
+			.height = ctx.height
+		};
+
 		if (abs_old.intersects(abs_new)) {
 			auto [parts, count] = abs_old.subtract(abs_new);
 			for (int i = 0; i < count; ++i) {
-				ctx.dirty_rects.push_back(parts[i]);
+				ctx.dirty_rects.push_back(parts[i].intersect(ctx_rect));
 			}
 		}
 		else {
-			ctx.dirty_rects.push_back(abs_old);
+			ctx.dirty_rects.push_back(abs_old.intersect(ctx_rect));
 		}
-		ctx.dirty_rects.push_back(abs_new);
+		ctx.dirty_rects.push_back(abs_new.intersect(ctx_rect));
 	}
 
 	Rect mouse_rect {
