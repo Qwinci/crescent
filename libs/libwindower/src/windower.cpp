@@ -93,6 +93,7 @@ namespace windower {
 		res.owner = this;
 		res.width = width;
 		res.height = height;
+		res.handle = resp.window_created.window_handle;
 		res.fb_handle = resp.window_created.fb_handle;
 
 		return 0;

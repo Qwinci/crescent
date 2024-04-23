@@ -239,6 +239,8 @@ int main() {
 					memset(window->fb, 0, window->rect.width * window->rect.height * 4);
 					sys_close_handle(fb_shared_mem_handle);
 
+					auto* window_ptr = window.get();
+
 					desktop.root_window->add_child(std::move(window));
 
 					desktop.ctx.dirty_rects.push_back({
@@ -249,8 +251,8 @@ int main() {
 					});
 
 					resp.type = protocol::Response::WindowCreated;
-					// todo
-					resp.window_created.window_handle = reinterpret_cast<void*>(1);
+					// todo make this an opaque handle instead so it can be verified
+					resp.window_created.window_handle = window_ptr;
 					resp.window_created.fb_handle = fb_shareable_handle;
 
 					// todo check status
@@ -259,7 +261,27 @@ int main() {
 					break;
 				}
 				case protocol::Request::CloseWindow:
+				{
+					auto* window = static_cast<Window*>(req.close_window.window_handle);
+
+					for (size_t i = 0; i < window->parent->children.size(); ++i) {
+						if (window->parent->children[i].get() == window) {
+							auto dirty_rect = window->get_abs_rect();
+							if (!window->no_decorations) {
+								dirty_rect.width += BORDER_WIDTH * 2;
+								dirty_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
+							}
+							ctx.dirty_rects.push_back(dirty_rect);
+
+							window->parent->children.erase(
+								window->parent->children.begin() +
+								static_cast<std::vector<std::unique_ptr<Window>>::difference_type>(i));
+							break;
+						}
+					}
+
 					break;
+				}
 			}
 		}
 
