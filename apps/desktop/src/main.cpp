@@ -244,8 +244,8 @@ int main() {
 					desktop.ctx.dirty_rects.push_back({
 						.x = req.create_window.x,
 						.y = req.create_window.y,
-						.width = req.create_window.width,
-						.height = req.create_window.height
+						.width = req.create_window.width + BORDER_WIDTH * 2,
+						.height = req.create_window.height + TITLEBAR_HEIGHT + BORDER_WIDTH
 					});
 
 					resp.type = protocol::Response::WindowCreated;

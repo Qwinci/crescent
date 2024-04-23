@@ -5,6 +5,8 @@
 #include "mouse.hpp"
 
 static constexpr uint32_t TITLEBAR_HEIGHT = 20;
+static constexpr uint32_t BORDER_WIDTH = 4;
+static constexpr uint32_t BORDER_COLOR = 0xFFFFFF;
 static constexpr uint32_t TITLEBAR_ACTIVE_COLOR = 0xFFFFFF;
 
 struct Window {

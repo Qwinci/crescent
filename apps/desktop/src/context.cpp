@@ -23,10 +23,10 @@ void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 		return;
 	}
 
-	auto start_x = std::min(std::max(rect_x, clip_rect.x), width);
-	auto res_width = std::min(rect_x + rect.width - start_x, clip_rect.x + clip_rect.width - start_x);
-	auto start_y = std::min(std::max(rect_y, clip_rect.y), height);
-	auto res_height = std::min(rect_y + rect.height - start_y, clip_rect.y + clip_rect.height - start_y);
+	auto start_x = std::max(rect_x, clip_rect.x);
+	auto res_width = std::min(rect_x + rect.width, clip_rect.x + clip_rect.width) - start_x;
+	auto start_y = std::max(rect_y, clip_rect.y);
+	auto res_height = std::min(rect_y + rect.height, clip_rect.y + clip_rect.height) - start_y;
 
 	for (uint32_t y = start_y; y < start_y + res_height; ++y) {
 		for (uint32_t x = start_x; x < start_x + res_width; ++x) {

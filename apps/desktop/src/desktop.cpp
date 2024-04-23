@@ -42,7 +42,8 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 				.x = window->rect.x + abs_offset.x,
 				.y = window->rect.y + abs_offset.y,
 				.width = window->rect.width,
-				.height = TITLEBAR_HEIGHT};
+				.height = TITLEBAR_HEIGHT
+			};
 
 			if (bar_rect.contains(new_state.pos)) {
 				desktop->drag_x_off = new_state.pos.x - bar_rect.x;
@@ -78,7 +79,7 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 	}
 
 	Rect content_rect {
-		.x = window->rect.x + abs_offset.x,
+		.x = window->rect.x + abs_offset.x + (!window->no_decorations ? BORDER_WIDTH : 0),
 		.y = window->rect.y + abs_offset.y + (!window->no_decorations ? TITLEBAR_HEIGHT : 0),
 		.width = window->rect.width,
 		.height = window->rect.height
@@ -135,32 +136,32 @@ void Desktop::handle_mouse(MouseState new_state) {
 			.x = old.x + abs_offset.x,
 			.y = old.y + abs_offset.y,
 			.width = old.width,
-			.height = old.height + (!dragging->no_decorations ? TITLEBAR_HEIGHT : 0)
+			.height = old.height
 		};
 		Rect abs_new {
 			.x = dragging->rect.x + abs_offset.x,
 			.y = dragging->rect.y + abs_offset.y,
 			.width = dragging->rect.width,
-			.height = dragging->rect.height + (!dragging->no_decorations ? TITLEBAR_HEIGHT : 0)
+			.height = dragging->rect.height
 		};
 
-		Rect ctx_rect {
-			.x = 0,
-			.y = 0,
-			.width = ctx.width,
-			.height = ctx.height
-		};
+		if (!dragging->no_decorations) {
+			abs_old.width += BORDER_WIDTH * 2;
+			abs_new.width += BORDER_WIDTH * 2;
+			abs_old.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
+			abs_new.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
+		}
 
 		if (abs_old.intersects(abs_new)) {
 			auto [parts, count] = abs_old.subtract(abs_new);
 			for (int i = 0; i < count; ++i) {
-				ctx.dirty_rects.push_back(parts[i].intersect(ctx_rect));
+				ctx.dirty_rects.push_back(parts[i]);
 			}
 		}
 		else {
-			ctx.dirty_rects.push_back(abs_old.intersect(ctx_rect));
+			ctx.dirty_rects.push_back(abs_old);
 		}
-		ctx.dirty_rects.push_back(abs_new.intersect(ctx_rect));
+		ctx.dirty_rects.push_back(abs_new);
 	}
 
 	Rect mouse_rect {

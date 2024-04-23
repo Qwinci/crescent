@@ -21,7 +21,8 @@ void Window::on_mouse_leave(Context&, const MouseState&) {}
 void Window::draw_generic(Context& ctx) {
 	auto abs_rect = get_abs_rect();
 	if (!no_decorations) {
-		abs_rect.height += TITLEBAR_HEIGHT;
+		abs_rect.width += BORDER_WIDTH * 2;
+		abs_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
 	}
 
 	std::vector<Rect> clip_rects;
@@ -38,7 +39,8 @@ void Window::draw_generic(Context& ctx) {
 	for (auto& child : children) {
 		Rect abs_child_rect = child->get_abs_rect();
 		if (!child->no_decorations) {
-			abs_child_rect.height += TITLEBAR_HEIGHT;
+			abs_child_rect.width += BORDER_WIDTH * 2;
+			abs_child_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
 		}
 
 		for (size_t i = 0; i < clip_rects.size();) {
@@ -68,7 +70,8 @@ void Window::draw_generic(Context& ctx) {
 
 			Rect abs_sibling_rect = sibling->get_abs_rect();
 			if (!sibling->no_decorations) {
-				abs_sibling_rect.height += TITLEBAR_HEIGHT;
+				abs_sibling_rect.width += BORDER_WIDTH * 2;
+				abs_sibling_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
 			}
 
 			for (size_t i = 0; i < clip_rects.size();) {
@@ -94,20 +97,43 @@ void Window::draw_generic(Context& ctx) {
 	ctx.x_off = abs_offset.x;
 	ctx.y_off = abs_offset.y;
 
-	Rect titlebar_rect {
-		.x = rect.x,
-		.y = rect.y,
-		.width = rect.width,
-		.height = TITLEBAR_HEIGHT
-	};
-
 	if (!no_decorations) {
+		Rect titlebar_rect {
+			.x = rect.x,
+			.y = rect.y,
+			.width = abs_rect.width,
+			.height = TITLEBAR_HEIGHT
+		};
+
+		Rect left_border_rect {
+			.x = rect.x,
+			.y = rect.y + TITLEBAR_HEIGHT,
+			.width = BORDER_WIDTH,
+			.height = rect.height
+		};
+		Rect right_border_rect {
+			.x = rect.x + BORDER_WIDTH + rect.width,
+			.y = rect.y + TITLEBAR_HEIGHT,
+			.width = BORDER_WIDTH,
+			.height = rect.height
+		};
+		Rect bottom_border_rect {
+			.x = rect.x,
+			.y = rect.y + TITLEBAR_HEIGHT + rect.height,
+			.width = rect.width + BORDER_WIDTH * 2,
+			.height = BORDER_WIDTH
+		};
+
 		for (auto& clip_rect : clip_rects) {
 			ctx.set_clip_rect(clip_rect);
 			ctx.draw_filled_rect(titlebar_rect, TITLEBAR_ACTIVE_COLOR);
+			ctx.draw_filled_rect(left_border_rect, BORDER_COLOR);
+			ctx.draw_filled_rect(right_border_rect, BORDER_COLOR);
+			ctx.draw_filled_rect(bottom_border_rect, BORDER_COLOR);
 		}
 
 		ctx.y_off += TITLEBAR_HEIGHT;
+		ctx.x_off += BORDER_WIDTH;
 	}
 
 	Rect ctx_rect {
@@ -127,25 +153,32 @@ void Window::draw_generic(Context& ctx) {
 			auto rect_x = rect.x + ctx.x_off;
 			auto rect_y = rect.y + ctx.y_off;
 
-			if (rect_x + rect.width <= res_rect.x || rect_y >= res_rect.y + res_rect.height) {
-				continue;
-			}
-
-			res_rect = res_rect.intersect({
+			Rect content_rect {
 				.x = rect_x,
 				.y = rect_y,
 				.width = rect.width,
 				.height = rect.height
-			});
+			};
+
+			if (!res_rect.intersects(content_rect)) {
+				continue;
+			}
+
+			res_rect = res_rect.intersect(content_rect);
 
 			auto abs_pos_offset = get_abs_pos_offset();
+
+			uint32_t rel_x = res_rect.x - abs_pos_offset.x - rect.x;
+			if (!no_decorations) {
+				rel_x -= BORDER_WIDTH;
+			}
 
 			for (uint32_t y = res_rect.y; y < res_rect.y + res_rect.height; ++y) {
 				uint32_t rel_y = y - abs_pos_offset.y - rect.y;
 				if (!no_decorations) {
 					rel_y -= TITLEBAR_HEIGHT;
 				}
-				uint32_t rel_x = res_rect.x - abs_pos_offset.x - rect.x;
+
 				size_t to_copy = std::min(res_rect.width, rect.width) * 4;
 				memcpy(&ctx.fb[y * ctx.pitch_32 + res_rect.x], &fb[rel_y * rect.width + rel_x], to_copy);
 			}
