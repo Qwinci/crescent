@@ -6,6 +6,22 @@ size_t strlen(const char* str) {
 	return len;
 }
 
+#ifdef __x86_64__
+
+void* memset(void* __restrict dest, int ch, size_t size) {
+	void* dest_copy = dest;
+	asm volatile("rep stosb" : "+D"(dest_copy), "+c"(size) : "a"(ch) : "flags", "memory");
+	return dest;
+}
+
+void* memcpy(void* __restrict dest, const void* __restrict src, size_t size) {
+	void* dest_copy = dest;
+	asm volatile("rep movsb" : "+D"(dest_copy), "+S"(src), "+c"(size) : : "flags", "memory");
+	return dest;
+}
+
+#else
+
 void* memset(void* dest, int ch, size_t size) {
 	auto* ptr = static_cast<unsigned char*>(dest);
 	for (; size; --size) {
@@ -22,3 +38,5 @@ void* memcpy(void* dest, const void* src, size_t size) {
 	}
 	return dest;
 }
+
+#endif

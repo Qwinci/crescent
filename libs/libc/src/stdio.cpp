@@ -29,6 +29,8 @@ int printf(const char* __restrict fmt, ...) {
 	return ret;
 }
 
+static constexpr char HEX_CHARS[] = "0123456789ABCDEF";
+
 int vfprintf(FILE* __restrict file, const char* __restrict fmt, va_list ap) {
 	size_t written = 0;
 
@@ -69,6 +71,19 @@ int vfprintf(FILE* __restrict file, const char* __restrict fmt, va_list ap) {
 					*--ptr = '-';
 				}
 				file->write(ptr, (buf + 20) - ptr);
+				break;
+			}
+			case 'p':
+			{
+				void* ptr = va_arg(ap, void*);
+				auto value = reinterpret_cast<uintptr_t>(ptr);
+				char buf[16];
+				char* buf_ptr = buf + 16;
+				do {
+					*--buf_ptr = HEX_CHARS[value % 16];
+					value /= 16;
+				} while (value);
+				file->write(buf_ptr, (buf + 16) - buf_ptr);
 				break;
 			}
 		}

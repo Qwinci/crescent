@@ -1,6 +1,9 @@
 #include "cstring.hpp"
 #include "types.hpp"
 
+#undef memcpy
+#undef memset
+
 void* memcpy(void* __restrict dest, const void* __restrict src, size_t size) {
 	auto* dest_ptr = static_cast<unsigned char*>(dest);
 	auto* src_ptr = static_cast<const unsigned char*>(src);

@@ -50,6 +50,9 @@ namespace {
 		struct Guard {
 			~Guard() {
 				__atomic_store_n(&owner->_lock, false, __ATOMIC_RELEASE);
+#ifdef __aarch64__
+				asm volatile("sev" : : : "memory");
+#endif
 			}
 
 			Spinlock* owner;
@@ -61,7 +64,11 @@ namespace {
 					break;
 				}
 				while (__atomic_load_n(&_lock, __ATOMIC_RELAXED)) {
+#ifdef __x86_64__
 					asm volatile("pause" : : : "memory");
+#elif defined(__aarch64__)
+					asm volatile("wfe" : : : "memory");
+#endif
 				}
 			}
 
@@ -104,9 +111,13 @@ void* malloc(size_t size) {
 		}
 
 		size_t block_size = sizeof(Header) + index_to_size(index);
-		size_t block_count = (ARENA_SIZE - sizeof(Arena)) / block_size;
+		block_size = (block_size + 15) & ~15;
 
-		auto* hdr_base = reinterpret_cast<Header*>(reinterpret_cast<uintptr_t>(mem) + sizeof(Arena));
+		constexpr size_t aligned_arena_size = (sizeof(Arena) + 15) & ~15;
+
+		size_t block_count = (ARENA_SIZE - aligned_arena_size) / block_size;
+
+		auto* hdr_base = reinterpret_cast<Header*>(reinterpret_cast<uintptr_t>(mem) + aligned_arena_size);
 		Header* prev = nullptr;
 		for (size_t i = 0; i < block_count; ++i) {
 			auto* hdr = new (reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hdr_base) + i * block_size)) Header {};
@@ -143,12 +154,12 @@ void* malloc(size_t size) {
 	hdr->size = size;
 	hdr->arena = arena;
 	hdr->magic = ALLOC_MAGIC;
-	return &hdr[1];
+	return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(hdr) + ((sizeof(Header) + 15) & ~15));
 }
 
 void* realloc(void* old, size_t new_size) {
 	if (old) {
-		auto* hdr = static_cast<Header*>(old) - 1;
+		auto* hdr = reinterpret_cast<Header*>(reinterpret_cast<uintptr_t>(old) - ((sizeof(Header) + 15) & ~15));
 		if (hdr->magic != ALLOC_MAGIC) {
 			puts("invalid allocation magic");
 			__builtin_trap();
@@ -170,7 +181,7 @@ void* realloc(void* old, size_t new_size) {
 		return nullptr;
 	}
 	if (old) {
-		auto* hdr = static_cast<Header*>(old) - 1;
+		auto* hdr = reinterpret_cast<Header*>(reinterpret_cast<uintptr_t>(old) - ((sizeof(Header) + 15) & ~15));
 		memcpy(ptr, old, new_size < hdr->size ? new_size : hdr->size);
 		free(old);
 	}
@@ -182,11 +193,9 @@ void free(void* ptr) {
 		return;
 	}
 
-	auto* hdr = static_cast<Header*>(ptr) - 1;
+	auto* hdr = reinterpret_cast<Header*>(reinterpret_cast<uintptr_t>(ptr) - ((sizeof(Header) + 15) & ~15));
 	if (hdr->magic != ALLOC_MAGIC) {
 		puts("invalid allocation magic");
-		auto ret = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
-		printf("%d %d\n", (int) (ret & 0xFFFFFFFF), (int) (ret >> 32 & 0xFFFFFFFF));
 		__builtin_trap();
 	}
 	hdr->magic = 0;

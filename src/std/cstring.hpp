@@ -9,3 +9,6 @@ extern "C" {
 
 	size_t strlen(const char* str);
 }
+
+#define memcpy __builtin_memcpy
+#define memset __builtin_memset

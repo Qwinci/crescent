@@ -43,11 +43,22 @@ if(ARCH STREQUAL "x86_64")
 	target_compile_options(crescent PRIVATE -fPIE)
 	target_compile_definitions(crescent PRIVATE ARCH_X86_64)
 	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/x86_64.ld)
+
+	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+		target_compile_options(crescent PRIVATE -fsanitize=undefined -fsanitize-minimal-runtime)
+	endif()
+
 	include(cmake/image_x86_64.cmake)
 elseif(ARCH STREQUAL "aarch64")
 	target_compile_options(crescent PRIVATE -fno-PIE)
 	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/aarch64.ld)
 	target_compile_definitions(crescent PRIVATE ARCH_AARCH64)
+
+	# todo ubsan breaks smp on AArch64 debug builds
+	#if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+	#	target_compile_options(crescent PRIVATE -fsanitize=undefined -fsanitize-minimal-runtime)
+	#endif()
+
 	include(cmake/image_aarch64.cmake)
 elseif(ARCH STREQUAL "user")
 	target_compile_options(crescent PRIVATE -fPIE -fsanitize=undefined,address)

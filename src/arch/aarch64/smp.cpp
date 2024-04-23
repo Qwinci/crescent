@@ -138,7 +138,11 @@ static void aarch64_common_cpu_init(Cpu* self, int num) {
 	self->arm_tick_source.init_on_cpu(self);
 }
 
+extern char EXCEPTION_HANDLERS_START[];
+
 extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
+	asm volatile("msr VBAR_EL1, %0" : : "r"(EXCEPTION_HANDLERS_START));
+
 	int num = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
 	println("[kernel][smp]: cpu ", num, " online!");
 	asm volatile("sev");

@@ -1,6 +1,5 @@
-.section .bss
-.balign 16
-.lcomm STACK, 0x2000
+.local STACK
+.comm STACK, 0x8000, 16
 
 .section .text.boot
 .globl asm_start
@@ -35,7 +34,7 @@ asm_real:
 
 	adrp x1, STACK
 	add x1, x1, :lo12:STACK
-	add x1, x1, #0x2000
+	add x1, x1, #0x8000
 	mov sp, x1
 
 	b early_start

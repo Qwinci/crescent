@@ -27,7 +27,7 @@ static constexpr size_t US_IN_S = US_IN_MS * 1000;
 template<typename T>
 struct NoDestroy {
 	template<typename... Args>
-	constexpr NoDestroy(Args&&... args) : data {.value {std::forward<Args&&>(args)...}} {}
+	constexpr explicit NoDestroy(Args&&... args) : data {.value {std::forward<Args&&>(args)...}} {}
 
 	constexpr T* operator->() {
 		return &data.value;

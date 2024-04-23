@@ -144,6 +144,7 @@ stub %i
 
 .section .rodata
 .global x86_irq_stubs
+.align 16
 x86_irq_stubs:
 .set i, 0
 .rept 256

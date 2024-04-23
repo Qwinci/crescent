@@ -1,6 +1,7 @@
 #include "acpi/acpi.hpp"
 #include "arch/x86/dev/io_apic.hpp"
 #include "x86/io.hpp"
+#include "cstring.hpp"
 
 void x86_madt_parse() {
 	auto* madt = static_cast<acpi::Madt*>(acpi::get_table("APIC"));
@@ -22,15 +23,21 @@ void x86_madt_parse() {
 
 		// IO APIC
 		if (entry_type == 1) {
-			u32 addr = *reinterpret_cast<const u32*>(&ptr[4]);
-			u32 gsi_base = *reinterpret_cast<const u32*>(&ptr[8]);
+			u32 addr;
+			u32 gsi_base;
+			memcpy(&addr, &ptr[4], 4);
+			memcpy(&gsi_base, &ptr[8], 4);
+
 			IO_APIC.register_io_apic(addr, gsi_base);
 		}
 		// IO APIC irq source override
 		else if (entry_type == 2) {
 			u8 irq_num = ptr[3];
-			u32 gsi = *reinterpret_cast<const u32*>(&ptr[4]);
-			u16 flags = *reinterpret_cast<const u16*>(&ptr[8]);
+
+			u32 gsi;
+			memcpy(&gsi, &ptr[4], 4);
+			u16 flags;
+			memcpy(&flags, &ptr[8], 2);
 
 			u8 polarity = flags & 0b11;
 			u8 trigger = flags >> 2 & 0b11;

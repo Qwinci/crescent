@@ -14,7 +14,7 @@ namespace acpi {
 		}
 	};
 
-	struct SdtHeader {
+	struct [[gnu::packed]] SdtHeader {
 		char signature[4];
 		u32 length;
 		u8 revision;
@@ -85,7 +85,7 @@ namespace acpi {
 		u64 hypervisor_vendor;
 	};
 
-	struct Madt {
+	struct [[gnu::packed]] Madt {
 		SdtHeader hdr;
 		u32 lapic_addr;
 		u32 flags;
