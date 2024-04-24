@@ -34,20 +34,30 @@ namespace acpi {
 		qacpi::EisaId id {"PNP0C0A"};
 		if (auto hid = node->get_child("_HID")) {
 			auto& obj = hid->get_object();
+
 			if (auto integer = obj->get<uint64_t>()) {
 				if (*integer == id.encode()) {
 					println("found battery");
 
 					auto ret = qacpi::ObjectRef::empty();
-					acpi::GLOBAL_CTX.evaluate(node, "_BST", ret);
-					auto& ret_pkg = ret->get_unsafe<qacpi::Package>();
-					auto state = ret_pkg.data->elements[0]->get_unsafe<uint64_t>();
-					auto present = ret_pkg.data->elements[1]->get_unsafe<uint64_t>();
-					auto remaining = ret_pkg.data->elements[2]->get_unsafe<uint64_t>();
-
-					auto remaining_h = remaining / present;
-					println("battery remaining h: ", remaining_h);
-					println("battery present rate: ", present, " remaining: ", remaining);
+					auto status = acpi::GLOBAL_CTX.evaluate(node, "_BST", ret);
+					if (status != qacpi::Status::Success) {
+						println("failed evaluate battery, status: ", qacpi::status_to_str(status));
+					}
+					else {
+						auto& ret_pkg = ret->get_unsafe<qacpi::Package>();
+						auto state = ret_pkg.data->elements[0]->get_unsafe<uint64_t>();
+						auto present = ret_pkg.data->elements[1]->get_unsafe<uint64_t>();
+						auto remaining = ret_pkg.data->elements[2]->get_unsafe<uint64_t>();
+						if (!present) {
+							println("battery has no present rate");
+						}
+						else {
+							auto remaining_h = remaining / present;
+							println("battery remaining h: ", remaining_h);
+							println("battery present rate: ", present, " remaining: ", remaining);
+						}
+					}
 				}
 			}
 		}
