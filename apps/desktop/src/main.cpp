@@ -94,7 +94,15 @@ void listener_thread(void* arg) {
 			sys_thread_exit(1);
 		}
 		puts("[desktop]: connection accepted");
-		CONNECTIONS->push_back({console_handle, connection_socket});
+
+		IpcSocketAddress peer_addr {};
+		res = sys_socket_get_peer_name(connection_socket, peer_addr.generic);
+		if (res != 0) {
+			puts("failed to get peer address");
+			sys_thread_exit(1);
+		}
+
+		CONNECTIONS->push_back({peer_addr.target, connection_socket});
 	}
 }
 

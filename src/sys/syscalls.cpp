@@ -719,7 +719,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				{
 					auto ipc_guard = thread->process->ipc_socket.lock();
 					if (!*ipc_guard) {
-						*ipc_guard = kstd::make_shared<IpcSocket>(flags);
+						auto desc = kstd::make_shared<ProcessDescriptor>();
+						desc->process.get_unsafe() = thread->process;
+						thread->process->add_descriptor(desc.data());
+
+						*ipc_guard = kstd::make_shared<IpcSocket>(std::move(desc), flags);
 					}
 					kstd::shared_ptr<Socket> copy {*ipc_guard};
 					auto handle = thread->process->handles.insert(std::move(copy));
@@ -885,6 +889,56 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
+
+			break;
+		}
+		case SYS_SOCKET_GET_PEER_NAME:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			AnySocketAddress peer_address {};
+			if (auto status = (*socket_ptr)->get_peer_name(peer_address); status != 0) {
+				*frame->ret() = status;
+				break;
+			}
+
+			if (peer_address.generic.type == SOCKET_ADDRESS_TYPE_IPC) {
+				auto proc_desc = peer_address.ipc.descriptor->duplicate();
+				auto proc_handle = thread->process->handles.insert(std::move(proc_desc));
+
+				IpcSocketAddress addr {
+					.generic {
+						.type = SOCKET_ADDRESS_TYPE_IPC
+					},
+					.target = proc_handle
+				};
+
+				if (!UserAccessor(*frame->arg1()).store(addr)) {
+					thread->process->handles.remove(proc_handle);
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+			else if (peer_address.generic.type == SOCKET_ADDRESS_TYPE_IPV4) {
+				if (!UserAccessor(*frame->arg1()).store(peer_address.ipv4)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+			else if (peer_address.generic.type == SOCKET_ADDRESS_TYPE_IPV6) {
+				if (!UserAccessor(*frame->arg1()).store(peer_address.ipv6)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+
+			*frame->ret() = 0;
 
 			break;
 		}

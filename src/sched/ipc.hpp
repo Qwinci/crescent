@@ -3,7 +3,7 @@
 #include "dev/event.hpp"
 
 struct IpcSocket final : public Socket {
-	constexpr explicit IpcSocket(int flags) : Socket {flags} {}
+	IpcSocket(kstd::shared_ptr<ProcessDescriptor> owner_desc, int flags);
 
 	~IpcSocket() override;
 
@@ -16,8 +16,12 @@ struct IpcSocket final : public Socket {
 	int send(const void* data, usize size) override;
 	int receive(void* data, usize& size) override;
 
+	int get_peer_name(AnySocketAddress& address) override;
+
 	IpcSocket* pending {};
 	IpcSocket* target {};
+	KernelIpcSocketAddress target_address {};
+	kstd::shared_ptr<ProcessDescriptor> owner_desc {};
 	Event pending_event {};
 	u8 buf[IPC_BUFFER_SIZE] {};
 	usize buf_read_ptr {};

@@ -208,9 +208,24 @@ UniqueKernelMapping::~UniqueKernelMapping() {
 }
 
 ProcessDescriptor::~ProcessDescriptor() {
+	IrqGuard irq_guard {};
 	auto guard = process.lock();
 	if (guard) {
 		(*guard)->remove_descriptor(this);
+	}
+}
+
+kstd::shared_ptr<ProcessDescriptor> ProcessDescriptor::duplicate() {
+	IrqGuard irq_guard {};
+	auto guard = process.lock();
+	if (!guard) {
+		return kstd::make_shared<ProcessDescriptor>();
+	}
+	else {
+		auto ptr = kstd::make_shared<ProcessDescriptor>();
+		*ptr->process.lock() = *guard;
+		(*guard)->add_descriptor(ptr.data());
+		return std::move(ptr);
 	}
 }
 

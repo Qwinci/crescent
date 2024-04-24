@@ -67,6 +67,8 @@ private:
 struct ProcessDescriptor {
 	~ProcessDescriptor();
 
+	kstd::shared_ptr<ProcessDescriptor> duplicate();
+
 	DoubleListHook hook {};
 	Spinlock<Process*> process {};
 	int exit_status {};

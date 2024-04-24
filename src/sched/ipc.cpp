@@ -1,6 +1,9 @@
 #include "ipc.hpp"
 #include "sched/process.hpp"
 
+IpcSocket::IpcSocket(kstd::shared_ptr<ProcessDescriptor> owner_desc, int flags)
+	: Socket {flags}, owner_desc {std::move(owner_desc)} {}
+
 IpcSocket::~IpcSocket() {
 	disconnect();
 }
@@ -19,9 +22,20 @@ int IpcSocket::connect(AnySocketAddress& address) {
 		if (!process_guard) {
 			return ERR_INVALID_ARGUMENT;
 		}
+
+		target_address.generic.type = SOCKET_ADDRESS_TYPE_IPC;
+		target_address.descriptor = new ProcessDescriptor {};
+		target_address.descriptor->process.get_unsafe() = *process_guard;
+
+		(*process_guard)->add_descriptor(target_address.descriptor);
+
 		auto target_socket_guard = (*process_guard)->ipc_socket.lock();
 		if (!*target_socket_guard) {
-			*target_socket_guard = kstd::make_shared<IpcSocket>(flags);
+			auto desc = kstd::make_shared<ProcessDescriptor>();
+			desc->process.get_unsafe() = *process_guard;
+			(*process_guard)->add_descriptor(desc.data());
+
+			*target_socket_guard = kstd::make_shared<IpcSocket>(std::move(desc), flags);
 		}
 		auto target_guard = (*target_socket_guard)->lock.lock();
 		(*target_socket_guard)->pending = this;
@@ -43,7 +57,12 @@ int IpcSocket::disconnect() {
 	auto target_lock = target->lock.lock();
 	assert(target->target == this);
 	target->target = nullptr;
+	assert(target->target_address.descriptor == owner_desc.data());
+	target->target_address.descriptor = nullptr;
 	target = nullptr;
+
+	delete target_address.descriptor;
+	target_address.descriptor = nullptr;
 
 	return 0;
 }
@@ -72,10 +91,16 @@ int IpcSocket::accept(kstd::shared_ptr<Socket>& connection, int connection_flags
 		return ERR_INVALID_ARGUMENT;
 	}
 
-	auto ipc_socket = kstd::make_shared<IpcSocket>(connection_flags);
+	auto ipc_socket = kstd::make_shared<IpcSocket>(owner_desc, connection_flags);
 	auto target_guard = pending->lock.lock();
 
 	ipc_socket->target = pending;
+	ipc_socket->target_address = {
+		.generic {
+			.type = SOCKET_ADDRESS_TYPE_IPC
+		},
+		.descriptor = pending->owner_desc.data()
+	};
 	pending->target = ipc_socket.data();
 	pending->pending_event.signal_one();
 	pending = nullptr;
@@ -165,5 +190,17 @@ int IpcSocket::receive(void* data, usize& size) {
 
 	size = kstd::min(size, orig_buf_size);
 
+	return 0;
+}
+
+int IpcSocket::get_peer_name(AnySocketAddress& address) {
+	IrqGuard irq_guard {};
+	auto guard = lock.lock();
+	if (!target) {
+		return ERR_INVALID_ARGUMENT;
+	}
+	assert(target_address.descriptor);
+
+	address.ipc = target_address;
 	return 0;
 }

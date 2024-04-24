@@ -27,6 +27,7 @@ int sys_socket_listen(CrescentHandle handle, uint32_t port);
 int sys_socket_accept(CrescentHandle handle, CrescentHandle& connection_handle, int connection_flags);
 int sys_socket_send(CrescentHandle handle, const void* data, size_t size);
 int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& actual);
+int sys_socket_get_peer_name(CrescentHandle handle, SocketAddress& address);
 
 int sys_shared_mem_alloc(CrescentHandle& handle, size_t size);
 int sys_shared_mem_map(CrescentHandle handle, void** ptr);

@@ -30,6 +30,8 @@ struct Socket {
 	virtual int send(const void* data, usize size) = 0;
 	virtual int receive(void* data, usize& size) = 0;
 
+	virtual int get_peer_name(AnySocketAddress& address) = 0;
+
 protected:
 	int flags;
 };

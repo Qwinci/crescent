@@ -91,6 +91,10 @@ int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& a
 	return static_cast<int>(syscall(SYS_SOCKET_RECEIVE, handle, data, size, &actual));
 }
 
+int sys_socket_get_peer_name(CrescentHandle handle, SocketAddress& address) {
+	return static_cast<int>(syscall(SYS_SOCKET_GET_PEER_NAME, handle, &address));
+}
+
 int sys_shared_mem_alloc(CrescentHandle& handle, size_t size) {
 	return static_cast<int>(syscall(SYS_SHARED_MEM_ALLOC, &handle, size));
 }
