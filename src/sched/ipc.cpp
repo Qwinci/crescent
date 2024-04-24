@@ -29,7 +29,6 @@ int IpcSocket::connect(AnySocketAddress& address) {
 	}
 
 	pending_event.wait();
-	pending_event.reset();
 	return 0;
 }
 
@@ -60,7 +59,6 @@ int IpcSocket::listen(uint32_t) {
 	}
 
 	pending_event.wait();
-	pending_event.reset();
 	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 	assert(pending);
@@ -106,7 +104,6 @@ int IpcSocket::send(const void* data, usize size) {
 
 		if (wait) {
 			target->buf_event.wait();
-			target->buf_event.reset();
 		}
 		else {
 			break;
@@ -149,7 +146,6 @@ int IpcSocket::receive(void* data, usize& size) {
 
 	if (wait) {
 		buf_event.wait();
-		buf_event.reset();
 	}
 
 	IrqGuard irq_guard {};

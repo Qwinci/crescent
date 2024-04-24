@@ -26,7 +26,6 @@
 		}
 
 		event.wait();
-		event.reset();
 	}
 }
 

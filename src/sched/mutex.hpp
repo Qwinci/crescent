@@ -35,7 +35,6 @@ struct Mutex {
 				break;
 			}
 			unlock_event.wait();
-			unlock_event.reset();
 		}
 		return {*this};
 	}
@@ -68,7 +67,6 @@ struct Mutex<void> {
 				break;
 			}
 			unlock_event.wait();
-			unlock_event.reset();
 		}
 		return {*this};
 	}

@@ -4,69 +4,81 @@
 
 void Event::reset() {
 	IrqGuard irq_guard {};
-	auto guard = waiters.lock();
-	signaled = false;
+	auto guard = signaled_count.lock();
+	*guard = 0;
 }
 
 void Event::wait() {
-	auto current = get_current_thread();
 	IrqGuard irq_guard {};
-	{
-		auto guard = waiters.lock();
-		if (!signaled) {
-			guard->push(current);
-		}
-		else {
-			return;
-		}
-	}
+	auto current = get_current_thread();
 
-	current->cpu->scheduler.block();
+	while (true) {
+		{
+			auto guard = signaled_count.lock();
+			if (*guard) {
+				--*guard;
+				return;
+			}
+
+			auto waiters_guard = waiters.lock();
+			waiters_guard->push(current);
+		}
+
+		current->cpu->scheduler.block();
+	}
 }
 
 bool Event::wait_with_timeout(u64 max_us) {
-	auto current = get_current_thread();
 	IrqGuard irq_guard {};
+	auto current = get_current_thread();
+
 	{
-		auto guard = waiters.lock();
-		if (!signaled) {
-			guard->push(current);
-		}
-		else {
+		auto guard = signaled_count.lock();
+		if (*guard) {
+			--*guard;
 			return true;
 		}
+
+		auto waiters_guard = waiters.lock();
+		waiters_guard->push(current);
 	}
 
 	current->cpu->scheduler.sleep(max_us);
-	auto guard = waiters.lock();
-	if (!signaled) {
-		guard->remove(current);
-		return false;
+	auto guard = signaled_count.lock();
+	if (*guard) {
+		--*guard;
+		return true;
 	}
 	else {
-		return true;
+		auto waiters_guard = waiters.lock();
+		waiters_guard->remove(current);
+		return false;
 	}
 }
 
 void Event::signal_one() {
 	IrqGuard irq_guard {};
-	auto guard = waiters.lock();
-	signaled = true;
-	if (!guard->is_empty()) {
-		auto thread = guard->front();
+	auto guard = signaled_count.lock();
+	++*guard;
+
+	auto waiters_guard = waiters.lock();
+	if (!waiters_guard->is_empty()) {
+		auto thread = waiters_guard->front();
 		thread->cpu->scheduler.unblock(thread);
-		guard->remove(thread);
+		waiters_guard->remove(thread);
 	}
 }
 
 void Event::signal_all() {
 	IrqGuard irq_guard {};
-	auto guard = waiters.lock();
-	signaled = true;
-	for (auto& thread : *guard) {
+	auto guard = signaled_count.lock();
+	++*guard;
+
+	auto waiters_guard = waiters.lock();
+	for (auto& thread : *waiters_guard) {
 		thread.cpu->scheduler.unblock(&thread);
 	}
-	guard->clear();
+	waiters_guard->clear();
 }
 
 usize CallbackProducer::add_callback(kstd::small_function<void()> callback) {

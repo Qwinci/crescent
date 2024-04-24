@@ -13,7 +13,7 @@ struct Event {
 
 private:
 	Spinlock<DoubleList<Thread, &Thread::misc_hook>> waiters {};
-	volatile bool signaled {};
+	Spinlock<usize> signaled_count {};
 };
 
 struct CallbackProducer {

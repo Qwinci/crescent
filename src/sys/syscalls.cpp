@@ -584,7 +584,6 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 								break;
 							}
 						}
-						GLOBAL_EVENT_QUEUE.produce_event.reset();
 					}
 				}
 			}
