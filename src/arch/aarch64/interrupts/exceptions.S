@@ -3,7 +3,8 @@
 
 .cfi_sections .debug_frame
 
-.macro stub_exception_handler
+.macro stub_exception_handler name el
+\name:
 	.cfi_startproc simple
 	.cfi_signal_frame
 
@@ -77,67 +78,71 @@
 .cfi_endproc
 .endm
 
+stub_exception_handler curr_el_sp0_sync 1
+stub_exception_handler curr_el_sp0_irq 1
+stub_exception_handler curr_el_sp0_fiq 1
+stub_exception_handler curr_el_sp0_serror 1
+
+stub_exception_handler curr_el_spx_sync 1
+stub_exception_handler curr_el_spx_irq 1
+stub_exception_handler curr_el_spx_fiq 1
+stub_exception_handler curr_el_spx_serror 1
+
+stub_exception_handler lower_el_aarch64_sync 0
+stub_exception_handler lower_el_aarch64_irq 0
+stub_exception_handler lower_el_aarch64_fiq 0
+stub_exception_handler lower_el_aarch64_serror 0
+
+stub_exception_handler lower_el_aarch32_sync 0
+stub_exception_handler lower_el_aarch32_irq 0
+stub_exception_handler lower_el_aarch32_fiq 0
+stub_exception_handler lower_el_aarch32_serror 0
+
 .balign 0x800
 EXCEPTION_HANDLERS_START:
-curr_el_sp0_sync:
-stub_exception_handler
+b curr_el_sp0_sync
 
 .balign 0x80
-curr_el_sp0_irq:
-stub_exception_handler
+b curr_el_sp0_irq
 
 .balign 0x80
-curr_el_sp0_fiq:
-stub_exception_handler
+b curr_el_sp0_fiq
 
 .balign 0x80
-curr_el_sp0_serror:
-stub_exception_handler
+b curr_el_sp0_serror
 
 .balign 0x80
-curr_el_spx_sync: // current SP
-stub_exception_handler
+b curr_el_spx_sync
 
 .balign 0x80
-curr_el_spx_irq:
-stub_exception_handler
+b curr_el_spx_irq
 
 .balign 0x80
-curr_el_spx_fiq:
-stub_exception_handler
+b curr_el_spx_fiq
 
 .balign 0x80
-curr_el_spx_serror:
-stub_exception_handler
+b curr_el_spx_serror
 
 .balign 0x80
-lower_el_aarch64_sync:
-stub_exception_handler
+b lower_el_aarch64_sync
 
 .balign 0x80
-lower_el_aarch64_irq:
-stub_exception_handler
+b lower_el_aarch64_irq
 
 .balign 0x80
-lower_el_aarch64_fiq:
-stub_exception_handler
+b lower_el_aarch64_fiq
 
 .balign 0x80
-lower_el_aarch64_serror:
-stub_exception_handler
+b lower_el_aarch64_serror
 
 .balign 0x80
-lower_el_aarch32_sync:
-stub_exception_handler
+b lower_el_aarch32_sync
 
 .balign 0x80
-lower_el_aarch32_irq:
-stub_exception_handler
+b lower_el_aarch32_irq
 
 .balign 0x80
-lower_el_aarch32_fiq:
-stub_exception_handler
+b lower_el_aarch32_fiq
 
 .balign 0x80
-lower_el_aarch32_serror:
-stub_exception_handler
+b lower_el_aarch32_serror

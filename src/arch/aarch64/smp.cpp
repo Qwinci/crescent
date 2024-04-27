@@ -9,6 +9,7 @@
 
 static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
 static kstd::atomic<int> NUM_CPUS {1};
+static Spinlock<void> SMP_LOCK {};
 
 struct ApInitCtx {
 	usize sp;
@@ -143,12 +144,21 @@ extern char EXCEPTION_HANDLERS_START[];
 extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 	asm volatile("msr VBAR_EL1, %0" : : "r"(EXCEPTION_HANDLERS_START));
 
-	int num = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
-	println("[kernel][smp]: cpu ", num, " online!");
-	asm volatile("sev");
-	CPUS[num].initialize();
-	Cpu* cpu = &*CPUS[num];
-	aarch64_common_cpu_init(cpu, num);
+	Cpu* cpu;
+
+	{
+		int num = NUM_CPUS.load(kstd::memory_order::relaxed);
+
+		auto lock = SMP_LOCK.lock();
+		CPUS[num].initialize();
+		cpu = &*CPUS[num];
+		aarch64_common_cpu_init(cpu, num);
+
+		println("[kernel][smp]: cpu ", num, " online!");
+
+		NUM_CPUS.store(num + 1, kstd::memory_order::relaxed);
+		asm volatile("sev");
+	}
 
 	cpu->scheduler.block();
 	panic("scheduler block returned");
