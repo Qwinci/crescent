@@ -219,11 +219,10 @@ kstd::shared_ptr<ProcessDescriptor> ProcessDescriptor::duplicate() {
 	IrqGuard irq_guard {};
 	auto guard = process.lock();
 	if (!guard) {
-		return kstd::make_shared<ProcessDescriptor>();
+		return kstd::make_shared<ProcessDescriptor>(nullptr, 0);
 	}
 	else {
-		auto ptr = kstd::make_shared<ProcessDescriptor>();
-		*ptr->process.lock() = *guard;
+		auto ptr = kstd::make_shared<ProcessDescriptor>(*guard, exit_status);
 		(*guard)->add_descriptor(ptr.data());
 		return std::move(ptr);
 	}

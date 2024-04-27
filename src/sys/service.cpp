@@ -11,8 +11,7 @@ namespace {
 }
 
 void service_create(kstd::vector<kstd::string>&& features, Process* process) {
-	auto descriptor = kstd::make_shared<ProcessDescriptor>();
-	*descriptor->process.lock() = process;
+	auto descriptor = kstd::make_shared<ProcessDescriptor>(process, 0);
 	process->add_descriptor(descriptor.data());
 	auto* service = new Service {
 		.features {std::move(features)},

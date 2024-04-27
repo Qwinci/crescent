@@ -1,6 +1,9 @@
 #pragma once
 #include "utility.hpp"
 #include "assert.hpp"
+#include "atomic.hpp"
+#include "mem/malloc.hpp"
+#include "new.hpp"
 
 namespace kstd {
 	template<typename T>
@@ -8,10 +11,6 @@ namespace kstd {
 	public:
 		constexpr shared_ptr() = default;
 		constexpr shared_ptr(kstd::nullptr_t) : ptr {nullptr}, refs {nullptr} {} // NOLINT(*-explicit-constructor)
-
-		constexpr explicit shared_ptr(T* ptr) : ptr {ptr} {
-			refs = new size_t {1};
-		}
 
 		constexpr shared_ptr(shared_ptr&& other) {
 			ptr = other.ptr;
@@ -24,7 +23,7 @@ namespace kstd {
 			ptr = other.ptr;
 			refs = other.refs;
 			if (ptr) {
-				++*refs;
+				increase_ref_count();
 			}
 		}
 
@@ -40,14 +39,15 @@ namespace kstd {
 			ptr = other.ptr;
 			refs = other.refs;
 			if (ptr) {
-				++*refs;
+				increase_ref_count();
 			}
 		}
 
 		template<typename U = T>
 		shared_ptr& operator=(shared_ptr<U>&& other) {
-			if (ptr && --*refs == 0) {
-				delete ptr;
+			if (ptr && decrease_ref_count()) {
+				ptr->~T();
+				ALLOCATOR.free(ptr, sizeof(T) + sizeof(kstd::atomic<size_t>));
 			}
 			ptr = other.ptr;
 			refs = other.refs;
@@ -57,13 +57,14 @@ namespace kstd {
 		}
 		template<typename U = T>
 		shared_ptr& operator=(const shared_ptr<U>& other) {
-			if (ptr && --*refs == 0) {
-				delete ptr;
+			if (ptr && decrease_ref_count()) {
+				ptr->~T();
+				ALLOCATOR.free(ptr, sizeof(T) + sizeof(kstd::atomic<size_t>));
 			}
 			ptr = other.ptr;
 			refs = other.refs;
 			if (ptr) {
-				++*refs;
+				increase_ref_count();
 			}
 
 			return *this;
@@ -100,22 +101,47 @@ namespace kstd {
 		}
 
 		~shared_ptr() {
-			if (ptr && --*refs == 0) {
-				delete ptr;
-				delete refs;
+			if (ptr && decrease_ref_count()) {
+				ptr->~T();
+				ALLOCATOR.free(ptr, sizeof(T) + sizeof(kstd::atomic<size_t>));
 			}
 		}
 
 	private:
+		template<typename T2, typename... Args>
+		friend shared_ptr<T2> make_shared(Args&&... args);
+
+		constexpr explicit shared_ptr(T* ptr, kstd::atomic<size_t>* refs) : ptr {ptr}, refs {refs} {}
+
+		constexpr void increase_ref_count() {
+			auto old = refs->load(kstd::memory_order::relaxed);
+			while (!refs->compare_exchange_strong(
+				old,
+				old + 1,
+				kstd::memory_order::acq_rel,
+				kstd::memory_order::relaxed));
+		}
+
+		constexpr bool decrease_ref_count() {
+			auto old = refs->fetch_sub(1, kstd::memory_order::acq_rel);
+			return old == 1;
+		}
+
 		template<typename>
 		friend class shared_ptr;
 
 		T* ptr {};
-		size_t* refs {};
+		kstd::atomic<size_t>* refs {};
 	};
 
 	template<typename T, typename... Args>
 	shared_ptr<T> make_shared(Args&&... args) {
-		return shared_ptr<T> {new T {std::forward<Args&&>(args)...}};
+		auto* storage = ALLOCATOR.alloc(sizeof(T) + sizeof(kstd::atomic<size_t>));
+		if (!storage) {
+			return {};
+		}
+		auto ptr = new (storage) T {std::forward<Args&&>(args)...};
+		auto refs = new (offset(storage, void*, sizeof(T))) kstd::atomic<size_t> {1};
+		return shared_ptr<T> {ptr, refs};
 	}
 }

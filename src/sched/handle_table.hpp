@@ -15,21 +15,20 @@ struct ThreadDescriptor;
 using Handle = kstd::variant<
 	kstd::monostate,
 	kstd::shared_ptr<Device>,
-	ProcessDescriptor,
 	kstd::shared_ptr<ProcessDescriptor>,
-	ThreadDescriptor,
+	kstd::shared_ptr<ThreadDescriptor>,
 	kstd::shared_ptr<Socket>,
 	kstd::shared_ptr<SharedMemory>
 	>;
 
 class HandleTable {
 public:
-	kstd::shared_ptr<Handle> get(CrescentHandle handle);
+	kstd::optional<Handle> get(CrescentHandle handle);
 	CrescentHandle insert(Handle&& handle);
 	bool remove(CrescentHandle handle);
 
 private:
-	kstd::vector<kstd::shared_ptr<Handle>> table;
+	kstd::vector<Handle> table;
 	CrescentHandle count {};
 	kstd::vector<CrescentHandle> free_handles;
 	Spinlock<void> lock {};

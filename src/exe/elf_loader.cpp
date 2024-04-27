@@ -100,7 +100,8 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 		}
 
 		usize aligned_addr = phdr.p_vaddr & ~(PAGE_SIZE - 1);
-		for (usize i = 0; i < phdr.p_memsz; i += PAGE_SIZE) {
+		usize align = phdr.p_vaddr & (PAGE_SIZE - 1);
+		for (usize i = 0; i < phdr.p_memsz + align; i += PAGE_SIZE) {
 			process->page_map.protect(user_mem + (aligned_addr - base) + i, flags, CacheMode::WriteBack);
 		}
 	}

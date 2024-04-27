@@ -9,6 +9,9 @@ struct Process;
 struct Thread;
 
 struct ThreadDescriptor {
+	constexpr ThreadDescriptor(Thread* thread, int exit_status)
+		: thread {thread}, exit_status {exit_status} {}
+
 	~ThreadDescriptor();
 
 	DoubleListHook hook {};

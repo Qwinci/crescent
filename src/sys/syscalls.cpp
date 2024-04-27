@@ -94,12 +94,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			auto* new_thread = new Thread {name, cpu, thread->process, fn, arg};
 
-			CrescentHandle handle = thread->process->handles.insert(ThreadDescriptor {
-				.thread {Spinlock {new_thread}},
-				.exit_status = 0
-			});
-			auto descriptor = thread->process->handles.get(handle)->get<ThreadDescriptor>();
-			new_thread->add_descriptor(descriptor);
+			auto descriptor = kstd::make_shared<ThreadDescriptor>(new_thread, 0);
+			CrescentHandle handle = thread->process->handles.insert(descriptor);
+			new_thread->add_descriptor(descriptor.data());
 
 			if (!UserAccessor(*frame->arg0()).store(handle)) {
 				thread->process->handles.remove(handle);
@@ -186,12 +183,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			CrescentHandle handle = thread->process->handles.insert(ProcessDescriptor {
-				.process {Spinlock {process}},
-				.exit_status = 0
-			});
-			auto descriptor = thread->process->handles.get(handle)->get<ProcessDescriptor>();
-			process->add_descriptor(descriptor);
+			auto descriptor = kstd::make_shared<ProcessDescriptor>(process, 0);
+			CrescentHandle handle = thread->process->handles.insert(descriptor);
+			process->add_descriptor(descriptor.data());
 
 			if (!UserAccessor(*frame->arg0()).store(handle)) {
 				thread->process->handles.remove(handle);
@@ -231,25 +225,25 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 			IrqGuard irq_guard {};
-			if (auto proc_desc = handle->get<ProcessDescriptor>()) {
+			if (auto proc_desc = handle->get<kstd::shared_ptr<ProcessDescriptor>>()) {
 				*frame->ret() = 0;
 
-				auto guard = proc_desc->process.lock();
+				auto guard = (*proc_desc)->process.lock();
 				if (!guard) {
 					break;
 				}
 				(*guard)->killed = true;
-				(*guard)->exit(-1, proc_desc);
+				(*guard)->exit(-1, (*proc_desc).data());
 			}
-			else if (auto thread_desc = handle->get<ThreadDescriptor>()) {
+			else if (auto thread_desc = handle->get<kstd::shared_ptr<ThreadDescriptor>>()) {
 				*frame->ret() = 0;
 
-				auto guard = thread_desc->thread.lock();
+				auto guard = (*thread_desc)->thread.lock();
 				if (!guard) {
 					break;
 				}
 				(*guard)->exited = true;
-				(*guard)->exit(-1, thread_desc);
+				(*guard)->exit(-1, (*thread_desc).data());
 			}
 			else {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
@@ -267,18 +261,18 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 			IrqGuard irq_guard {};
-			if (auto proc_desc = handle->get<ProcessDescriptor>()) {
-				auto guard = proc_desc->process.lock();
+			if (auto proc_desc = handle->get<kstd::shared_ptr<ProcessDescriptor>>()) {
+				auto guard = (*proc_desc)->process.lock();
 				if (!guard) {
-					*frame->ret() = proc_desc->exit_status;
+					*frame->ret() = (*proc_desc)->exit_status;
 					break;
 				}
 				*frame->ret() = ERR_TRY_AGAIN;
 			}
-			else if (auto thread_desc = handle->get<ThreadDescriptor>()) {
-				auto guard = thread_desc->thread.lock();
+			else if (auto thread_desc = handle->get<kstd::shared_ptr<ThreadDescriptor>>()) {
+				auto guard = (*thread_desc)->thread.lock();
 				if (!guard) {
-					*frame->ret() = thread_desc->exit_status;
+					*frame->ret() = (*thread_desc)->exit_status;
 					break;
 				}
 				*frame->ret() = ERR_TRY_AGAIN;
@@ -719,8 +713,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				{
 					auto ipc_guard = thread->process->ipc_socket.lock();
 					if (!*ipc_guard) {
-						auto desc = kstd::make_shared<ProcessDescriptor>();
-						desc->process.get_unsafe() = thread->process;
+						auto desc = kstd::make_shared<ProcessDescriptor>(thread->process, 0);
 						thread->process->add_descriptor(desc.data());
 
 						*ipc_guard = kstd::make_shared<IpcSocket>(std::move(desc), flags);
@@ -1056,9 +1049,6 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			Spinlock<Process*>* process_lock;
 			if (auto proc_desc_ptr = proc_handle->get<kstd::shared_ptr<ProcessDescriptor>>()) {
 				process_lock = &proc_desc_ptr->data()->process;
-			}
-			else if (auto proc_desc = proc_handle->get<ProcessDescriptor>()) {
-				process_lock = &proc_desc->process;
 			}
 			else {
 				*frame->ret() = ERR_INVALID_ARGUMENT;

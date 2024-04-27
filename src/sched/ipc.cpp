@@ -24,15 +24,13 @@ int IpcSocket::connect(AnySocketAddress& address) {
 		}
 
 		target_address.generic.type = SOCKET_ADDRESS_TYPE_IPC;
-		target_address.descriptor = new ProcessDescriptor {};
-		target_address.descriptor->process.get_unsafe() = *process_guard;
+		target_address.descriptor = new ProcessDescriptor {*process_guard, 0};
 
 		(*process_guard)->add_descriptor(target_address.descriptor);
 
 		auto target_socket_guard = (*process_guard)->ipc_socket.lock();
 		if (!*target_socket_guard) {
-			auto desc = kstd::make_shared<ProcessDescriptor>();
-			desc->process.get_unsafe() = *process_guard;
+			auto desc = kstd::make_shared<ProcessDescriptor>(*process_guard, 0);
 			(*process_guard)->add_descriptor(desc.data());
 
 			*target_socket_guard = kstd::make_shared<IpcSocket>(std::move(desc), flags);

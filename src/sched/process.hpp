@@ -65,6 +65,8 @@ private:
 };
 
 struct ProcessDescriptor {
+	constexpr ProcessDescriptor(Process* process, int exit_status)
+		: process {process}, exit_status {exit_status} {}
 	~ProcessDescriptor();
 
 	kstd::shared_ptr<ProcessDescriptor> duplicate();

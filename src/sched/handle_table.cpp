@@ -1,18 +1,18 @@
 #include "handle_table.hpp"
 #include "process.hpp"
 
-kstd::shared_ptr<Handle> HandleTable::get(CrescentHandle handle) {
+kstd::optional<Handle> HandleTable::get(CrescentHandle handle) {
 	auto guard = lock.lock();
 
 	if (handle >= count) {
-		return nullptr;
+		return {};
 	}
 
-	auto& loc = table[handle];
-	if (loc->get<kstd::monostate>()) {
-		return nullptr;
+	auto loc = table[handle];
+	if (loc.get<kstd::monostate>()) {
+		return {};
 	}
-	return loc;
+	return std::move(loc);
 }
 
 CrescentHandle HandleTable::insert(Handle&& handle) {
@@ -30,7 +30,7 @@ CrescentHandle HandleTable::insert(Handle&& handle) {
 		index = count++;
 	}
 
-	table[index] = kstd::make_shared<Handle>(std::move(handle));
+	table[index] = std::move(handle);
 
 	return index;
 }
@@ -43,10 +43,10 @@ bool HandleTable::remove(CrescentHandle handle) {
 	}
 
 	auto& loc = table[handle];
-	if (loc->get<kstd::monostate>()) {
+	if (loc.get<kstd::monostate>()) {
 		return false;
 	}
-	loc = kstd::make_shared<Handle>(kstd::monostate {});
+	loc = kstd::monostate {};
 	free_handles.push(handle);
 
 	return true;
