@@ -9,11 +9,11 @@ macro(LIB NAME SRC)
 	target_compile_options(${NAME} PRIVATE
 		-Wall -Wextra
 		-fno-exceptions -fno-rtti -fno-strict-aliasing -fno-stack-protector
-		-ffreestanding
+		-ffreestanding -fPIE
 	)
 	target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 	target_link_options(${NAME} PRIVATE
-		-nostdlib
+		-nostdlib -fPIE
 	)
 	add_custom_command(TARGET ${NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${NAME}> "${CMAKE_BINARY_DIR}/sysroot/lib"

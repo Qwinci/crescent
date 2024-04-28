@@ -27,30 +27,28 @@ static constexpr size_t US_IN_S = US_IN_MS * 1000;
 template<typename T>
 struct NoDestroy {
 	template<typename... Args>
-	constexpr explicit NoDestroy(Args&&... args) : data {.value {std::forward<Args&&>(args)...}} {}
+	constexpr explicit NoDestroy(Args&&... args) {
+		new (data) T {std::forward<Args&&>(args)...};
+	}
 
 	constexpr T* operator->() {
-		return &data.value;
+		return std::launder(reinterpret_cast<T*>(data));
 	}
 
 	constexpr const T* operator->() const {
-		return &data.value;
+		return std::launder(reinterpret_cast<const T*>(data));
 	}
 
 	constexpr T& operator*() {
-		return data.value;
+		return *std::launder(reinterpret_cast<T*>(data));
 	}
 
 	constexpr const T& operator*() const {
-		return data.value;
+		return *std::launder(reinterpret_cast<const T*>(data));
 	}
 
 private:
-	union Data {
-		constexpr ~Data() {}
-
-		T value;
-	} data;
+	alignas(alignof(T)) char data[sizeof(T)] {};
 };
 
 static NoDestroy<std::vector<std::pair<CrescentHandle, CrescentHandle>>> CONNECTIONS {};
