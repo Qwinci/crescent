@@ -127,7 +127,11 @@ bool x86_pagefault_handler(IrqFrame* frame) {
 	backtrace_display();
 
 	if ((error & 1U << 2) && current->process->user) {
-		if (current->process->handle_pagefault(cr2)) {
+		auto stack_base = reinterpret_cast<u64>(current->user_stack_base);
+		if (cr2 >= stack_base && cr2 < stack_base + PAGE_SIZE) {
+			println("[kernel][x86]: thread '", current->name, "' hit guard page!");
+		}
+		else if (current->process->handle_pagefault(cr2)) {
 			return true;
 		}
 

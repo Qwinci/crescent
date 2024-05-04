@@ -193,14 +193,15 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
 	if (process->user) {
 		user_stack_base = reinterpret_cast<u8*>(process->allocate(
 			nullptr,
-			USER_STACK_SIZE,
+			USER_STACK_SIZE + PAGE_SIZE,
 			MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, nullptr));
 		assert(user_stack_base);
+		process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
 		simd = static_cast<u8*>(ALLOCATOR.alloc(sizeof(SimdRegisters)));
 		assert(simd);
 		memset(simd, 0, sizeof(SimdRegisters));
 		frame->x[13] = reinterpret_cast<u64>(arch_on_first_switch_user);
-		frame->x[2] = reinterpret_cast<u64>(user_stack_base + USER_STACK_SIZE);
+		frame->x[2] = reinterpret_cast<u64>(user_stack_base + USER_STACK_SIZE + PAGE_SIZE);
 	}
 	else {
 		frame->x[13] = reinterpret_cast<u64>(arch_on_first_switch);

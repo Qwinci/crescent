@@ -74,6 +74,14 @@ extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 	}
 	else if (exception_class == 0x24) {
 		reason = "EL0 data abort";
+
+		auto stack_base = reinterpret_cast<u64>(current->user_stack_base);
+		if (frame->far_el1 >= stack_base && frame->far_el1 < stack_base + PAGE_SIZE) {
+			println("[kernel][aarch64]: thread '", current->name, "' hit guard page!");
+		}
+		else if (current->process->handle_pagefault(frame->far_el1)) {
+			return;
+		}
 	}
 	else if (exception_class == 0x25) {
 		reason = "data abort";
@@ -82,7 +90,7 @@ extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 			frame->elr_el1 = current->handler_ip;
 			return;
 		}
-		if (current->process->handle_pagefault(frame->far_el1)) {
+		else if (current->process->handle_pagefault(frame->far_el1)) {
 			return;
 		}
 	}
