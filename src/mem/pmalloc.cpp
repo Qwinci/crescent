@@ -65,6 +65,7 @@ void pmalloc_add_mem(usize phys, usize size) {
 }
 
 usize pmalloc(usize) {
+	IrqGuard irq_guard {};
 	auto guard = FREELIST.lock();
 	if (auto page = guard->pop()) {
 		memset(to_virt<void>(page->phys), 0xCB, PAGE_SIZE);

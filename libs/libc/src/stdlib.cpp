@@ -78,7 +78,7 @@ namespace {
 		bool _lock;
 	};
 
-	Arena* FREE_ARENAS[SIZE_COUNT];
+	Arena* FREE_ARENAS[SIZE_COUNT] {};
 	Spinlock LOCK {};
 }
 
@@ -101,7 +101,7 @@ void* malloc(size_t size) {
 	auto guard = LOCK.lock();
 
 	auto index = size_to_index(size);
-	auto& arena = FREE_ARENAS[index];
+	auto* arena = FREE_ARENAS[index];
 
 	if (!arena) {
 		void* mem = nullptr;
@@ -110,7 +110,7 @@ void* malloc(size_t size) {
 			return nullptr;
 		}
 
-		size_t block_size = sizeof(Header) + index_to_size(index);
+		size_t block_size = ((sizeof(Header) + 15) & ~15) + index_to_size(index);
 		block_size = (block_size + 15) & ~15;
 
 		constexpr size_t aligned_arena_size = (sizeof(Arena) + 15) & ~15;
@@ -132,6 +132,7 @@ void* malloc(size_t size) {
 			.total_count = block_count,
 			.num_free = block_count
 		};
+		FREE_ARENAS[index] = new_arena;
 		arena = new_arena;
 	}
 
@@ -147,7 +148,7 @@ void* malloc(size_t size) {
 			FREE_ARENAS[index] = arena->next;
 		}
 		if (arena->next) {
-			arena->next->prev = nullptr;
+			arena->next->prev = arena->prev;
 		}
 	}
 
