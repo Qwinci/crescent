@@ -147,12 +147,14 @@ arch_on_first_switch_user:
 )");
 
 ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : self {this} {
-	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - (process->user ? sizeof(UserInitFrame) : sizeof(InitFrame));
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + PAGE_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE - (process->user ? sizeof(UserInitFrame) : sizeof(InitFrame));
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->rdi = reinterpret_cast<u64>(arg);
+
+	KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base), PageFlags::Read, CacheMode::WriteBack);
 
 	frame->rip = reinterpret_cast<u64>(fn);
 	if (process->user) {
@@ -182,7 +184,7 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : sel
 }
 
 ArchThread::~ArchThread() {
-	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE);
+	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE + PAGE_SIZE);
 	if (user_stack_base) {
 		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE);
 	}

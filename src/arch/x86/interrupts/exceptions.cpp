@@ -61,7 +61,6 @@ GENERATE_HANDLER(double_fault, "double fault")
 GENERATE_HANDLER(invalid_tss, "invalid tss")
 GENERATE_HANDLER(seg_not_present, "segment not present")
 GENERATE_HANDLER(stack_seg_fault, "stack segment fault")
-GENERATE_HANDLER(gp_fault, "general protection fault")
 GENERATE_HANDLER(x87_floating_point, "x87 floating point exception")
 GENERATE_HANDLER(alignment_check, "alignment check")
 GENERATE_HANDLER(machine_check, "machine check")
@@ -71,6 +70,25 @@ GENERATE_HANDLER(control_protection_exception, "control protection exception")
 GENERATE_HANDLER(hypervisor_injection_exception, "hypervisor injection exception")
 GENERATE_HANDLER(vmm_comm_exception, "vmm communication exception")
 GENERATE_HANDLER(security_exception, "security exception")
+
+bool x86_gp_fault_handler(IrqFrame* frame) { \
+	println("[kernel][x86]: EXCEPTION: general protection fault at ", Fmt::Hex, frame->rip, Fmt::Reset);
+	backtrace_display();
+
+	auto current = get_current_thread();
+	if (current->process->user) {
+		println("[kernel][x86]: killing user process ", current->process->name);
+		current->process->killed = true;
+		current->process->exit(-1);
+		auto& scheduler = current->cpu->scheduler;
+		scheduler.update_schedule();
+		current->cpu->deferred_work.push(&scheduler.irq_work);
+		return true;
+	}
+	while (true) {
+		asm volatile("hlt");
+	}
+}
 
 bool x86_pagefault_handler(IrqFrame* frame) {
 	u64 cr2;
@@ -142,6 +160,11 @@ bool x86_pagefault_handler(IrqFrame* frame) {
 		scheduler.update_schedule();
 		current->cpu->deferred_work.push(&scheduler.irq_work);
 		return true;
+	}
+
+	auto kernel_stack_base = reinterpret_cast<u64>(current->kernel_stack_base);
+	if (cr2 >= kernel_stack_base && cr2 < kernel_stack_base + PAGE_SIZE) {
+		println("[kernel][x86]: kernel guard page hit!");
 	}
 
 	while (true) {
