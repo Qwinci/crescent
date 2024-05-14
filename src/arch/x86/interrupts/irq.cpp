@@ -56,6 +56,7 @@ static DoubleList<IrqHandler, &IrqHandler::hook> IRQ_HANDLERS[256] {};
 static Spinlock<void> IRQ_HANDLERS_LOCK {};
 
 void register_irq_handler(u32 num, IrqHandler* handler) {
+	IrqGuard irq_guard {};
 	auto guard = IRQ_HANDLERS_LOCK.lock();
 	if (!IRQ_HANDLERS[num].is_empty()) {
 		if (!IRQ_HANDLERS[num].front()->can_be_shared || !handler->can_be_shared) {
@@ -66,6 +67,7 @@ void register_irq_handler(u32 num, IrqHandler* handler) {
 }
 
 void deregister_irq_handler(u32 num, IrqHandler* handler) {
+	IrqGuard irq_guard {};
 	auto guard = IRQ_HANDLERS_LOCK.lock();
 	if (IRQ_HANDLERS[num].is_empty()) {
 		return;

@@ -260,7 +260,7 @@ void VMem::freelist_insert(VMem::Segment* seg) {
 		if (auto next = static_cast<Segment*>(seg->seg_list_hook.next);
 			next && next->type == Segment::Type::Free &&
 			seg->base + seg->size == next->base) {
-			if (auto next_next = static_cast<Segment*>(seg->seg_list_hook.next)) {
+			if (auto next_next = static_cast<Segment*>(next->seg_list_hook.next)) {
 				next_next->seg_list_hook.prev = seg;
 			}
 			seg->seg_list_hook.next = next->seg_list_hook.next;

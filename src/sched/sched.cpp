@@ -56,6 +56,7 @@ void Scheduler::update_schedule() {
 	IrqGuard irq_guard {};
 	if (us_to_next_schedule > current_irq_period) {
 		us_to_next_schedule -= current_irq_period;
+		prev = current;
 		return;
 	}
 
@@ -160,12 +161,12 @@ void Scheduler::exit_thread(int status) {
 	__builtin_trap();
 }
 
-void Scheduler::unblock(Thread* thread) {
+void Scheduler::unblock(Thread* thread, bool remove_sleeping) {
 	IrqGuard irq_guard {};
 	// thread->cpu is guaranteed to not change while its state is not running
 	auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
-	if (thread->status == Thread::Status::Sleeping) {
-		sleeping_threads.remove(thread);
+	if (remove_sleeping && thread->status == Thread::Status::Sleeping) {
+		sleeping_threads.lock()->remove(thread);
 	}
 	thread->status = Thread::Status::Waiting;
 	guard->push(thread);
@@ -185,17 +186,20 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	}
 
 	usize first_sleep_end = UINTPTR_MAX;
-	for (auto& thread : sleeping_threads) {
+	auto guard = sleeping_threads.lock();
+	for (auto& thread : *guard) {
 		if (thread.sleep_end > now) {
 			first_sleep_end = thread.sleep_end;
 			break;
 		}
-		sleeping_threads.remove(&thread);
-		unblock(&thread);
+		guard->remove(&thread);
+		unblock(&thread, false);
 	}
 
 	auto time_before_sleep_end = first_sleep_end - now;
-	auto slice_us = levels[current->level_index].slice_us;
+	//auto slice_us = levels[current->level_index].slice_us;
+	// 48
+	usize slice_us = 10;
 	auto amount = kstd::min(time_before_sleep_end, slice_us);
 	current_irq_period = amount;
 	cpu->cpu_tick_source->oneshot(amount);
@@ -212,17 +216,20 @@ void Scheduler::sleep(u64 us) {
 		sleep_end = now + us;
 	}
 
-	Thread* prev_sleeping = nullptr;
-	for (auto& thread : sleeping_threads) {
-		if (thread.sleep_end > sleep_end) {
-			prev_sleeping = &thread;
-			break;
+	{
+		Thread* prev_sleeping = nullptr;
+		auto guard = sleeping_threads.lock();
+		for (auto& thread : *guard) {
+			if (thread.sleep_end > sleep_end) {
+				prev_sleeping = &thread;
+				break;
+			}
 		}
-	}
 
-	current->sleep_end = sleep_end;
-	sleeping_threads.insert_before(prev_sleeping, current);
-	current->status = Thread::Status::Sleeping;
+		current->sleep_end = sleep_end;
+		guard->insert_before(prev_sleeping, current);
+		current->status = Thread::Status::Sleeping;
+	}
 
 	update_schedule();
 	enable_preemption(current->cpu);

@@ -49,6 +49,7 @@ struct FbDev : public Device {
 
 				resp->map.mapping = reinterpret_cast<void*>(mem);
 
+				IrqGuard irq_guard {};
 				LOG.lock()->unregister_sink(fb);
 				fb->clear();
 

@@ -232,7 +232,7 @@ namespace kstd {
 		}
 
 		constexpr T* back() {
-			return _data;
+			return _data + (_size - 1);
 		}
 
 		void clear() {

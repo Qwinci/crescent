@@ -711,6 +711,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			switch (type) {
 				case SOCKET_TYPE_IPC:
 				{
+					IrqGuard irq_guard {};
 					auto ipc_guard = thread->process->ipc_socket.lock();
 					if (!*ipc_guard) {
 						auto desc = kstd::make_shared<ProcessDescriptor>(thread->process, 0);

@@ -64,7 +64,7 @@ void Event::signal_one() {
 	auto waiters_guard = waiters.lock();
 	if (!waiters_guard->is_empty()) {
 		auto thread = waiters_guard->front();
-		thread->cpu->scheduler.unblock(thread);
+		thread->cpu->scheduler.unblock(thread, true);
 		waiters_guard->remove(thread);
 	}
 }
@@ -76,7 +76,7 @@ void Event::signal_all() {
 
 	auto waiters_guard = waiters.lock();
 	for (auto& thread : *waiters_guard) {
-		thread.cpu->scheduler.unblock(&thread);
+		thread.cpu->scheduler.unblock(&thread, true);
 	}
 	waiters_guard->clear();
 }

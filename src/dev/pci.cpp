@@ -36,12 +36,16 @@ namespace pci {
 
 	void* Header0::get_cap(Cap cap, u32 index) {
 		auto* ptr = reinterpret_cast<u8*>(this) + (capabilities_ptr & ~0b11);
-		for (; ptr[1]; ptr = offset(this, u8*, ptr[1])) {
+		while (true) {
 			if (*ptr == static_cast<u8>(cap)) {
 				if (index-- == 0) {
 					return ptr;
 				}
 			}
+			if (!ptr[1]) {
+				break;
+			}
+			ptr = offset(this, u8*, ptr[1]);
 		}
 		return nullptr;
 	}
@@ -100,7 +104,7 @@ namespace pci {
 
 		delete dev;
 		end:
-		//println(Fmt::Hex, zero_pad(4), hdr->vendor_id, ":", hdr->device_id, Fmt::Reset);
+		println(Fmt::Hex, zero_pad(4), hdr->vendor_id, ":", hdr->device_id, Fmt::Reset);
 	}
 
 	static void enumerate_dev(void* base, u32 dev) {
@@ -122,10 +126,6 @@ namespace pci {
 
 	static void enumerate_bus(void* base, u32 bus) {
 		auto* hdr = offset(base, CommonHdr*, static_cast<u64>(bus) << 20);
-
-		if (hdr->vendor_id == 0xFFFF) {
-			return;
-		}
 
 		for (u32 dev = 0; dev < 32; ++dev) {
 			enumerate_dev(hdr, dev);

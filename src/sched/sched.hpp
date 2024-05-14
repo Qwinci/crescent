@@ -24,7 +24,7 @@ struct Scheduler {
 	void sleep(u64 us);
 
 	void block();
-	void unblock(Thread* thread);
+	void unblock(Thread* thread, bool remove_sleeping);
 
 	[[noreturn]] void exit_process(int status);
 	[[noreturn]] void exit_thread(int status);
@@ -46,7 +46,7 @@ struct Scheduler {
 	DeferredIrqWork irq_work {.fn = [this]() {
 		do_schedule();
 	}};
-	DoubleList<Thread, &Thread::hook> sleeping_threads {};
+	Spinlock<DoubleList<Thread, &Thread::hook>> sleeping_threads {};
 };
 
 void sched_init();
