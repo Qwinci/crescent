@@ -12,6 +12,8 @@
 #include "service.hpp"
 #include "sched/ipc.hpp"
 
+extern void hda_play();
+
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
 #elif defined(__aarch64__)
@@ -292,9 +294,26 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			println("[kernel]: thread ", thread->name, " sleeping for ", us, "us");
 			thread->sleep_for(us);
 			*frame->ret() = 0;
+			break;
+		}
+		case SYS_GET_TIME:
+		{
+			u64 now;
+			{
+				IrqGuard irq_guard {};
+				auto guard = CLOCK_SOURCE.lock_read();
+				now = (*guard)->get() / (*guard)->ticks_in_us;
+			}
+
+			if (!UserAccessor(*frame->arg0()).store(now)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+
 			break;
 		}
 		case SYS_SYSLOG:

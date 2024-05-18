@@ -14,7 +14,7 @@ static constexpr usize SCHED_MAX_SLEEP_US = US_IN_S * 60 * 60 * 24;
 struct Scheduler {
 	Scheduler();
 
-	static constexpr usize MAX_US = 50/* * US_IN_MS*/;
+	static constexpr usize MAX_US = 50 * US_IN_MS;
 	static constexpr usize SCHED_LEVELS = 12;
 
 	void queue(Thread* thread);

@@ -45,7 +45,8 @@ struct Thread : public ArchThread {
 	Spinlock<DoubleList<ThreadDescriptor, &ThreadDescriptor::hook>> descriptors {};
 	usize sleep_end {};
 	// SCHED_LEVELS - 1
-	usize level_index {11};
+	usize level_index {0};
 	Status status {Status::Waiting};
 	bool exited {};
+	bool pin_level {};
 };

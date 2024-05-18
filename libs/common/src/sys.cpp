@@ -31,6 +31,10 @@ int sys_sleep(uint64_t us) {
 	return static_cast<int>(syscall(SYS_SLEEP, us));
 }
 
+int sys_get_time(uint64_t* us) {
+	return static_cast<int>(syscall(SYS_GET_TIME, us));
+}
+
 int sys_syslog(const char* str, size_t size) {
 	return static_cast<int>(syscall(SYS_SYSLOG, str, size));
 }

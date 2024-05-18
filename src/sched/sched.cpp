@@ -54,18 +54,24 @@ void Scheduler::queue(Thread* thread) {
 
 void Scheduler::update_schedule() {
 	IrqGuard irq_guard {};
-	if (us_to_next_schedule > current_irq_period) {
-		us_to_next_schedule -= current_irq_period;
-		prev = current;
-		return;
+	if (current->status == Thread::Status::Running) {
+		if (us_to_next_schedule > current_irq_period) {
+			us_to_next_schedule -= current_irq_period;
+			prev = current;
+			return;
+		}
+
+		if (!current->pin_level && current->level_index < SCHED_LEVELS - 1) {
+			++current->level_index;
+		}
 	}
 
 	Thread* next;
 
 	auto current_thread = get_current_thread();
 
-	for (usize i = SCHED_LEVELS; i > 0; --i) {
-		auto guard = levels[i - 1].list.lock();
+	for (auto& level : levels) {
+		auto guard = level.list.lock();
 
 		auto* start = guard->pop_front();
 		next = start;
@@ -132,6 +138,10 @@ void Scheduler::block() {
 	current->status = Thread::Status::Blocked;
 	current->cpu->cpu_tick_source->reset();
 
+	if (current->level_index > 0) {
+		--current->level_index;
+	}
+
 	update_schedule();
 	enable_preemption(current->cpu);
 	do_schedule();
@@ -197,9 +207,7 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	}
 
 	auto time_before_sleep_end = first_sleep_end - now;
-	//auto slice_us = levels[current->level_index].slice_us;
-	// 48
-	usize slice_us = 10;
+	auto slice_us = levels[current->level_index].slice_us;
 	auto amount = kstd::min(time_before_sleep_end, slice_us);
 	current_irq_period = amount;
 	cpu->cpu_tick_source->oneshot(amount);
@@ -229,6 +237,10 @@ void Scheduler::sleep(u64 us) {
 		current->sleep_end = sleep_end;
 		guard->insert_before(prev_sleeping, current);
 		current->status = Thread::Status::Sleeping;
+	}
+
+	if (current->level_index > 0) {
+		--current->level_index;
 	}
 
 	update_schedule();

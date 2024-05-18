@@ -292,7 +292,7 @@ int main() {
 		}
 
 		InputEvent event;
-		if (sys_poll_event(event, US_IN_MS * 500) == ERR_TRY_AGAIN) {
+		if (sys_poll_event(event, US_IN_MS) == ERR_TRY_AGAIN) {
 
 		}
 		else if (event.type == EVENT_TYPE_MOUSE) {
