@@ -152,10 +152,21 @@ namespace pci {
 		return static_cast<int>(lhs) & static_cast<int>(rhs);
 	}
 
+	struct PciAddress {
+		u16 seg;
+		u8 bus;
+		u8 device;
+		u8 function;
+	};
+
 	struct Device {
-		explicit Device(Header0* hdr0);
+		explicit Device(Header0* hdr0, PciAddress address);
 
 		[[nodiscard]] void* map_bar(u8 bar) const;
+
+		[[nodiscard]] inline bool is_io_space(u8 bar) const {
+			return hdr0->bars[bar] & 1;
+		}
 
 		u32 alloc_irqs(u32 min, u32 max, IrqFlags flags);
 		void free_irqs();
@@ -200,6 +211,7 @@ namespace pci {
 		}
 
 		Header0* hdr0;
+		PciAddress address;
 
 	private:
 		caps::MsiX* msix;

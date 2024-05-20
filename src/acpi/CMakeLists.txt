@@ -3,5 +3,6 @@ if(ARCH STREQUAL "x86_64")
 		acpi.cpp
 		qacpi.cpp
 		sleep.cpp
+		pci.cpp
 	)
 endif()

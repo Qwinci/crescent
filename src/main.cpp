@@ -1,4 +1,5 @@
 #include "acpi/acpi.hpp"
+#include "acpi/pci.hpp"
 #include "arch/cpu.hpp"
 #include "dev/fb/fb_dev.hpp"
 #include "dev/pci.hpp"
@@ -40,6 +41,8 @@ struct KernelStdoutVNode : public VNode {
 	pci::acpi_init();
 	println("[kernel]: qacpi init");
 	acpi::qacpi_init();
+	println("[kernel]: pci acpi init");
+	acpi::pci_init();
 	println("[kernel]: pci enumerate");
 	pci::acpi_enumerate();
 
@@ -62,10 +65,9 @@ struct KernelStdoutVNode : public VNode {
 						println("failed evaluate battery, status: ", qacpi::status_to_str(status));
 					}
 					else {
-						auto& ret_pkg = ret->get_unsafe<qacpi::Package>();
-						auto state = ret_pkg.data->elements[0]->get_unsafe<uint64_t>();
-						auto present = ret_pkg.data->elements[1]->get_unsafe<uint64_t>();
-						auto remaining = ret_pkg.data->elements[2]->get_unsafe<uint64_t>();
+						auto state = acpi::GLOBAL_CTX.get_package_element(ret, 0)->get_unsafe<uint64_t>();
+						auto present = acpi::GLOBAL_CTX.get_package_element(ret, 1)->get_unsafe<uint64_t>();
+						auto remaining = acpi::GLOBAL_CTX.get_package_element(ret, 2)->get_unsafe<uint64_t>();
 						if (!present) {
 							println("battery has no present rate");
 						}

@@ -1,11 +1,13 @@
 #include "pci.hpp"
 #include "acpi/acpi.hpp"
+#include "acpi/pci.hpp"
 #include "mem/mem.hpp"
 #include "stdio.hpp"
 #include "assert.hpp"
 #include "arch/paging.hpp"
 #include "mem/vspace.hpp"
 #include "x86/irq.hpp"
+#include "arch/x86/dev/io_apic.hpp"
 #include "arch/cpu.hpp"
 #include "utils/driver.hpp"
 
@@ -50,6 +52,8 @@ namespace pci {
 		return nullptr;
 	}
 
+	static PciAddress ADDRESS {};
+
 	static void enumerate_func(void* base, u32 func) {
 		auto* hdr = offset(base, CommonHdr*, static_cast<u64>(func) << 12);
 
@@ -61,8 +65,10 @@ namespace pci {
 			return;
 		}
 
+		ADDRESS.function = func;
+
 		auto* hdr0 = reinterpret_cast<Header0*>(hdr);
-		auto* dev = new Device {hdr0};
+		auto* dev = new Device {hdr0, ADDRESS};
 		for (const auto* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
 			if (driver->type == Driver::Type::Pci) {
 				auto& driver_pci = driver->pci;
@@ -114,6 +120,8 @@ namespace pci {
 			return;
 		}
 
+		ADDRESS.device = dev;
+
 		if (hdr->type & 1 << 7) {
 			for (u32 func = 0; func < 8; ++func) {
 				enumerate_func(hdr, func);
@@ -126,6 +134,8 @@ namespace pci {
 
 	static void enumerate_bus(void* base, u32 bus) {
 		auto* hdr = offset(base, CommonHdr*, static_cast<u64>(bus) << 20);
+
+		ADDRESS.bus = bus;
 
 		for (u32 dev = 0; dev < 32; ++dev) {
 			enumerate_dev(hdr, dev);
@@ -146,6 +156,8 @@ namespace pci {
 		u16 entries = (GLOBAL_MCFG->hdr.length - sizeof(Mcfg)) / sizeof(Mcfg::Entry);
 		for (u32 i = 0; i < entries; ++i) {
 			auto entry = GLOBAL_MCFG->entries[i];
+
+			ADDRESS.seg = entry.seg;
 
 			for (u8 bus_i = entry.start; bus_i < entry.end; ++bus_i) {
 				enumerate_bus(to_virt<void>(entry.base), bus_i - entry.start);
@@ -170,7 +182,7 @@ namespace pci {
 		return nullptr;
 	}
 
-	Device::Device(Header0* hdr0) : hdr0 {hdr0} {
+	Device::Device(Header0* hdr0, PciAddress address) : hdr0 {hdr0}, address {address} {
 		msix = static_cast<caps::MsiX*>(hdr0->get_cap(Cap::MsiX, 0));
 		msi = static_cast<caps::Msi*>(hdr0->get_cap(Cap::Msi, 0));
 	}
@@ -237,7 +249,7 @@ namespace pci {
 			count = 1 << (msi->msg_control >> 1 & 0b111);
 		}
 		else {
-			panic("[kernel][pci]: legacy irqs are not supported");
+			count = 1;
 		}
 
 		if (count < min) {
@@ -284,6 +296,24 @@ namespace pci {
 				irqs[i] = all_irqs + i;
 			}
 		}
+		else {
+			u32 irq = x86_alloc_irq(1, flags & IrqFlags::Shared);
+			assert(irq);
+
+			auto legacy_irq = acpi::get_legacy_pci_irq(address.seg, address.bus, address.device, hdr0->irq_pin);
+			assert(legacy_irq);
+
+			IoApicIrqInfo info {
+				.delivery = IoApicDelivery::Fixed,
+				.polarity = legacy_irq->active_high ? IoApicPolarity::ActiveHigh : IoApicPolarity::ActiveLow,
+				.trigger = legacy_irq->edge_triggered ? IoApicTrigger::Edge : IoApicTrigger::Level,
+				.vec = static_cast<u8>(irq)
+			};
+			IO_APIC.register_irq(legacy_irq->gsi, info);
+
+			enable_legacy_irq(false);
+			irqs[0] = irq;
+		}
 
 		return count;
 	}
@@ -323,7 +353,7 @@ namespace pci {
 			}
 		}
 		else {
-			panic("[kernel][pci]: legacy irqs are not supported");
+			enable_legacy_irq(enable);
 		}
 	}
 }

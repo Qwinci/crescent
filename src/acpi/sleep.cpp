@@ -42,9 +42,9 @@ namespace acpi {
 				assert(status == qacpi::Status::Success && "failed to evaluate _S5");
 				assert(ret->get<qacpi::Package>());
 				auto& pkg = ret->get_unsafe<qacpi::Package>();
-				assert(pkg.data->element_count >= 2);
-				u8 slp_typa = pkg.data->elements[0]->get_unsafe<uint64_t>() & 0b111;
-				u8 slp_typb = pkg.data->elements[1]->get_unsafe<uint64_t>() & 0b111;
+				assert(pkg.size() >= 2);
+				u8 slp_typa = GLOBAL_CTX->get_package_element(ret, 0)->get_unsafe<uint64_t>() & 0b111;
+				u8 slp_typb = GLOBAL_CTX->get_package_element(ret, 1)->get_unsafe<uint64_t>() & 0b111;
 
 				IrqGuard shutdown_guard {};
 				// clear WAK_STS
