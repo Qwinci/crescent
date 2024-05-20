@@ -35,6 +35,13 @@ typedef enum {
 
 	SYS_SHUTDOWN,
 
+	SYS_OPEN,
+	SYS_READ,
+	SYS_WRITE,
+	SYS_STAT,
+	SYS_PIPE_CREATE,
+	SYS_REPLACE_STD_HANDLE,
+
 	SYS_SERVICE_CREATE,
 	SYS_SERVICE_GET,
 
@@ -71,5 +78,24 @@ typedef enum {
 #define CRESCENT_PROT_READ (1U << 0)
 #define CRESCENT_PROT_WRITE (1U << 1)
 #define CRESCENT_PROT_EXEC (1U << 2)
+
+typedef struct {
+	CrescentStringView* args;
+	size_t arg_count;
+	CrescentHandle stdin_handle;
+	CrescentHandle stdout_handle;
+	CrescentHandle stderr_handle;
+	int flags;
+} ProcessCreateInfo;
+
+#define PROCESS_STD_HANDLES (1 << 0)
+
+#define STDIN_HANDLE (CrescentHandle) (0)
+#define STDOUT_HANDLE (CrescentHandle) (1)
+#define STDERR_HANDLE (CrescentHandle) (2)
+
+typedef struct {
+	size_t size;
+} CrescentStat;
 
 #endif

@@ -84,7 +84,7 @@ static void setup_memory(usize max_addr) {
 		}
 	}
 
-	KERNEL_PROCESS.initialize("kernel", false);
+	KERNEL_PROCESS.initialize("kernel", false, EmptyHandle {}, EmptyHandle {}, EmptyHandle {});
 	auto& KERNEL_MAP = KERNEL_PROCESS->page_map;
 	KERNEL_MAP.fill_high_half();
 

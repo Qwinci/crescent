@@ -35,6 +35,21 @@ CrescentHandle HandleTable::insert(Handle&& handle) {
 	return index;
 }
 
+bool HandleTable::replace(CrescentHandle replace, Handle&& with) {
+	auto guard = lock.lock();
+
+	if (replace >= count) {
+		return false;
+	}
+
+	auto& loc = table[replace];
+	if (loc.get<kstd::monostate>()) {
+		return false;
+	}
+	loc = std::move(with);
+	return true;
+}
+
 bool HandleTable::remove(CrescentHandle handle) {
 	auto guard = lock.lock();
 

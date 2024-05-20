@@ -11,9 +11,24 @@
 #include "qacpi/context.hpp"
 #include "qacpi/ns.hpp"
 
+// 9a49 == uhd
+// a0c8 == audio
+
 namespace acpi {
 	extern qacpi::Context GLOBAL_CTX;
 }
+
+struct KernelStdoutVNode : public VNode {
+	FsStatus write(const void* data, usize size, usize offset) override {
+		if (offset) {
+			return FsStatus::Unsupported;
+		}
+
+		print(kstd::string_view {static_cast<const char*>(data), size});
+
+		return FsStatus::Success;
+	}
+};
 
 [[noreturn, gnu::used]] void kmain(const void* initrd, usize initrd_size) {
     println("[kernel]: entered kmain");
@@ -21,9 +36,11 @@ namespace acpi {
 	fb_dev_register_boot_fb();
 
 #if ARCH_X86_64
-	//println("[kernel]: enumerating pci devices...");
+	println("[kernel]: acpi init...");
 	pci::acpi_init();
+	println("[kernel]: qacpi init");
 	acpi::qacpi_init();
+	println("[kernel]: pci enumerate");
 	pci::acpi_enumerate();
 
 	kstd::vector<qacpi::NamespaceNode*> nodes;
@@ -75,7 +92,10 @@ namespace acpi {
 	IrqGuard guard {};
 	auto cpu = get_current_thread()->cpu;
 
-	auto* user_process = new Process {"user process", true};
+	kstd::shared_ptr<VNode> stdout_vnode {kstd::make_shared<KernelStdoutVNode>()};
+	auto stderr_vnode = stdout_vnode;
+
+	auto* user_process = new Process {"user process", true, EmptyHandle {}, std::move(stdout_vnode), std::move(stderr_vnode)};
 
 	auto root = INITRD_VFS->get_root();
 	auto bin = root->lookup("bin");

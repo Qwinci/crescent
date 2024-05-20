@@ -64,7 +64,7 @@ namespace kstd {
 			size_t bucket_index = hash % table_size;
 			while (true) {
 				auto& bucket = table[bucket_index];
-				if (!bucket.has_value()) {
+				if (!bucket.has_value() || bucket->key == key) {
 					bucket = Element {.key {key}, .value {value}};
 					++used;
 					break;
@@ -110,7 +110,7 @@ namespace kstd {
 			size_t bucket_index = hash % table_size;
 			while (true) {
 				auto& bucket = table[bucket_index];
-				if (!bucket.has_value()) {
+				if (!bucket.has_value() || bucket->key == key) {
 					bucket = Element {.key {key}, .value {move(value)}};
 					break;
 				}

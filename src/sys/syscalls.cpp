@@ -8,6 +8,7 @@
 #include "sched/sched.hpp"
 #include "stdio.hpp"
 #include "fs/vfs.hpp"
+#include "fs/pipe.hpp"
 #include "exe/elf_loader.hpp"
 #include "service.hpp"
 #include "sched/ipc.hpp"
@@ -132,13 +133,19 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
-			usize arg_count = *frame->arg4();
+
+			ProcessCreateInfo process_info {};
+			if (!UserAccessor(*frame->arg3()).load(process_info)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
 			kstd::vector<kstd::string> args;
-			args.resize(arg_count);
+			args.resize(process_info.arg_count);
 			bool success = true;
-			for (usize i = 0; i < arg_count; ++i) {
+			for (usize i = 0; i < process_info.arg_count; ++i) {
 				CrescentStringView view;
-				if (!UserAccessor(*frame->arg3() + i * sizeof(CrescentStringView)).load(view)) {
+				if (!UserAccessor(offset(process_info.args, void*, i * sizeof(CrescentStringView))).load(view)) {
 					*frame->ret() = ERR_FAULT;
 					success = false;
 					break;
@@ -171,7 +178,34 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			auto* process = new Process {name, true};
+			Process* process;
+			if (process_info.flags & PROCESS_STD_HANDLES) {
+				auto stdin = thread->process->handles.get(process_info.stdin_handle);
+				if (!stdin || !stdin->get<kstd::shared_ptr<VNode>>()) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				}
+				auto stdout = thread->process->handles.get(process_info.stdout_handle);
+				if (!stdout || !stdout->get<kstd::shared_ptr<VNode>>()) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				}
+				auto stderr = thread->process->handles.get(process_info.stderr_handle);
+				if (!stderr || !stderr->get<kstd::shared_ptr<VNode>>()) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				}
+
+				process = new Process {name, true, std::move(stdin).value(), std::move(stdout).value(), std::move(stderr).value()};
+			}
+			else {
+				auto stdin = thread->process->handles.get(STDIN_HANDLE).value();
+				auto stdout = thread->process->handles.get(STDOUT_HANDLE).value();
+				auto stderr = thread->process->handles.get(STDERR_HANDLE).value();
+
+				process = new Process {name, true, std::move(stdin), std::move(stdout), std::move(stderr)};
+			}
+
 			auto elf_result = elf_load(process, node.data());
 			if (!elf_result) {
 				switch (elf_result.error()) {
@@ -1088,6 +1122,203 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
+
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_OPEN:
+		{
+			kstd::string path;
+			path.resize_without_null(*frame->arg2());
+			if (!UserAccessor(*frame->arg1()).load(path.data(), *frame->arg2())) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			int flags = static_cast<int>(*frame->arg3());
+
+			auto node = INITRD_VFS->lookup(path);
+			if (!node) {
+				*frame->ret() = ERR_NOT_EXISTS;
+				break;
+			}
+
+			auto handle = thread->process->handles.insert(std::move(node));
+			if (!UserAccessor(*frame->arg0()).store(handle)) {
+				thread->process->handles.remove(handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_READ:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto offset = static_cast<size_t>(*frame->arg2());
+			auto size = static_cast<size_t>(*frame->arg3());
+
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			kstd::vector<u8> buffer;
+			buffer.resize(size);
+
+			auto status = (*vnode)->read(buffer.data(), size, offset);
+			switch (status) {
+				case FsStatus::Success:
+					if (!UserAccessor(*frame->arg1()).store(buffer.data(), buffer.size())) {
+						*frame->ret() = ERR_FAULT;
+					}
+					else {
+						*frame->ret() = 0;
+					}
+
+					break;
+				case FsStatus::Unsupported:
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				case FsStatus::OutOfBounds:
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+			}
+
+			break;
+		}
+		case SYS_WRITE:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto offset = static_cast<size_t>(*frame->arg2());
+			auto size = static_cast<size_t>(*frame->arg3());
+
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			kstd::vector<u8> buffer;
+			buffer.resize(size);
+			if (!UserAccessor(*frame->arg1()).load(buffer.data(), size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			auto status = (*vnode)->write(buffer.data(), size, offset);
+			switch (status) {
+				case FsStatus::Success:
+					*frame->ret() = 0;
+					break;
+				case FsStatus::Unsupported:
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				case FsStatus::OutOfBounds:
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+			}
+
+			break;
+		}
+		case SYS_STAT:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			FsStat stat {};
+			auto status = (*vnode)->stat(stat);
+			switch (status) {
+				case FsStatus::Success:
+				{
+					CrescentStat user_stat {
+						.size = stat.size
+					};
+
+					if (!UserAccessor(*frame->arg1()).store(user_stat)) {
+						*frame->ret() = ERR_FAULT;
+					}
+					else {
+						*frame->ret() = 0;
+					}
+
+					break;
+				}
+				case FsStatus::Unsupported:
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				case FsStatus::OutOfBounds:
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+			}
+
+			break;
+		}
+		case SYS_PIPE_CREATE:
+		{
+			auto max_size = static_cast<size_t>(*frame->arg2());
+
+			auto opt = PipeVNode::create(max_size);
+			if (!opt) {
+				*frame->ret() = ERR_NO_MEM;
+				break;
+			}
+
+			auto [reading, writing] = std::move(opt).value();
+			kstd::shared_ptr<VNode> reading_ptr {kstd::make_shared<PipeVNode>(std::move(reading))};
+			kstd::shared_ptr<VNode> writing_ptr {kstd::make_shared<PipeVNode>(std::move(writing))};
+
+			auto reading_handle = thread->process->handles.insert(std::move(reading_ptr));
+			auto writing_handle = thread->process->handles.insert(std::move(writing_ptr));
+
+			if (!UserAccessor(*frame->arg0()).store(reading_handle)) {
+				thread->process->handles.remove(reading_handle);
+				thread->process->handles.remove(writing_handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			if (!UserAccessor(*frame->arg1()).store(writing_handle)) {
+				thread->process->handles.remove(reading_handle);
+				thread->process->handles.remove(writing_handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_REPLACE_STD_HANDLE:
+		{
+			auto user_std_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto new_handle = static_cast<CrescentHandle>(*frame->arg1());
+
+			if (user_std_handle != STDIN_HANDLE && user_std_handle != STDOUT_HANDLE && user_std_handle != STDERR_HANDLE) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			kstd::shared_ptr<VNode>* vnode;
+			auto handle = thread->process->handles.get(new_handle);
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			thread->process->handles.replace(user_std_handle, std::move(*vnode));
 
 			*frame->ret() = 0;
 

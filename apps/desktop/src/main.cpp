@@ -65,8 +65,17 @@ void listener_thread(void* arg) {
 		sys_thread_exit(1);
 	}
 
+	ProcessCreateInfo console_process_info {
+		.args = nullptr,
+		.arg_count = 0,
+		.stdin_handle = INVALID_CRESCENT_HANDLE,
+		.stdout_handle = INVALID_CRESCENT_HANDLE,
+		.stderr_handle = INVALID_CRESCENT_HANDLE,
+		.flags = 0
+	};
+
 	CrescentHandle console_handle;
-	res = sys_process_create(console_handle, "/bin/console", sizeof("/bin/console") - 1, nullptr, 0);
+	res = sys_process_create(console_handle, "/bin/console", sizeof("/bin/console") - 1, console_process_info);
 	if (res != 0) {
 		puts("failed to create console process");
 		sys_thread_exit(1);

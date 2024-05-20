@@ -5,10 +5,14 @@
 #include "sys/service.hpp"
 #include "ipc.hpp"
 
-Process::Process(kstd::string_view name, bool user)
+Process::Process(kstd::string_view name, bool user, Handle&& stdin, Handle&& stdout, Handle&& stderr)
 	: name {name}, page_map {user ? &KERNEL_PROCESS->page_map : nullptr}, user {user} {
 	usize start = 0x200000;
 	vmem.init(start, 0x7FFFFFFFE000 - start, PAGE_SIZE);
+
+	handles.insert(std::move(stdin));
+	handles.insert(std::move(stdout));
+	handles.insert(std::move(stderr));
 }
 
 Process::~Process() {

@@ -10,8 +10,8 @@ int sys_thread_create(CrescentHandle& handle, const char* name, size_t name_len,
 	__builtin_unreachable();
 }
 
-int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len, CrescentStringView* args, size_t arg_count) {
-	return static_cast<int>(syscall(SYS_PROCESS_CREATE, &handle, path, path_len, args, arg_count));
+int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len, ProcessCreateInfo& info) {
+	return static_cast<int>(syscall(SYS_PROCESS_CREATE, &handle, path, path_len, &info));
 }
 
 [[noreturn]] void sys_process_exit(int status) {
@@ -61,6 +61,30 @@ int sys_poll_event(InputEvent& event, size_t timeout_us) {
 
 int sys_shutdown(ShutdownType type) {
 	return static_cast<int>(syscall(SYS_SHUTDOWN, type));
+}
+
+int sys_open(CrescentHandle& handle, const char* path, size_t path_len, int flags) {
+	return static_cast<int>(syscall(SYS_OPEN, &handle, path, path_len, flags));
+}
+
+int sys_read(CrescentHandle handle, void* data, size_t offset, size_t size) {
+	return static_cast<int>(syscall(SYS_READ, handle, data, offset, size));
+}
+
+int sys_write(CrescentHandle handle, const void* data, size_t offset, size_t size) {
+	return static_cast<int>(syscall(SYS_WRITE, handle, data, offset, size));
+}
+
+int sys_stat(CrescentHandle handle, CrescentStat& stat) {
+	return static_cast<int>(syscall(SYS_STAT, handle, &stat));
+}
+
+int sys_pipe_create(CrescentHandle& handle1, CrescentHandle& handle2, size_t max_size) {
+	return static_cast<int>(syscall(SYS_PIPE_CREATE, &handle1, &handle2, max_size));
+}
+
+int sys_replace_std_handle(CrescentHandle std_handle, CrescentHandle new_handle) {
+	return static_cast<int>(syscall(SYS_REPLACE_STD_HANDLE, std_handle, new_handle));
 }
 
 int sys_service_create(const CrescentStringView* features, size_t feature_count) {

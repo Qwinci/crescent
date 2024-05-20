@@ -4,7 +4,8 @@
 
 int puts(const char* str) {
 	auto len = strlen(str);
-	sys_syslog(str, len);
+	sys_write(STDOUT_HANDLE, str, 0, len);
+	sys_write(STDOUT_HANDLE, "\n", 0, 1);
 	return static_cast<int>(len);
 }
 
@@ -13,18 +14,31 @@ struct FILE {
 	virtual int write(const void* data, size_t size) = 0;
 };
 
-struct SysFile : public FILE {
+struct StdFile : public FILE {
+	constexpr explicit StdFile(CrescentHandle handle) : handle {handle} {}
+
 	int write(const void* data, size_t size) override {
-		sys_syslog(static_cast<const char*>(data), size);
+		sys_write(handle, data, 0, size);
 		return 0;
 	}
+
+	CrescentHandle handle;
 };
 
+namespace {
+	StdFile STDIN_FILE {STDIN_HANDLE};
+	StdFile STDOUT_FILE {STDOUT_HANDLE};
+	StdFile STDERR_FILE {STDERR_HANDLE};
+}
+
+FILE* stdin = &STDIN_FILE;
+FILE* stdout = &STDOUT_FILE;
+FILE* stderr = &STDERR_FILE;
+
 int printf(const char* __restrict fmt, ...) {
-	SysFile file {};
 	va_list ap;
 	va_start(ap, fmt);
-	int ret = vfprintf(&file, fmt, ap);
+	int ret = vfprintf(&STDOUT_FILE, fmt, ap);
 	va_end(ap);
 	return ret;
 }

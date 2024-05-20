@@ -15,9 +15,21 @@ struct FsStat {
 struct VNode {
 	virtual ~VNode() = default;
 
-	virtual kstd::shared_ptr<VNode> lookup(kstd::string_view name) = 0;
-	virtual FsStatus stat(FsStat& data) = 0;
-	virtual FsStatus read(void* data, usize size, usize offset) = 0;
+	virtual kstd::shared_ptr<VNode> lookup(kstd::string_view) {
+		return nullptr;
+	}
+
+	virtual FsStatus stat(FsStat& data) {
+		return FsStatus::Unsupported;
+	}
+
+	virtual FsStatus read(void* data, usize size, usize offset) {
+		return FsStatus::Unsupported;
+	}
+
+	virtual FsStatus write(const void* data, usize size, usize offset) {
+		return FsStatus::Unsupported;
+	}
 };
 
 struct Vfs {

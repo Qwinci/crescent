@@ -77,7 +77,7 @@ struct ProcessDescriptor {
 };
 
 struct Process {
-	explicit Process(kstd::string_view name, bool user);
+	explicit Process(kstd::string_view name, bool user, Handle&& stdin, Handle&& stdout, Handle&& stderr);
 	~Process();
 
 	usize allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKernelMapping* mapping, CacheMode cache_mode = CacheMode::WriteBack);

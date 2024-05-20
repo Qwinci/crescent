@@ -5,7 +5,7 @@
 
 int sys_thread_create(CrescentHandle& handle, const char* name, size_t name_len, void (*fn)(void* arg), void* arg);
 [[noreturn]] void sys_thread_exit(int status);
-int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len, CrescentStringView* args, size_t arg_count);
+int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len, ProcessCreateInfo& info);
 [[noreturn]] void sys_process_exit(int status);
 int sys_kill(CrescentHandle handle);
 int sys_get_status(CrescentHandle handle);
@@ -18,6 +18,14 @@ int sys_devlink(const DevLink& dev_link);
 int sys_close_handle(CrescentHandle handle);
 int sys_poll_event(InputEvent& event, size_t timeout_us);
 int sys_shutdown(ShutdownType type);
+
+int sys_open(CrescentHandle& handle, const char* path, size_t path_len, int flags);
+int sys_read(CrescentHandle handle, void* data, size_t offset, size_t size);
+int sys_write(CrescentHandle handle, const void* data, size_t offset, size_t size);
+int sys_stat(CrescentHandle handle, CrescentStat& stat);
+
+int sys_pipe_create(CrescentHandle& handle1, CrescentHandle& handle2, size_t max_size);
+int sys_replace_std_handle(CrescentHandle std_handle, CrescentHandle new_handle);
 
 int sys_service_create(const CrescentStringView* features, size_t feature_count);
 int sys_service_get(CrescentHandle& handle, const CrescentStringView* needed_features, size_t feature_count);
