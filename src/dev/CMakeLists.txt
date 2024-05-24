@@ -2,6 +2,7 @@ target_sources(crescent PRIVATE
 	clock.cpp
 	event.cpp
 	dev.cpp
+	random.cpp
 )
 
 if(ARCH STREQUAL "x86_64")

@@ -3,6 +3,7 @@
 #include "stdio.hpp"
 #include "arch/x86/dev/lapic.hpp"
 #include "arch/cpu.hpp"
+#include "dev/random.hpp"
 
 static u32 USED_IRQS[256 / 32] {};
 static u32 USED_SHAREABLE_IRQS[256 / 32] {};
@@ -75,12 +76,29 @@ void deregister_irq_handler(u32 num, IrqHandler* handler) {
 	IRQ_HANDLERS[num].remove(handler);
 }
 
+namespace {
+	u64 prev_irq_tsc;
+}
+
 extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 	if (frame->cs == 0x2B) {
 		asm volatile("swapgs");
 	}
 
 	lapic_eoi();
+
+	u64 entropy_rip = frame->cs == 0x2B ? frame->rip : (frame->rip & 0xFFFFFFFF);
+	u64 entropy = num | frame->cs << 8 | entropy_rip << 16 | (frame->rsp & 0xFFFFFFFF) << 32;
+	u32 tsc_low;
+	u32 tsc_high;
+	asm volatile("rdtsc" : "=a"(tsc_low), "=d"(tsc_high));
+	u64 tsc = tsc_low | static_cast<u64>(tsc_high) << 32;
+	u64 diff = tsc - prev_irq_tsc;
+	prev_irq_tsc = tsc;
+
+	entropy ^= diff;
+
+	random_add_entropy(&entropy, 1);
 
 	bool handler_found = false;
 	{

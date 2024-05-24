@@ -2,6 +2,8 @@
 #include "arch/x86/dev/hpet.hpp"
 #include "arch/x86/dev/ps2.hpp"
 #include "assert.hpp"
+#include "cpu.hpp"
+#include "dev/random.hpp"
 #include "loader/info.hpp"
 #include "mod.hpp"
 #include "smp.hpp"
@@ -19,6 +21,19 @@ extern "C" [[noreturn, gnu::used]] void arch_start(BootInfo info) {
 
 	Module initrd {};
 	assert(x86_get_module(initrd, "initramfs.tar"));
+
+	if (CPU_FEATURES.rdseed) {
+		u64 seed;
+		asm volatile("0: rdseed %0; jnc 0b" : "=r"(seed));
+		random_add_entropy(&seed, 1);
+		println("[kernel][x86]: initial entropy added from rdseed");
+	}
+	else if (CPU_FEATURES.rdrnd) {
+		u64 seed;
+		asm volatile("0: rdrand %0; jnc 0b" : "=r"(seed));
+		random_add_entropy(&seed, 1);
+		println("[kernel][x86]: initial entropy added from rdrand");
+	}
 
 	kmain(initrd.data, initrd.size);
 }

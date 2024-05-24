@@ -62,6 +62,7 @@ struct CpuFeatures {
 	bool umip;
 	bool smep;
 	bool smap;
+	bool rdseed;
 };
 static_assert(offsetof(CpuFeatures, smap) == 14);
 

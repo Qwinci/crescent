@@ -72,6 +72,9 @@ static void x86_detect_cpu_features() {
 	if (info.ebx & 1U << 20) {
 		CPU_FEATURES.smap = true;
 	}
+	if (info.ebx & 1U << 18) {
+		CPU_FEATURES.rdseed = true;
+	}
 }
 
 static void x86_init_simd() {
