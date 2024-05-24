@@ -65,4 +65,4 @@ struct CpuFeatures {
 };
 static_assert(offsetof(CpuFeatures, smap) == 14);
 
-extern CpuFeatures CPU_FEATURES;
+[[gnu::visibility("hidden")]] extern CpuFeatures CPU_FEATURES;

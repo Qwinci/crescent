@@ -76,7 +76,7 @@ bool x86_gp_fault_handler(IrqFrame* frame) { \
 	backtrace_display();
 
 	auto current = get_current_thread();
-	if (current->process->user) {
+	if (current->process->user && frame->cs == 0x2B) {
 		println("[kernel][x86]: killing user process ", current->process->name);
 		current->process->killed = true;
 		current->process->exit(-1);

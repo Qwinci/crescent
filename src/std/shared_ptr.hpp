@@ -29,14 +29,14 @@ namespace kstd {
 
 		template<typename U>
 		constexpr shared_ptr(shared_ptr<U>&& other) { // NOLINT(*-explicit-constructor)
-			ptr = other.ptr;
+			ptr = static_cast<T*>(other.ptr);
 			refs = other.refs;
 			other.ptr = nullptr;
 			other.refs = nullptr;
 		}
 		template<typename U>
 		shared_ptr(const shared_ptr<U>& other) { // NOLINT(*-explicit-constructor)
-			ptr = other.ptr;
+			ptr = static_cast<T*>(other.ptr);
 			refs = other.refs;
 			if (ptr) {
 				increase_ref_count();
@@ -46,10 +46,10 @@ namespace kstd {
 		template<typename U = T>
 		shared_ptr& operator=(shared_ptr<U>&& other) {
 			if (ptr && decrease_ref_count()) {
-				ptr->~T();
-				ALLOCATOR.free(ptr, sizeof(T) + sizeof(kstd::atomic<size_t>));
+				delete ptr;
+				delete refs;
 			}
-			ptr = other.ptr;
+			ptr = static_cast<T*>(other.ptr);
 			refs = other.refs;
 			other.ptr = nullptr;
 			other.refs = nullptr;
@@ -58,10 +58,10 @@ namespace kstd {
 		template<typename U = T>
 		shared_ptr& operator=(const shared_ptr<U>& other) {
 			if (ptr && decrease_ref_count()) {
-				ptr->~T();
-				ALLOCATOR.free(ptr, sizeof(T) + sizeof(kstd::atomic<size_t>));
+				delete ptr;
+				delete refs;
 			}
-			ptr = other.ptr;
+			ptr = static_cast<T*>(other.ptr);
 			refs = other.refs;
 			if (ptr) {
 				increase_ref_count();
@@ -102,8 +102,8 @@ namespace kstd {
 
 		~shared_ptr() {
 			if (ptr && decrease_ref_count()) {
-				ptr->~T();
-				ALLOCATOR.free(ptr, sizeof(T) + sizeof(kstd::atomic<size_t>));
+				delete ptr;
+				delete refs;
 			}
 		}
 
@@ -111,7 +111,7 @@ namespace kstd {
 		template<typename T2, typename... Args>
 		friend shared_ptr<T2> make_shared(Args&&... args);
 
-		constexpr explicit shared_ptr(T* ptr, kstd::atomic<size_t>* refs) : ptr {ptr}, refs {refs} {}
+		constexpr shared_ptr(T* ptr, kstd::atomic<size_t>* refs) : ptr {ptr}, refs {refs} {}
 
 		constexpr void increase_ref_count() {
 			auto old = refs->load(kstd::memory_order::relaxed);
@@ -136,12 +136,8 @@ namespace kstd {
 
 	template<typename T, typename... Args>
 	shared_ptr<T> make_shared(Args&&... args) {
-		auto* storage = ALLOCATOR.alloc(sizeof(T) + sizeof(kstd::atomic<size_t>));
-		if (!storage) {
-			return {};
-		}
-		auto ptr = new (storage) T {std::forward<Args&&>(args)...};
-		auto refs = new (offset(storage, void*, sizeof(T))) kstd::atomic<size_t> {1};
+		auto* ptr = new T {std::forward<Args&&>(args)...};
+		auto* refs = new kstd::atomic<size_t> {1};
 		return shared_ptr<T> {ptr, refs};
 	}
 }

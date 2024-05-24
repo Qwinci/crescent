@@ -149,7 +149,7 @@ arch_on_first_switch_user:
 ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : self {this} {
 	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + PAGE_SIZE) / 8] {};
 	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE - (process->user ? sizeof(UserInitFrame) : sizeof(InitFrame));
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE - (process->user ? sizeof(UserInitFrame) : (sizeof(InitFrame) + 8));
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->rdi = reinterpret_cast<u64>(arg);

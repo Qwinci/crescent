@@ -8,9 +8,13 @@ namespace kstd {
 	class unordered_map {
 	public:
 		void remove(K key) {
+			size_t table_size = table.size();
+			if (!table_size) {
+				return;
+			}
+
 			auto hash = fnv_hash(&key, sizeof(K));
 
-			size_t table_size = table.size();
 			size_t bucket_index = hash % table_size;
 			size_t start = bucket_index;
 			while (true) {
@@ -119,9 +123,13 @@ namespace kstd {
 		}
 
 		[[nodiscard]] T* get(K key) {
+			size_t table_size = table.size();
+			if (!table_size) {
+				return nullptr;
+			}
+
 			auto hash = fnv_hash(&key, sizeof(K));
 
-			size_t table_size = table.size();
 			size_t bucket_index = hash % table_size;
 			size_t start = bucket_index;
 			while (true) {
