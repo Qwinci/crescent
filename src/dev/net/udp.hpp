@@ -1,5 +1,5 @@
 #pragma once
-#include "mac.hpp"
+#include "types.hpp"
 #include "bit.hpp"
 
 struct UdpHeader {
@@ -22,5 +22,6 @@ struct UdpHeader {
 };
 
 struct Nic;
+struct ReceivedPacket;
 
-void udp_process_packet(Nic& nic, void* data, const Mac& src);
+void udp_process_packet(Nic& nic, ReceivedPacket& packet);

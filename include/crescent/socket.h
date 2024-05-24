@@ -28,13 +28,13 @@ typedef struct {
 typedef struct {
 	SocketAddress generic;
 	uint32_t ipv4;
-	uint32_t port;
+	uint16_t port;
 } Ipv4SocketAddress;
 
 typedef struct {
 	SocketAddress generic;
 	uint16_t ipv6[8];
-	uint32_t port;
+	uint16_t port;
 } Ipv6SocketAddress;
 
 typedef enum {

@@ -2,6 +2,7 @@
 #include "mem/malloc.hpp"
 #include "assert.hpp"
 #include "new.hpp"
+#include "cstring.hpp"
 
 Packet::Packet(u32 size) : size {size} {
 	data = ALLOCATOR.alloc(size);
@@ -18,7 +19,7 @@ void Packet::add_ethernet(const Mac& src, const Mac& dest, EtherType ether_type)
 }
 
 void Packet::add_ipv4(IpProtocol protocol, u16 payload_size, u32 src_addr, u32 dest_addr) {
-	ipv4 = new (add_header(sizeof(Ipv4Header))) Ipv4Header {
+	Ipv4Header hdr {
 		.ihl_version = 5 | 4 << 4,
 		.ecn_dscp = 0,
 		.total_len = static_cast<u16>(20 + payload_size),
@@ -30,8 +31,11 @@ void Packet::add_ipv4(IpProtocol protocol, u16 payload_size, u32 src_addr, u32 d
 		.src_addr = src_addr,
 		.dest_addr = dest_addr
 	};
-	ipv4->serialize();
-	ipv4->update_checksum();
+	hdr.serialize();
+	hdr.update_checksum();
+
+	ipv4 = static_cast<Ipv4Header*>(add_header(sizeof(Ipv4Header)));
+	memcpy(ipv4, &hdr, sizeof(hdr));
 }
 
 void Packet::add_udp(u16 src_port, u16 dest_port, u16 length) {

@@ -27,3 +27,18 @@ struct Packet {
 	u32 size;
 	u32 offset {};
 };
+
+struct ReceivedPacket {
+	union {
+		EthernetHeader ethernet;
+	} layer0;
+	union {
+		void* raw;
+		Ipv4Header ipv4;
+	} layer1;
+	union {
+		void* raw;
+		UdpHeader udp;
+	} layer2;
+	u16 layer2_len;
+};

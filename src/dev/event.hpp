@@ -11,6 +11,11 @@ struct Event {
 	void signal_one();
 	void signal_all();
 
+	inline bool is_being_waited() {
+		IrqGuard irq_guard {};
+		return !waiters.lock()->is_empty();
+	}
+
 private:
 	Spinlock<DoubleList<Thread, &Thread::misc_hook>> waiters {};
 	Spinlock<usize> signaled_count {};

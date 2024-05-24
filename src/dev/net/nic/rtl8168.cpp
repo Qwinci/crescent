@@ -32,6 +32,10 @@ namespace regs {
 	static constexpr BitRegister<u8> MTPS {0xEC};
 }
 
+namespace regs_8139 {
+	static constexpr BitRegister<u8> TPPOLL {0xD9};
+}
+
 namespace cmd {
 	static constexpr BitField<u8, bool> TE {2, 1};
 	static constexpr BitField<u8, bool> RE {3, 1};
@@ -96,6 +100,8 @@ namespace rms {
 }
 
 namespace cpcr {
+	static constexpr BitField<u16, bool> TX {0, 1};
+	static constexpr BitField<u16, bool> RX {1, 1};
 	static constexpr BitField<u16, bool> RX_CHK_SUM {5, 1};
 	static constexpr BitField<u16, bool> RX_VLAN {6, 1};
 }
@@ -174,13 +180,18 @@ struct RxDescriptor {
 
 struct Rtl : public Nic {
 	explicit Rtl(pci::Device& device) : device {device} {
-		auto bar = device.map_bar(2);
-		space = IoSpace {bar};
+		for (u32 i = 0; i < 6; ++i) {
+			if (device.is_io_space(i)) {
+				continue;
+			}
+			auto bar = device.map_bar(i);
+			space = IoSpace {bar};
+			break;
+		}
 
 		device.enable_mem_space(true);
 		device.enable_io_space(true);
 		device.enable_bus_master(true);
-		device.enable_legacy_irq(true);
 		assert(device.alloc_irqs(1, 1, pci::IrqFlags::All));
 		auto irq_num = device.get_irq(0);
 		register_irq_handler(irq_num, &irq_handler);
@@ -230,6 +241,18 @@ struct Rtl : public Nic {
 		auto cpcr = space.load(regs::CPCR);
 		cpcr &= ~cpcr::RX_CHK_SUM;
 		cpcr &= ~cpcr::RX_VLAN;
+
+		if (device.hdr0->common.device_id == 0x8139) {
+			is_8139 = true;
+			cpcr |= cpcr::TX(true);
+			cpcr |= cpcr::RX(true);
+
+			desc_count = kstd::min(u32 {PAGE_SIZE / sizeof(TxDescriptor)}, u32 {64});
+		}
+		else {
+			desc_count = PAGE_SIZE / sizeof(TxDescriptor);
+		}
+
 		space.store(regs::CPCR, cpcr);
 
 		auto cmd = space.load(regs::CMD);
@@ -239,6 +262,12 @@ struct Rtl : public Nic {
 		space.store(regs::CMD, cmd);
 
 		while (space.load(regs::CMD) & cmd::RST);
+
+		if (is_8139) {
+			cpcr |= cpcr::TX(true);
+			cpcr |= cpcr::RX(true);
+			space.store(regs::CPCR, cpcr);
+		}
 
 		auto imr = space.load(regs::IMR);
 		imr &= ~imr_isr::TIME_OUT;
@@ -267,10 +296,12 @@ struct Rtl : public Nic {
 		rx_config &= ~rx_config::AAP;
 		space.store(regs::RX_CFG, rx_config);
 
-		auto rms = space.load(regs::RMS);
-		rms &= ~rms::RMS;
-		rms |= rms::RMS(8191);
-		space.store(regs::RMS, rms);
+		if (!is_8139) {
+			auto rms = space.load(regs::RMS);
+			rms &= ~rms::RMS;
+			rms |= rms::RMS(8191);
+			space.store(regs::RMS, rms);
+		}
 
 		auto mtps = space.load(regs::MTPS);
 		mtps &= ~mtps::MTPS;
@@ -306,7 +337,7 @@ struct Rtl : public Nic {
 		memset(tx_desc_virt, 0, PAGE_SIZE);
 		memset(rx_desc_virt, 0, PAGE_SIZE);
 
-		for (usize i = 0; i < DESC_COUNT; ++i) {
+		for (usize i = 0; i < desc_count; ++i) {
 			auto tx_buffer_phys = pmalloc(1);
 			auto rx_buffer_phys = pmalloc(1);
 			assert(tx_buffer_phys);
@@ -314,7 +345,7 @@ struct Rtl : public Nic {
 
 			rx_desc[i].flags |= rx_empty_flags::OWN(true) | rx_empty_flags::BUFFER_SIZE(PAGE_SIZE);
 
-			if (i == DESC_COUNT - 1) {
+			if (i == desc_count - 1) {
 				tx_desc[i].flags |= tx_flags::EOR(true);
 				rx_desc[i].flags |= rx_empty_flags::EOR(true);
 			}
@@ -354,16 +385,21 @@ struct Rtl : public Nic {
 		}
 
 		desc.flags = {tx_flags::OWN(true) | tx_flags::FS(true) | tx_flags::LS(true)};
-		if (tx_desc_ptr == DESC_COUNT - 1) {
+		if (tx_desc_ptr == desc_count - 1) {
 			desc.flags |= tx_flags::EOR(true);
 		}
 		desc.vlan = 0;
 		desc.frame_len = size;
 		memcpy(to_virt<void>(desc.buffer), data, size);
 
-		tx_desc_ptr = (tx_desc_ptr + 1) % DESC_COUNT;
+		tx_desc_ptr = (tx_desc_ptr + 1) % desc_count;
 
-		space.store(regs::TPPOLL, tppoll::NPQ(true));
+		if (is_8139) {
+			space.store(regs_8139::TPPOLL, tppoll::NPQ(true));
+		}
+		else {
+			space.store(regs::TPPOLL, tppoll::NPQ(true));
+		}
 	}
 
 	bool on_irq() {
@@ -381,11 +417,11 @@ struct Rtl : public Nic {
 				ethernet_process_packet(*this, to_virt<void>(desc.buffer), size);
 
 				desc.flags = {rx_empty_flags::OWN(true) | rx_empty_flags::BUFFER_SIZE(PAGE_SIZE)};
-				if (rx_desc_ptr == DESC_COUNT - 1) {
+				if (rx_desc_ptr == desc_count - 1) {
 					desc.flags |= rx_empty_flags::EOR(true);
 				}
 
-				rx_desc_ptr = (rx_desc_ptr + 1) % DESC_COUNT;
+				rx_desc_ptr = (rx_desc_ptr + 1) % desc_count;
 			}
 		}
 		else if (isr & imr_isr::TER) {
@@ -419,14 +455,20 @@ struct Rtl : public Nic {
 	};
 	TxDescriptor* tx_desc {};
 	RxDescriptor* rx_desc {};
-	int tx_desc_ptr {};
-	int rx_desc_ptr {};
-
-	static constexpr int DESC_COUNT = PAGE_SIZE / sizeof(TxDescriptor);
+	u32 tx_desc_ptr {};
+	u32 rx_desc_ptr {};
+	u32 desc_count {};
+	bool is_8139 {};
 };
 
 static bool rtl_init(pci::Device& device) {
-	auto* rtl = new Rtl {device};
+	auto rtl = kstd::make_shared<Rtl>(device);
+	{
+		IrqGuard irq_guard {};
+		auto guard = NICS->lock();
+		guard->push(rtl);
+	}
+
 	rtl->init();
 	println("[kernel][nic]: rtl init done");
 
@@ -437,6 +479,7 @@ static PciDriver RTL_DRIVER {
 	.init = rtl_init,
 	.match = PciMatch::Device,
 	.devices {
+		{.vendor = 0x10EC, .device = 0x8139},
 		{.vendor = 0x10EC, .device = 0x8168}
 	}
 };

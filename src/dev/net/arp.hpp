@@ -2,6 +2,7 @@
 #include "types.hpp"
 #include "bit.hpp"
 #include "mac.hpp"
+#include "optional.hpp"
 
 struct [[gnu::packed]] ArpHeader {
 	u16 htype;
@@ -28,5 +29,7 @@ struct [[gnu::packed]] ArpHeader {
 };
 
 struct Nic;
+struct ReceivedPacket;
 
-void arp_process_packet(Nic& nic, void* data, const Mac& src);
+void arp_process_packet(Nic& nic, ReceivedPacket& packet);
+kstd::optional<Mac> arp_get_mac(u32 ip);

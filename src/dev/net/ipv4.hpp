@@ -1,6 +1,5 @@
 #pragma once
 #include "types.hpp"
-#include "mac.hpp"
 #include "ip.hpp"
 #include "bit.hpp"
 
@@ -32,5 +31,6 @@ struct Ipv4Header {
 };
 
 struct Nic;
+struct ReceivedPacket;
 
-void ipv4_process_packet(Nic& nic, void* data, const Mac& src);
+void ipv4_process_packet(Nic& nic, ReceivedPacket& packet);

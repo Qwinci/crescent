@@ -12,6 +12,7 @@
 #include "exe/elf_loader.hpp"
 #include "service.hpp"
 #include "sched/ipc.hpp"
+#include "dev/net/tcp.hpp"
 
 extern void hda_play();
 
@@ -785,9 +786,22 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					break;
 				}
 				case SOCKET_TYPE_UDP:
-				case SOCKET_TYPE_TCP:
 					*frame->ret() = ERR_UNSUPPORTED;
 					break;
+				case SOCKET_TYPE_TCP:
+				{
+					auto socket = tcp_socket_create(flags);
+					auto handle = thread->process->handles.insert(std::move(socket));
+
+					if (!UserAccessor(*frame->arg0()).store(handle)) {
+						thread->process->handles.remove(handle);
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+
+					*frame->ret() = 0;
+					break;
+				}
 			}
 
 			break;

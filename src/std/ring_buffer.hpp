@@ -9,6 +9,39 @@ struct RingBuffer {
 		buffer.get_unsafe().resize(max_size);
 	}
 
+	usize read(void* data, usize size) {
+		usize orig_size = size;
+
+		while (true) {
+			usize to_read;
+
+			IrqGuard irq_guard {};
+			auto guard = buffer.lock();
+
+			auto remaining_at_end = guard->size() - read_ptr;
+			to_read = kstd::min(kstd::min(buffer_size, size), remaining_at_end);
+			memcpy(data, guard->data() + read_ptr, to_read);
+			read_ptr += to_read;
+			buffer_size -= to_read;
+			size -= to_read;
+			if (read_ptr == guard->size()) {
+				read_ptr = 0;
+			}
+
+			if (size && !buffer_size) {
+				return orig_size - size;
+			}
+
+			if (!size) {
+				break;
+			}
+
+			data = offset(data, void*, to_read);
+		}
+
+		return orig_size;
+	}
+
 	void read_block(void* data, usize size) {
 		while (true) {
 			usize to_read;
@@ -44,6 +77,43 @@ struct RingBuffer {
 
 			data = offset(data, void*, to_read);
 		}
+	}
+
+	usize write(const void* data, usize size) {
+		usize orig_size = size;
+
+		while (true) {
+			usize to_write;
+
+			IrqGuard irq_guard {};
+			auto guard = buffer.lock();
+
+			if (!buffer_size) {
+				read_event.signal_one();
+			}
+
+			auto remaining_at_end = guard->size() - write_ptr;
+			to_write = kstd::min(kstd::min(guard->size() - buffer_size, size), remaining_at_end);
+			memcpy(guard->data() + write_ptr, data, to_write);
+			write_ptr += to_write;
+			buffer_size += to_write;
+			size -= to_write;
+			if (write_ptr == guard->size()) {
+				write_ptr = 0;
+			}
+
+			if (size && buffer_size == guard->size()) {
+				return orig_size - size;
+			}
+
+			if (!size) {
+				break;
+			}
+
+			data = offset(data, void*, to_write);
+		}
+
+		return orig_size;
 	}
 
 	void write_block(const void* data, usize size) {

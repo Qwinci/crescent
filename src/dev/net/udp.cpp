@@ -26,11 +26,13 @@ void gdb_process_packet(Nic& nic, void* data, u16 size, const Mac& src) {
 	nic.send(packet.data, packet.size);
 }
 
-void udp_process_packet(Nic& nic, void* data, const Mac& src) {
-	auto* hdr = static_cast<UdpHeader*>(data);
+void udp_process_packet(Nic& nic, ReceivedPacket& packet) {
+	auto* hdr = static_cast<UdpHeader*>(packet.layer2.raw);
 	hdr->deserialize();
 
+	packet.layer2.udp = *hdr;
+
 	if (hdr->dest_port == 1234) {
-		gdb_process_packet(nic, &hdr[1], hdr->length - 8, src);
+		gdb_process_packet(nic, &hdr[1], hdr->length - 8, packet.layer0.ethernet.src);
 	}
 }
