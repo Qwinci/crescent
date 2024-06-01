@@ -42,7 +42,7 @@ add_subdirectory(src)
 if(ARCH STREQUAL "x86_64")
 	target_compile_options(crescent PRIVATE -fPIE)
 	target_compile_definitions(crescent PRIVATE ARCH_X86_64)
-	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/x86_64.ld)
+	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/x86_64.ld -static-pie)
 
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 		target_compile_options(crescent PRIVATE -fsanitize=undefined -fsanitize-minimal-runtime)

@@ -82,6 +82,10 @@ static void lapic_timer_calibrate(Cpu* cpu) {
 	usize ticks_in_ms = ticks_in_10ms / 10;
 	usize ticks_in_us = ticks_in_ms / US_IN_MS;
 
+	if (!ticks_in_us) {
+		ticks_in_us = 1;
+	}
+
 	cpu->lapic_timer.initialize(0xFFFFFFFF / ticks_in_us, ticks_in_us);
 
 	SPACE.store(regs::DIVIDE_CONFIG, divide_config::DIV_BY_16);

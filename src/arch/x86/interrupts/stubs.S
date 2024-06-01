@@ -142,7 +142,7 @@ stub %i
 	.quad irq\i
 .endm
 
-.section .rodata
+.section .data
 .global x86_irq_stubs
 .align 16
 x86_irq_stubs:
