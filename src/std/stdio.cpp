@@ -35,6 +35,14 @@ Log& Log::operator<<(usize value) {
 	return *this;
 }
 
+Log& Log::operator<<(isize value) {
+	if (value < 0) {
+		operator<<(kstd::string_view {"-", 1});
+		value *= -1;
+	}
+	return operator<<(static_cast<usize>(value));
+}
+
 Log& Log::operator<<(kstd::string_view str) {
 	if (str.size() + 1 > LOG_SIZE) {
 		return *this;

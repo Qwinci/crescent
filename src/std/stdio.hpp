@@ -39,7 +39,27 @@ constexpr Pad zero_pad(u32 amount) {
 
 class Log {
 public:
+	inline Log& operator<<(u8 value) {
+		return operator<<(static_cast<usize>(value));
+	}
+	inline Log& operator<<(u16 value) {
+		return operator<<(static_cast<usize>(value));
+	}
+	inline Log& operator<<(u32 value) {
+		return operator<<(static_cast<usize>(value));
+	}
+	inline Log& operator<<(i8 value) {
+		return operator<<(static_cast<isize>(value));
+	}
+	inline Log& operator<<(i16 value) {
+		return operator<<(static_cast<isize>(value));
+	}
+	inline Log& operator<<(i32 value) {
+		return operator<<(static_cast<isize>(value));
+	}
+
 	Log& operator<<(usize value);
+	Log& operator<<(isize value);
 	Log& operator<<(kstd::string_view str);
 	Log& operator<<(Fmt new_fmt);
 	Log& operator<<(Color new_color);

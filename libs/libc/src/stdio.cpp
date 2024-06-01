@@ -100,6 +100,13 @@ int vfprintf(FILE* __restrict file, const char* __restrict fmt, va_list ap) {
 				file->write(buf_ptr, (buf + 16) - buf_ptr);
 				break;
 			}
+			case 's':
+			{
+				auto* ptr = va_arg(ap, const char*);
+				auto str_len = strlen(ptr);
+				file->write(ptr, str_len);
+				break;
+			}
 		}
 		++fmt;
 	}
