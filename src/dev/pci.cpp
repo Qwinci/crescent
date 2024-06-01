@@ -147,12 +147,15 @@ namespace pci {
 	}
 
 	void acpi_init() {
-		auto* table = static_cast<Mcfg*>(acpi::get_table("MCFG"));
-		assert(table && "no MCFG found");
-		GLOBAL_MCFG = table;
+		GLOBAL_MCFG = static_cast<Mcfg*>(acpi::get_table("MCFG"));
 	}
 
 	void acpi_enumerate() {
+		if (!GLOBAL_MCFG) {
+			println("[kernel][pci]: no mcfg found, not doing pci enumeration");
+			return;
+		}
+
 		u16 entries = (GLOBAL_MCFG->hdr.length - sizeof(Mcfg)) / sizeof(Mcfg::Entry);
 		for (u32 i = 0; i < entries; ++i) {
 			auto entry = GLOBAL_MCFG->entries[i];
@@ -166,6 +169,8 @@ namespace pci {
 	}
 
 	void* get_space(u16 seg, u16 bus, u16 dev, u16 func) {
+		assert(GLOBAL_MCFG);
+
 		u16 entries = (GLOBAL_MCFG->hdr.length - sizeof(Mcfg)) / sizeof(Mcfg::Entry);
 		for (u32 i = 0; i < entries; ++i) {
 			auto entry = GLOBAL_MCFG->entries[i];
