@@ -90,6 +90,7 @@ static void remove_socket(Tcp4Socket* socket);
 
 struct Tcp4Socket : public Socket {
 	explicit Tcp4Socket(int flags) : Socket {flags} {
+		current_segment.resize(1024 * 64);
 		IrqGuard irq_guard {};
 		handler_thread->cpu->scheduler.queue(handler_thread);
 	}
@@ -111,8 +112,9 @@ struct Tcp4Socket : public Socket {
 	~Tcp4Socket() override {
 		disconnect_helper();
 		remove_socket(this);
-		// todo yield
-		while (!send_event.is_being_waited());
+		while (!send_event.is_being_waited()) {
+			get_current_thread()->yield();
+		}
 
 		IrqGuard irq_guard {};
 		// todo this is not thread-safe
@@ -170,8 +172,16 @@ struct Tcp4Socket : public Socket {
 			state = State::SentSyn;
 		}
 
-		while (state != State::Connected) {
-			state_change_event.wait();
+		while (true) {
+			if (state == State::None) {
+				return ERR_TRY_AGAIN;
+			}
+			else if (state == State::Connected) {
+				break;
+			}
+			else {
+				state_change_event.wait();
+			}
 		}
 
 		return 0;
@@ -195,8 +205,6 @@ struct Tcp4Socket : public Socket {
 			return ERR_TRY_AGAIN;
 		}
 
-		pending_connection_valid = false;
-
 		kstd::shared_ptr<Tcp4Socket> new_socket {tcp_socket_create(connection_flags)};
 		new_socket->state = State::SynAck;
 		new_socket->own_port = pending_connection.own_port;
@@ -205,9 +213,15 @@ struct Tcp4Socket : public Socket {
 		new_socket->target.port = pending_connection.target_port;
 		new_socket->received_sequence = pending_connection.sequence;
 
+		pending_connection_valid = false;
+
 		new_socket->send_event.signal_one();
 		while (new_socket->state != State::Connected && new_socket->state != State::None) {
 			new_socket->state_change_event.wait();
+		}
+
+		if (new_socket->state == State::None) {
+			return ERR_TRY_AGAIN;
 		}
 
 		connection = std::move(new_socket);
@@ -244,6 +258,13 @@ struct Tcp4Socket : public Socket {
 	}
 
 	void process_packet(ReceivedPacket& packet, const TcpHeader& hdr) {
+		if (hdr.flags & flags::RST) {
+			println("[kernel][tcp]: received a rst");
+			state = State::None;
+			state_change_event.signal_one();
+			return;
+		}
+
 		if (expect_fin_ack) {
 			if (!(hdr.flags & flags::ACK) || !(hdr.flags & flags::FIN)) {
 				println("[kernel][tcp]: expected a fin-ack in reply to fin");
@@ -314,21 +335,11 @@ struct Tcp4Socket : public Socket {
 			send_event.signal_one();
 		}
 		else if (state == State::Connected) {
-			if (hdr.flags & flags::FIN) {
-				state = State::ReceivedFin;
-				send_event.signal_one();
-				return;
-			}
-
 			if (!(hdr.flags & flags::ACK)) {
 				println("[kernel][tcp]: expected ack to be set in a data packet");
 				return;
 			}
-			if (hdr.sequence <= received_sequence) {
-				println("[kernel][tcp]: ignoring already received sequence ", hdr.sequence);
-				return;
-			}
-			else if (hdr.sequence != received_sequence + 1) {
+			if (hdr.sequence != received_sequence + 1) {
 				println("[kernel][tcp]: invalid sequence in a data packet");
 				return;
 			}
@@ -341,11 +352,16 @@ struct Tcp4Socket : public Socket {
 			u16 hdr_len = (hdr.flags & flags::DATA_OFFSET) * 4;
 			u16 data_len = packet.layer2_len - hdr_len;
 
+			if (hdr.flags & flags::FIN) {
+				state = State::ReceivedFin;
+				send_event.signal_one();
+				++data_len;
+			}
+
 			received_sequence += data_len;
 
 			auto* data = offset(packet.layer2.raw, const char*, hdr_len);
 
-			// todo out of order data
 			if (receive_buffer.size() + data_len > 1024 * 64) {
 				println("[kernel][tcp]: discarding packet because receive buffer is full");
 				return;
@@ -354,8 +370,8 @@ struct Tcp4Socket : public Socket {
 			send_event.signal_one();
 		}
 		else if (state == State::SentFin) {
-			if (!(hdr.flags & flags::ACK) || !(hdr.flags & flags::FIN)) {
-				println("[kernel][tcp]: expected a fin-ack in reply to fin");
+			if (!(hdr.flags & flags::ACK)) {
+				println("[kernel][tcp]: expected an ack in reply to fin");
 				return;
 			}
 			if (hdr.sequence != received_sequence + 1) {
@@ -369,6 +385,7 @@ struct Tcp4Socket : public Socket {
 
 			state = State::None;
 			state_change_event.signal_one();
+			println("[kernel][tcp]: socket disconnected");
 		}
 		else {
 			println("[kernel][tcp]: unhandled receive state");
@@ -420,43 +437,6 @@ struct Tcp4Socket : public Socket {
 				println("[kernel][tcp]: sending syn-ack");
 			}
 			else if (self->state == State::Connected) {
-				if (self->acked_sequence != self->received_sequence) {
-					self->acked_sequence = self->received_sequence;
-
-					println("[kernel][tcp]: ack sequence ", self->received_sequence);
-
-					Packet packet {sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(TcpHeader)};
-
-					auto mac = arp_get_mac(self->target.ipv4);
-					if (!mac) {
-						println("[kernel][tcp]: no ip->mac mapping for target");
-					}
-
-					IrqGuard irq_guard {};
-					// todo support choosing the nic
-					auto nic_guard = NICS->lock();
-
-					packet.add_ethernet((*(*nic_guard).front())->mac, mac.value(), EtherType::Ipv4);
-					packet.add_ipv4(IpProtocol::Tcp, sizeof(TcpHeader), self->own_ip, self->target.ipv4);
-
-					auto* hdr_ptr = packet.add_header(sizeof(TcpHeader));
-					TcpHeader hdr {
-						.src_port = self->own_port,
-						.dest_port = self->target.port,
-						.sequence = self->sequence,
-						.ack_number = self->received_sequence + 1,
-						.flags {flags::ACK(true) | flags::DATA_OFFSET(5)},
-						.window_size = static_cast<u16>(1024 * 64 - 1),
-						.checksum = 0,
-						.urgent_ptr = 0
-					};
-					hdr.serialize();
-					hdr.calculate_checksum(self->own_ip, self->target.ipv4, sizeof(TcpHeader), nullptr, 0);
-					memcpy(hdr_ptr, &hdr, sizeof(hdr));
-
-					(*nic_guard->front())->send(packet.data, packet.size);
-				}
-
 				if (auto size = self->send_buffer.size()) {
 					u32 to_send = kstd::min(size, usize {1024 * 64 - sizeof(Ipv4Header) - sizeof(TcpHeader)});
 
@@ -501,8 +481,7 @@ struct Tcp4Socket : public Socket {
 
 					(*nic_guard->front())->send(packet.data, packet.size);
 				}
-
-				if (self->do_disconnect) {
+				else if (self->do_disconnect) {
 					auto mac = arp_get_mac(self->target.ipv4);
 					if (!mac) {
 						println("[kernel][tcp]: no ip->mac mapping for target");
@@ -522,7 +501,7 @@ struct Tcp4Socket : public Socket {
 						.dest_port = self->target.port,
 						.sequence = self->sequence,
 						.ack_number = self->received_sequence + 1,
-						.flags {flags::FIN(true) | flags::DATA_OFFSET(5)},
+						.flags {flags::ACK(true) | flags::FIN(true) | flags::DATA_OFFSET(5)},
 						.window_size = static_cast<u16>(1024 * 64 - 1),
 						.checksum = 0,
 						.urgent_ptr = 0
@@ -539,6 +518,39 @@ struct Tcp4Socket : public Socket {
 
 					self->do_disconnect = false;
 					self->expect_fin_ack = true;
+				}
+				else {
+					auto mac = arp_get_mac(self->target.ipv4);
+					if (!mac) {
+						println("[kernel][tcp]: no ip->mac mapping for target");
+					}
+
+					IrqGuard irq_guard {};
+					// todo support choosing the nic
+					auto nic_guard = NICS->lock();
+
+					u32 packet_size = sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(TcpHeader);
+					Packet packet {packet_size};
+					packet.add_ethernet((*(*nic_guard).front())->mac, mac.value(), EtherType::Ipv4);
+					packet.add_ipv4(IpProtocol::Tcp, sizeof(TcpHeader), self->own_ip, self->target.ipv4);
+
+					auto* hdr_ptr = packet.add_header(sizeof(TcpHeader));
+					TcpHeader hdr {
+						.src_port = self->own_port,
+						.dest_port = self->target.port,
+						.sequence = self->sequence,
+						.ack_number = self->received_sequence + 1,
+						.flags {flags::ACK(true) | flags::DATA_OFFSET(5)},
+						.window_size = static_cast<u16>(1024 * 64 - 1),
+						.checksum = 0,
+						.urgent_ptr = 0
+					};
+
+					hdr.serialize();
+					hdr.calculate_checksum(self->own_ip, self->target.ipv4, sizeof(TcpHeader), nullptr, 0);
+					memcpy(hdr_ptr, &hdr, sizeof(hdr));
+
+					(*nic_guard->front())->send(packet.data, packet.size);
 				}
 			}
 			else if (self->state == State::ReceivedFin) {
@@ -576,32 +588,6 @@ struct Tcp4Socket : public Socket {
 				(*nic_guard->front())->send(packet.data, packet.size);
 
 				println("[kernel][tcp]: sending fin-ack");
-
-				Packet fin_packet {sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(TcpHeader)};
-				fin_packet.add_ethernet((*(*nic_guard).front())->mac, mac.value(), EtherType::Ipv4);
-				fin_packet.add_ipv4(IpProtocol::Tcp, sizeof(TcpHeader), self->own_ip, self->target.ipv4);
-
-				auto* hdr_ptr2 = fin_packet.add_header(sizeof(TcpHeader));
-				TcpHeader hdr2 {
-					.src_port = self->own_port,
-					.dest_port = self->target.port,
-					.sequence = self->sequence,
-					.ack_number = self->received_sequence + 1,
-					.flags {flags::FIN(true) | flags::DATA_OFFSET(5)},
-					.window_size = static_cast<u16>(1024 * 64 - 1),
-					.checksum = 0,
-					.urgent_ptr = 0
-				};
-				hdr2.serialize();
-				hdr2.calculate_checksum(self->own_ip, self->target.ipv4, sizeof(TcpHeader), nullptr, 0);
-				memcpy(hdr_ptr2, &hdr2, sizeof(hdr2));
-
-				++self->sequence;
-
-				(*nic_guard->front())->send(fin_packet.data, fin_packet.size);
-
-				println("[kernel][tcp]: sending fin");
-
 				self->state = State::SentFin;
 			}
 			else if (self->state == State::ReceivedSynAck) {
@@ -664,6 +650,7 @@ struct Tcp4Socket : public Socket {
 
 	RingBuffer<u8> send_buffer {1024 * 64};
 	RingBuffer<u8> receive_buffer {1024 * 64};
+	kstd::vector<u8> current_segment {};
 	Ipv4SocketAddress target {};
 	Event listen_event {};
 	Event send_event {};
