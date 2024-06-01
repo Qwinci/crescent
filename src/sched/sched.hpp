@@ -22,6 +22,7 @@ struct Scheduler {
 	void do_schedule() const;
 
 	void sleep(u64 us);
+	void yield();
 
 	void block();
 	void unblock(Thread* thread, bool remove_sleeping);

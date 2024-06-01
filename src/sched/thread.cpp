@@ -16,6 +16,11 @@ void Thread::sleep_for(u64 us) const {
 	cpu->scheduler.sleep(us);
 }
 
+void Thread::yield() const {
+	IrqGuard guard {};
+	cpu->scheduler.yield();
+}
+
 void Thread::add_descriptor(ThreadDescriptor* descriptor) {
 	IrqGuard irq_guard {};
 	descriptors.lock()->push(descriptor);

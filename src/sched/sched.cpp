@@ -147,6 +147,20 @@ void Scheduler::block() {
 	do_schedule();
 }
 
+void Scheduler::yield() {
+	IrqGuard irq_guard {};
+	current->status = Thread::Status::Waiting;
+	current->cpu->cpu_tick_source->reset();
+
+	if (current->level_index > 0) {
+		--current->level_index;
+	}
+
+	update_schedule();
+	enable_preemption(current->cpu);
+	do_schedule();
+}
+
 void Scheduler::exit_process(int status) {
 	IrqGuard irq_guard {};
 	current->process->killed = true;
