@@ -386,7 +386,7 @@ PageMap::PageMap(u64* early_map) {
 
 PageMap::~PageMap() {
 	for (auto& page : used_pages) {
-		pfree(page.phys, 1);
+		pfree(page.phys(), 1);
 	}
 	used_pages.clear();
 }

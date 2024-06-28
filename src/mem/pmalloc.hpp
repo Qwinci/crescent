@@ -7,7 +7,15 @@ struct PRegion;
 struct Page {
 	DoubleListHook hook {};
 	PRegion* region {};
-	usize phys {};
+	usize page_num : 36 {};
+	bool used : 1 {};
+	bool in_list : 1 {};
+	u8 list_index : 4 {};
+	Spinlock<void> lock {};
+
+	[[nodiscard]] constexpr usize phys() const {
+		return page_num << 12;
+	}
 
 	static Page* from_phys(usize phys);
 };
