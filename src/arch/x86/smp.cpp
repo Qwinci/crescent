@@ -117,7 +117,6 @@ static void x86_init_simd() {
 static void x86_init_cpu_common(Cpu* self, u8 lapic_id) {
 	self->number = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
 	self->lapic_id = lapic_id;
-	println("[kernel][smp]: cpu ", self->number, " online!");
 	x86_load_gdt(&self->tss);
 	x86_load_idt();
 	lapic_init(self);
@@ -146,8 +145,6 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id) {
 		cr4 |= 1U << 21;
 	}
 	asm volatile("mov %0, %%cr4" : : "r"(cr4));
-
-	println("[kernel][smp]: cpu init done");
 }
 
 [[noreturn]] static void smp_ap_entry(limine_smp_info* info) {

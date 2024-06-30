@@ -404,6 +404,10 @@ constexpr int verify() {
 
 namespace {
 	struct Pool {
+		void initialize() {
+			data.get_unsafe().reserve(1024);
+		}
+
 		void add_entropy(const u64* ptr, usize words) {
 			IrqGuard irq_guard {};
 			auto guard = data.lock();
@@ -444,6 +448,12 @@ namespace {
 
 	Nonce NONCE {};
 	Spinlock<u32> POOL_INDEX {};
+}
+
+void random_initialize() {
+	for (auto& pool : POOLS) {
+		pool->initialize();
+	}
 }
 
 void random_add_entropy(const u64* data, usize words) {
