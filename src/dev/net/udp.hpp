@@ -1,6 +1,8 @@
 #pragma once
 #include "types.hpp"
 #include "bit.hpp"
+#include "shared_ptr.hpp"
+#include "sys/socket.hpp"
 
 struct UdpHeader {
 	u16 src_port;
@@ -24,4 +26,5 @@ struct UdpHeader {
 struct Nic;
 struct ReceivedPacket;
 
+kstd::shared_ptr<Socket> udp_socket_create(int flags);
 void udp_process_packet(Nic& nic, ReceivedPacket& packet);

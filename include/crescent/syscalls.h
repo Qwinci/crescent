@@ -68,6 +68,7 @@ typedef enum {
 	ERR_TRY_AGAIN,
 	ERR_ALREADY_EXISTS,
 	ERR_NOT_EXISTS,
+	ERR_NO_ROUTE_TO_HOST
 } CrescentError;
 
 typedef enum {

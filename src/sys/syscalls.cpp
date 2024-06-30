@@ -18,6 +18,7 @@ extern void hda_play();
 
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
+#include "dev/net/udp.hpp"
 #elif defined(__aarch64__)
 #include "arch/aarch64/dev/psci.hpp"
 #include "exe/elf_loader.hpp"
@@ -786,8 +787,19 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					break;
 				}
 				case SOCKET_TYPE_UDP:
-					*frame->ret() = ERR_UNSUPPORTED;
+				{
+					auto socket = udp_socket_create(flags);
+					auto handle = thread->process->handles.insert(std::move(socket));
+
+					if (!UserAccessor(*frame->arg0()).store(handle)) {
+						thread->process->handles.remove(handle);
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+
+					*frame->ret() = 0;
 					break;
+				}
 				case SOCKET_TYPE_TCP:
 				{
 					auto socket = tcp_socket_create(flags);

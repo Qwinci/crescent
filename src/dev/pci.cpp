@@ -196,14 +196,7 @@ namespace pci {
 		usize phys = hdr0->bars[bar];
 		assert(!(phys & 1) && "tried to map io space bar");
 
-		auto old = hdr0->common.command;
-
-		enable_io_space(false);
-		enable_mem_space(false);
-
-		hdr0->bars[bar] = 0xFFFFFFFF;
-		u32 size = ~(hdr0->bars[bar] & ~0xF) + 1;
-		hdr0->bars[bar] = phys;
+		auto size = get_bar_size(bar);
 
 		bool prefetch = phys & 1 << 3;
 		bool is_64 = (phys >> 1 & 0b11) == 2;
@@ -230,9 +223,25 @@ namespace pci {
 				));
 		}
 
+		return virt;
+	}
+
+	u32 Device::get_bar_size(u8 bar) const {
+		usize phys = hdr0->bars[bar];
+		assert(!(phys & 1) && "tried to get the size of io space bar");
+
+		auto old = hdr0->common.command;
+
+		enable_io_space(false);
+		enable_mem_space(false);
+
+		hdr0->bars[bar] = 0xFFFFFFFF;
+		u32 size = ~(hdr0->bars[bar] & ~0xF) + 1;
+		hdr0->bars[bar] = phys;
+
 		hdr0->common.command = old;
 
-		return virt;
+		return size;
 	}
 
 	u32 Device::alloc_irqs(u32 min, u32 max, IrqFlags flags) {
@@ -291,11 +300,20 @@ namespace pci {
 			assert(all_irqs);
 
 			msi->msg_control &= ~1;
-			msi->msg_data = all_irqs;
+
 			auto id = get_current_thread()->cpu->lapic_id;
 			usize msg_addr = 0xFEE00000 | id << 12;
-			msi->msg_low = msg_addr;
-			msi->msg_high = msg_addr >> 32;
+
+			// 64-bit
+			if (msi->msg_control & 1 << 7) {
+				msi->msg_low = msg_addr;
+				msi->msg_high = msg_addr >> 32;
+				msi->msg_data = all_irqs;
+			}
+			else {
+				msi->msg_low = msg_addr;
+				msi->msg_high = all_irqs;
+			}
 
 			for (u32 i = 0; i < count; ++i) {
 				irqs[i] = all_irqs + i;

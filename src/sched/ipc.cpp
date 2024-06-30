@@ -8,7 +8,7 @@ IpcSocket::~IpcSocket() {
 	disconnect();
 }
 
-int IpcSocket::connect(AnySocketAddress& address) {
+int IpcSocket::connect(const AnySocketAddress& address) {
 	disconnect();
 
 	if (address.generic.type != SOCKET_ADDRESS_TYPE_IPC) {

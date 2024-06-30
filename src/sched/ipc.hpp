@@ -9,7 +9,7 @@ struct IpcSocket final : public Socket {
 
 	static constexpr usize IPC_BUFFER_SIZE = 512;
 
-	int connect(AnySocketAddress& address) override;
+	int connect(const AnySocketAddress& address) override;
 	int disconnect() override;
 	int listen(uint32_t port) override;
 	int accept(kstd::shared_ptr<Socket>& connection, int connection_flags) override;

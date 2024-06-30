@@ -123,7 +123,7 @@ struct Tcp4Socket : public Socket {
 		handler_thread->status = Thread::Status::Blocked;
 	}
 
-	int connect(AnySocketAddress& address) override {
+	int connect(const AnySocketAddress& address) override {
 		if (address.generic.type != SOCKET_ADDRESS_TYPE_IPV4) {
 			return ERR_UNSUPPORTED;
 		}
@@ -137,6 +137,12 @@ struct Tcp4Socket : public Socket {
 		random_generate(&new_sequence, 4);
 		sequence = new_sequence + 1;
 
+		auto mac = arp_get_mac(addr);
+		if (!mac) {
+			println("[kernel][tcp]: no ip->mac mapping for target");
+			return ERR_NO_ROUTE_TO_HOST;
+		}
+
 		{
 			IrqGuard irq_guard {};
 			// todo support choosing the nic
@@ -149,7 +155,7 @@ struct Tcp4Socket : public Socket {
 
 			Packet packet {sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(TcpHeader)};
 
-			packet.add_ethernet((*(*nic_guard).front())->mac, BROADCAST_MAC, EtherType::Ipv4);
+			packet.add_ethernet((*(*nic_guard).front())->mac, mac.value(), EtherType::Ipv4);
 			packet.add_ipv4(IpProtocol::Tcp, sizeof(TcpHeader), own_ip, addr);
 
 			auto* hdr_ptr = packet.add_header(sizeof(TcpHeader));
@@ -674,12 +680,12 @@ struct Tcp4Socket : public Socket {
 };
 
 namespace {
-	ManuallyDestroy<Spinlock<kstd::vector<Tcp4Socket*>>> sockets;
+	ManuallyDestroy<Spinlock<kstd::vector<Tcp4Socket*>>> SOCKETS;
 }
 
 static void remove_socket(Tcp4Socket* socket) {
 	IrqGuard irq_guard {};
-	auto guard = sockets->lock();
+	auto guard = SOCKETS->lock();
 
 	for (usize i = 0; i < guard->size(); ++i) {
 		if ((*guard)[i] == socket) {
@@ -692,7 +698,7 @@ static void remove_socket(Tcp4Socket* socket) {
 kstd::shared_ptr<Socket> tcp_socket_create(int flags) {
 	auto socket = kstd::make_shared<Tcp4Socket>(flags);
 	IrqGuard irq_guard {};
-	auto guard = sockets->lock();
+	auto guard = SOCKETS->lock();
 	guard->push(socket.data());
 	return std::move(socket);
 }
@@ -705,7 +711,7 @@ void tcp_process_packet(Nic& nic, ReceivedPacket& packet) {
 	bool processed = false;
 
 	IrqGuard irq_guard {};
-	auto guard = sockets->lock();
+	auto guard = SOCKETS->lock();
 
 	for (auto& socket : *guard) {
 		if (socket->state == Tcp4Socket::State::Listening) {

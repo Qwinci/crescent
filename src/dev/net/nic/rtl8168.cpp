@@ -180,14 +180,26 @@ struct RxDescriptor {
 
 struct Rtl : public Nic {
 	explicit Rtl(pci::Device& device) : device {device} {
+		bool bar_found = false;
 		for (u32 i = 0; i < 6; ++i) {
 			if (device.is_io_space(i)) {
 				continue;
 			}
+			auto size = device.get_bar_size(i);
+			if (!size) {
+				if (device.is_64bit(i)) {
+					++i;
+				}
+				continue;
+			}
+
 			auto bar = device.map_bar(i);
 			space = IoSpace {bar};
+			bar_found = true;
 			break;
 		}
+
+		assert(bar_found);
 
 		device.enable_mem_space(true);
 		device.enable_io_space(true);

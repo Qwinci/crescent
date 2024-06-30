@@ -100,6 +100,22 @@ namespace pci {
 				}
 			}
 		};
+
+		struct Pcie {
+			u8 id;
+			u8 next;
+			u16 caps;
+			u32 dev_caps;
+			volatile u16 dev_ctrl;
+
+			[[nodiscard]] constexpr bool supports_function_reset() const {
+				return dev_caps & 1 << 28;
+			}
+
+			constexpr void init_function_reset() {
+				dev_ctrl |= 1 << 15;
+			}
+		};
 	}
 
 	struct CommonHdr {
@@ -166,6 +182,12 @@ namespace pci {
 
 		[[nodiscard]] inline bool is_io_space(u8 bar) const {
 			return hdr0->bars[bar] & 1;
+		}
+
+		[[nodiscard]] u32 get_bar_size(u8 bar) const;
+
+		[[nodiscard]] inline bool is_64bit(u8 bar) const {
+			return (hdr0->bars[bar] >> 1 & 0b11) == 2;
 		}
 
 		u32 alloc_irqs(u32 min, u32 max, IrqFlags flags);

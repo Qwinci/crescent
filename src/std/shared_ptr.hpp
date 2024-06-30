@@ -43,6 +43,39 @@ namespace kstd {
 			}
 		}
 
+		shared_ptr& operator=(shared_ptr&& other) {
+			if (&other == this) {
+				return *this;
+			}
+
+			if (ptr && decrease_ref_count()) {
+				delete ptr;
+				delete refs;
+			}
+			ptr = other.ptr;
+			refs = other.refs;
+			other.ptr = nullptr;
+			other.refs = nullptr;
+			return *this;
+		}
+		shared_ptr& operator=(const shared_ptr& other) {
+			if (&other == this) {
+				return *this;
+			}
+
+			if (ptr && decrease_ref_count()) {
+				delete ptr;
+				delete refs;
+			}
+			ptr = other.ptr;
+			refs = other.refs;
+			if (ptr) {
+				increase_ref_count();
+			}
+
+			return *this;
+		}
+
 		template<typename U = T>
 		shared_ptr& operator=(shared_ptr<U>&& other) {
 			if (ptr && decrease_ref_count()) {
