@@ -14,8 +14,6 @@ namespace pm1_sts {
 }
 
 namespace acpi {
-	extern ManuallyInit<qacpi::Context> GLOBAL_CTX;
-
 	void reboot() {
 		write_to_addr(GLOBAL_FADT->reset_reg, GLOBAL_FADT->reset_value);
 #ifdef __x86_64__

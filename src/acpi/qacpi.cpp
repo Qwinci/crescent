@@ -22,7 +22,7 @@ namespace acpi {
 		auto* dsdt_aml_ptr = offset(dsdt_ptr, const u8*, sizeof(acpi::SdtHeader));
 		u32 dsdt_aml_size = dsdt_ptr->length - sizeof(acpi::SdtHeader);
 
-		GLOBAL_CTX.initialize(dsdt_ptr->revision);
+		GLOBAL_CTX.initialize(dsdt_ptr->revision, qacpi::LogLevel::Error);
 
 		if (auto status = GLOBAL_CTX->init(); status != qacpi::Status::Success) {
 			panic("[kernel][acpi]: qacpi failed to init: ", qacpi::status_to_str(status));
@@ -116,6 +116,10 @@ qacpi::Status qacpi_os_event_reset(void* handle) {
 }
 
 void qacpi_os_trace(const char* str, size_t size) {
+	if (kstd::string_view {str, size}.starts_with("aml debug")) {
+		return;
+	}
+
 	println("[kernel][qacpi]: ", kstd::string_view {str, size});
 }
 

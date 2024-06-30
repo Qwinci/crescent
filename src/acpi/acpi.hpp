@@ -1,4 +1,6 @@
 #pragma once
+#include "manually_init.hpp"
+#include "qacpi/context.hpp"
 #include "types.hpp"
 
 namespace acpi {
@@ -103,4 +105,5 @@ namespace acpi {
 	u64 read_from_addr(const acpi::Address& addr);
 
 	extern Fadt* GLOBAL_FADT;
+	extern ManuallyInit<qacpi::Context> GLOBAL_CTX;
 }

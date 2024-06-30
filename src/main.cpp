@@ -6,18 +6,14 @@
 #include "exe/elf_loader.hpp"
 #include "fs/tar.hpp"
 #include "fs/vfs.hpp"
+#include "qacpi/context.hpp"
+#include "qacpi/ns.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "stdio.hpp"
-#include "qacpi/context.hpp"
-#include "qacpi/ns.hpp"
 
 // 9a49 == uhd
 // a0c8 == audio
-
-namespace acpi {
-	extern qacpi::Context GLOBAL_CTX;
-}
 
 struct KernelStdoutVNode : public VNode {
 	FsStatus write(const void* data, usize size, usize offset) override {
@@ -47,7 +43,7 @@ struct KernelStdoutVNode : public VNode {
 	pci::acpi_enumerate();
 
 	kstd::vector<qacpi::NamespaceNode*> nodes;
-	nodes.push(acpi::GLOBAL_CTX.get_root());
+	nodes.push(acpi::GLOBAL_CTX->get_root());
 	while (!nodes.is_empty()) {
 		auto node = nodes.pop().value();
 
@@ -60,14 +56,14 @@ struct KernelStdoutVNode : public VNode {
 					println("found battery");
 
 					auto ret = qacpi::ObjectRef::empty();
-					auto status = acpi::GLOBAL_CTX.evaluate(node, "_BST", ret);
+					auto status = acpi::GLOBAL_CTX->evaluate(node, "_BST", ret);
 					if (status != qacpi::Status::Success) {
 						println("failed evaluate battery, status: ", qacpi::status_to_str(status));
 					}
 					else {
-						auto state = acpi::GLOBAL_CTX.get_package_element(ret, 0)->get_unsafe<uint64_t>();
-						auto present = acpi::GLOBAL_CTX.get_package_element(ret, 1)->get_unsafe<uint64_t>();
-						auto remaining = acpi::GLOBAL_CTX.get_package_element(ret, 2)->get_unsafe<uint64_t>();
+						auto state = acpi::GLOBAL_CTX->get_package_element(ret, 0)->get_unsafe<uint64_t>();
+						auto present = acpi::GLOBAL_CTX->get_package_element(ret, 1)->get_unsafe<uint64_t>();
+						auto remaining = acpi::GLOBAL_CTX->get_package_element(ret, 2)->get_unsafe<uint64_t>();
 						if (!present) {
 							println("battery has no present rate");
 						}
