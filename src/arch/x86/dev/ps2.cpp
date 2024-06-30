@@ -50,7 +50,17 @@ bool ps2_has_data() {
 }
 
 u8 ps2_receive_data() {
-	while (!ps2_has_data());
+	auto status = with_timeout([]() {
+		return ps2_has_data();
+	}, US_IN_MS * 50);
+	if (!status) {
+		println(
+			"[kernel][ps2]: receive timeout from ",
+			Fmt::Hex,
+			reinterpret_cast<usize>(__builtin_return_address(0)),
+			Fmt::Reset);
+		return 0;
+	}
 	return SPACE.load(regs::DATA);
 }
 
@@ -216,14 +226,30 @@ void x86_ps2_init() {
 	}
 
 	if (port1_good) {
-		ps2_send_data(false, 0xFF);
+		while (!ps2_has_data()) {
+			ps2_send_data(false, 0xFF);
+			for (int i = 0; i < 5; ++i) {
+				mdelay(100);
+				if (ps2_has_data()) {
+					break;
+				}
+			}
+		}
 		port1_good = ps2_receive_data() == 0xAA;
 		if (SPACE.load(regs::STATUS) & status::OUTPUT_FULL) {
 			SPACE.load(regs::DATA);
 		}
 	}
 	if (port2_good) {
-		ps2_send_data(true, 0xFF);
+		while (!ps2_has_data()) {
+			ps2_send_data(true, 0xFF);
+			for (int i = 0; i < 5; ++i) {
+				mdelay(100);
+				if (ps2_has_data()) {
+					break;
+				}
+			}
+		}
 		port2_good = ps2_receive_data() == 0xAA;
 		if (SPACE.load(regs::STATUS) & status::OUTPUT_FULL) {
 			SPACE.load(regs::DATA);
