@@ -12,6 +12,8 @@ enum class Color {
 };
 
 struct LogSink {
+	virtual ~LogSink() = default;
+
 	DoubleListHook log_hook {};
 	bool registed {};
 

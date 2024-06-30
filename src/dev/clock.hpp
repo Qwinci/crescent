@@ -49,10 +49,10 @@ inline bool with_timeout(F f, usize us) {
 	auto ticks_in_us = source->ticks_in_us;
 	auto start = source->get();
 	auto end = start + ticks_in_us * us;
-	while (source->get() < end) {
+	do {
 		if (f()) {
 			return true;
 		}
-	}
+	} while (source->get() < end);
 	return false;
 }

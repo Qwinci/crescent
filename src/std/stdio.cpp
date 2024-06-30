@@ -27,11 +27,11 @@ Log& Log::operator<<(usize value) {
 		value /= base;
 	} while (value);
 	auto size = static_cast<size_t>(local_buf + 64 - ptr);
-	operator<<(kstd::string_view {ptr, size});
 	for (u32 i = size; i < pad.amount; ++i) {
 		kstd::string_view c {&pad.c, 1};
 		operator<<(c);
 	}
+	operator<<(kstd::string_view {ptr, size});
 	return *this;
 }
 

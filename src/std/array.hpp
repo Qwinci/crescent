@@ -32,4 +32,7 @@ namespace kstd {
 
 		T data[N];
 	};
+
+	template<typename T, typename... U>
+	array(T, U...) -> array<T, sizeof...(U) + 1>;
 }

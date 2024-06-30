@@ -44,7 +44,7 @@ struct BitValue {
 template<typename B, typename T>
 struct BitField {
 	friend constexpr T operator&(BitValue<B> value, BitField field) {
-		return (value.value & field.mask) >> field.offset;
+		return static_cast<T>((value.value & field.mask) >> field.offset);
 	}
 
 	constexpr BitField(int offset, int bits) : offset {offset} {
