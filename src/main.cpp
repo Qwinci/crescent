@@ -2,6 +2,7 @@
 #include "acpi/pci.hpp"
 #include "arch/cpu.hpp"
 #include "dev/fb/fb_dev.hpp"
+#include "dev/net/nic/nic.hpp"
 #include "dev/pci.hpp"
 #include "exe/elf_loader.hpp"
 #include "fs/tar.hpp"
@@ -85,6 +86,9 @@ struct KernelStdoutVNode : public VNode {
 	//println("[kernel]: done");
 #endif
 
+	println("[kernel]: waiting for network");
+	nics_wait_ready();
+
 	tar_initramfs_init(initrd, initrd_size);
 
 	IrqGuard guard {};
@@ -104,6 +108,7 @@ struct KernelStdoutVNode : public VNode {
 	auto user_arg = reinterpret_cast<void*>(1234);
 	auto* user_thread = new Thread {"user thread", cpu, user_process, elf_result.value().entry, user_arg};
 
+	println("[kernel]: launching init");
 	cpu->scheduler.queue(user_thread);
 	cpu->scheduler.block();
 	panic("returned to kmain");

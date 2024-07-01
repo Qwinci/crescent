@@ -81,6 +81,18 @@ void Event::signal_all() {
 	waiters_guard->clear();
 }
 
+void Event::signal_count(usize count) {
+	IrqGuard irq_guard {};
+	auto guard = signaled_count.lock();
+	*guard += count;
+
+	auto waiters_guard = waiters.lock();
+	for (auto& thread : *waiters_guard) {
+		thread.cpu->scheduler.unblock(&thread, true);
+	}
+	waiters_guard->clear();
+}
+
 usize CallbackProducer::add_callback(kstd::small_function<void()> callback) {
 	auto guard = callbacks.lock();
 	auto index = guard->size();

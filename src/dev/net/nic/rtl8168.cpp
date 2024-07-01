@@ -1,4 +1,5 @@
 #include "arch/irq.hpp"
+#include "dev/net/dhcp.hpp"
 #include "dev/net/ethernet.hpp"
 #include "mem/iospace.hpp"
 #include "mem/mem.hpp"
@@ -483,6 +484,7 @@ static bool rtl_init(pci::Device& device) {
 
 	rtl->init();
 	println("[kernel][nic]: rtl init done");
+	dhcp_discover(rtl.data());
 
 	return true;
 }

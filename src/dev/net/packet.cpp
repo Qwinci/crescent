@@ -34,18 +34,23 @@ void Packet::add_ipv4(IpProtocol protocol, u16 payload_size, u32 src_addr, u32 d
 	hdr.serialize();
 	hdr.update_checksum();
 
-	ipv4 = static_cast<Ipv4Header*>(add_header(sizeof(Ipv4Header)));
-	memcpy(ipv4, &hdr, sizeof(hdr));
+	auto* ptr = add_header(sizeof(Ipv4Header));
+	memcpy(ptr, &hdr, sizeof(hdr));
+	ipv4 = static_cast<Ipv4Header*>(ptr);
 }
 
 void Packet::add_udp(u16 src_port, u16 dest_port, u16 length) {
-	udp = new (add_header(sizeof(UdpHeader))) UdpHeader {
+	UdpHeader hdr {
 		.src_port = src_port,
 		.dest_port = dest_port,
 		.length = static_cast<u16>(8 + length),
 		.checksum = 0
 	};
-	udp->serialize();
+	hdr.serialize();
+
+	auto* ptr = add_header(sizeof(UdpHeader));
+	memcpy(ptr, &hdr, sizeof(hdr));
+	udp = static_cast<UdpHeader*>(ptr);
 }
 
 void* Packet::add_header(u32 hdr_size) {

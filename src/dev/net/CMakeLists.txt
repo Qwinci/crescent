@@ -5,6 +5,7 @@ target_sources(crescent PRIVATE
 	tcp.cpp
 	arp.cpp
 	packet.cpp
+	dhcp.cpp
 )
 
 add_subdirectory(nic)

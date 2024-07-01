@@ -1,10 +1,11 @@
 #include "ipv4.hpp"
-#include "udp.hpp"
-#include "tcp.hpp"
-#include "stdio.hpp"
-#include "packet.hpp"
-#include "cstring.hpp"
 #include "checksum.hpp"
+#include "cstring.hpp"
+#include "dhcp.hpp"
+#include "packet.hpp"
+#include "stdio.hpp"
+#include "tcp.hpp"
+#include "udp.hpp"
 
 void ipv4_process_packet(Nic& nic, ReceivedPacket& packet) {
 	auto orig_layer1 = packet.layer1.raw;
@@ -28,7 +29,15 @@ void ipv4_process_packet(Nic& nic, ReceivedPacket& packet) {
 		tcp_process_packet(nic, packet);
 	}
 	else if (hdr.protocol == IpProtocol::Udp) {
-		udp_process_packet(nic, packet);
+		UdpHeader udp_hdr {};
+		memcpy(&udp_hdr, packet.layer2.raw, sizeof(UdpHeader));
+		udp_hdr.deserialize();
+		if (udp_hdr.dest_port == 68) {
+			dhcp_process_packet(nic, packet);
+		}
+		else {
+			udp_process_packet(nic, packet);
+		}
 	}
 }
 

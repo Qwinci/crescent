@@ -11,6 +11,8 @@ struct Event {
 	void signal_one();
 	void signal_all();
 
+	void signal_count(usize count);
+
 	inline bool is_being_waited() {
 		IrqGuard irq_guard {};
 		return !waiters.lock()->is_empty();
