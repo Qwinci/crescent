@@ -272,8 +272,8 @@ struct Tcp4Socket : public Socket {
 		}
 
 		if (expect_fin_ack) {
-			if (!(hdr.flags & flags::ACK) || !(hdr.flags & flags::FIN)) {
-				println("[kernel][tcp]: expected a fin-ack in reply to fin");
+			if (!(hdr.flags & flags::ACK)) {
+				println("[kernel][tcp]: expected an ack in reply to fin");
 				return;
 			}
 			if (hdr.sequence != received_sequence + 1) {
@@ -286,6 +286,7 @@ struct Tcp4Socket : public Socket {
 			}
 
 			expect_fin_ack = false;
+			fin_sent = true;
 			return;
 		}
 
@@ -574,13 +575,18 @@ struct Tcp4Socket : public Socket {
 				packet.add_ethernet((*(*nic_guard).front())->mac, mac.value(), EtherType::Ipv4);
 				packet.add_ipv4(IpProtocol::Tcp, sizeof(TcpHeader), self->own_ip, self->target.ipv4);
 
+				BitValue<u16> flags {flags::ACK(true) | flags::DATA_OFFSET(5)};
+				if (!self->fin_sent) {
+					flags |= flags::FIN(true);
+				}
+
 				auto* hdr_ptr = packet.add_header(sizeof(TcpHeader));
 				TcpHeader hdr {
 					.src_port = self->own_port,
 					.dest_port = self->target.port,
 					.sequence = self->sequence,
 					.ack_number = self->received_sequence + 1,
-					.flags {flags::FIN(true) | flags::ACK(true) | flags::DATA_OFFSET(5)},
+					.flags {flags},
 					.window_size = static_cast<u16>(1024 * 64 - 1),
 					.checksum = 0,
 					.urgent_ptr = 0
@@ -593,8 +599,15 @@ struct Tcp4Socket : public Socket {
 
 				(*nic_guard->front())->send(packet.data, packet.size);
 
-				println("[kernel][tcp]: sending fin-ack");
-				self->state = State::SentFin;
+				if (!self->fin_sent) {
+					println("[kernel][tcp]: sending fin-ack");
+					self->state = State::SentFin;
+				}
+				else {
+					println("[kernel][tcp]: sending ack");
+					self->state = State::None;
+					self->state_change_event.signal_one();
+				}
 			}
 			else if (self->state == State::ReceivedSynAck) {
 				Packet packet {sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(TcpHeader)};
@@ -647,6 +660,7 @@ struct Tcp4Socket : public Socket {
 	bool pending_connection_valid {};
 	bool do_disconnect {};
 	bool expect_fin_ack {};
+	bool fin_sent {};
 
 	Thread* create_handler_thread() {
 		IrqGuard irq_guard {};
