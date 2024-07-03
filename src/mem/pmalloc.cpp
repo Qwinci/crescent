@@ -151,18 +151,18 @@ void pmalloc_add_mem(usize phys, usize size) {
 	};
 
 	for (usize i = 0; i < res_pages; ++i) {
-		auto& page = region->pages[i];
-		page.region = region;
-		page.page_num = (phys >> 12) + i;
+		new (&region->pages[i]) Page {
+			.region = region,
+			.page_num = (phys >> 12) + i
+		};
 	}
 
 	for (usize i = res_pages; i < pages; ++i) {
-		auto& page = region->pages[i];
-		page.region = region;
-		page.page_num = (phys >> 12) + i;
-		page.used = false;
-		page.list_index = FREELIST_COUNT;
-		page.in_list = false;
+		new (&region->pages[i]) Page {
+			.region = region,
+			.page_num = (phys >> 12) + i,
+			.list_index = FREELIST_COUNT
+		};
 	}
 
 	usize i = res_pages;

@@ -1,6 +1,35 @@
 #include "stdio.h"
 #include "sys.hpp"
 #include "string.h"
+#include <utility>
+#include <new>
+
+template<typename T>
+struct NoDestroy {
+	template<typename... Args>
+	constexpr explicit NoDestroy(Args&&... args) {
+		new (data) T {std::forward<Args&&>(args)...};
+	}
+
+	constexpr T* operator->() {
+		return std::launder(reinterpret_cast<T*>(data));
+	}
+
+	constexpr const T* operator->() const {
+		return std::launder(reinterpret_cast<const T*>(data));
+	}
+
+	constexpr T& operator*() {
+		return *std::launder(reinterpret_cast<T*>(data));
+	}
+
+	constexpr const T& operator*() const {
+		return *std::launder(reinterpret_cast<const T*>(data));
+	}
+
+private:
+	alignas(alignof(T)) char data[sizeof(T)] {};
+};
 
 int puts(const char* str) {
 	auto len = strlen(str);
@@ -26,19 +55,19 @@ struct StdFile : public FILE {
 };
 
 namespace {
-	StdFile STDIN_FILE {STDIN_HANDLE};
-	StdFile STDOUT_FILE {STDOUT_HANDLE};
-	StdFile STDERR_FILE {STDERR_HANDLE};
+	NoDestroy<StdFile> STDIN_FILE {STDIN_HANDLE};
+	NoDestroy<StdFile> STDOUT_FILE {STDOUT_HANDLE};
+	NoDestroy<StdFile> STDERR_FILE {STDERR_HANDLE};
 }
 
-FILE* stdin = &STDIN_FILE;
-FILE* stdout = &STDOUT_FILE;
-FILE* stderr = &STDERR_FILE;
+FILE* stdin = &*STDIN_FILE;
+FILE* stdout = &*STDOUT_FILE;
+FILE* stderr = &*STDERR_FILE;
 
 int printf(const char* __restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
-	int ret = vfprintf(&STDOUT_FILE, fmt, ap);
+	int ret = vfprintf(&*STDOUT_FILE, fmt, ap);
 	va_end(ap);
 	return ret;
 }

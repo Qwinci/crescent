@@ -1,5 +1,10 @@
 target_sources(crescent PRIVATE
 	nic.cpp
-	rtl8168.cpp
-	virtio.cpp
 )
+
+if(ARCH STREQUAL "x86_64")
+	target_sources(crescent PRIVATE
+		rtl8168.cpp
+		virtio.cpp
+	)
+endif()

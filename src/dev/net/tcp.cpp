@@ -116,11 +116,10 @@ struct Tcp4Socket : public Socket {
 			get_current_thread()->yield();
 		}
 
-		IrqGuard irq_guard {};
-		// todo this is not thread-safe
-		handler_thread->exited = true;
-		handler_thread->exit(0);
-		handler_thread->status = Thread::Status::Blocked;
+		state = State::Destroyed;
+		state_change_event.reset();
+		send_event.signal_one();
+		state_change_event.wait();
 	}
 
 	int connect(const AnySocketAddress& address) override {
@@ -401,6 +400,7 @@ struct Tcp4Socket : public Socket {
 
 	[[noreturn]] static void handler_fn(void* ptr) {
 		auto* self = static_cast<Tcp4Socket*>(ptr);
+		auto* thread = get_current_thread();
 
 		while (true) {
 			self->send_event.wait();
@@ -646,6 +646,11 @@ struct Tcp4Socket : public Socket {
 				self->state = State::Connected;
 				self->state_change_event.signal_one();
 			}
+			else if (self->state == State::Destroyed) {
+				IrqGuard irq_guard {};
+				self->state_change_event.signal_one();
+				thread->cpu->scheduler.exit_thread(0);
+			}
 		}
 	}
 
@@ -689,7 +694,8 @@ struct Tcp4Socket : public Socket {
 		SentFin,
 		SentSyn,
 		Connected,
-		Listening
+		Listening,
+		Destroyed
 	} state {};
 };
 

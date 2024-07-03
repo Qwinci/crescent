@@ -2,8 +2,44 @@
 #include "stdio.hpp"
 #include "atomic.hpp"
 
+#ifdef __x86_64__
+
+struct Frame {
+	Frame* rbp;
+	u64 rip;
+};
+
+static void backtrace_display() {
+	Frame frame {};
+	Frame* frame_ptr;
+	asm volatile("mov %%rbp, %0" : "=rm"(frame_ptr));
+	int limit = 20;
+	while (limit--) {
+		if (reinterpret_cast<usize>(frame_ptr) < 0xFFFFFFFF80000000) {
+			return;
+		}
+		frame = *frame_ptr;
+
+		if (!frame.rbp) {
+			break;
+		}
+
+		println(Fmt::Hex, frame.rip, Fmt::Reset);
+		frame_ptr = frame.rbp;
+	}
+}
+
+#else
+
+static void backtrace_display() {
+	println("stack trace is not supported on architecture");
+}
+
+#endif
+
 static void message(const char* msg) {
 	print(msg);
+	backtrace_display();
 }
 
 static void abort_with_message(const char* msg) {

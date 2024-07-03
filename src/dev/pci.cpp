@@ -61,7 +61,7 @@ namespace pci {
 			return;
 		}
 
-		if (hdr->type != 0) {
+		if ((hdr->type & ~(1 << 7)) != 0) {
 			return;
 		}
 
@@ -110,7 +110,7 @@ namespace pci {
 
 		delete dev;
 		end:
-		println(Fmt::Hex, zero_pad(4), hdr->vendor_id, ":", hdr->device_id, Fmt::Reset);
+		// println(Fmt::Hex, zero_pad(4), hdr->vendor_id, ":", hdr->device_id, Fmt::Reset);
 	}
 
 	static void enumerate_dev(void* base, u32 dev) {

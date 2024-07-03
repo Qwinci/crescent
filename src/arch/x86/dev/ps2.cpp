@@ -241,7 +241,7 @@ void x86_ps2_init() {
 		}
 	}
 	if (port2_good) {
-		while (!ps2_has_data()) {
+		for (int j = 0; j < 5; ++j) {
 			ps2_send_data(true, 0xFF);
 			for (int i = 0; i < 5; ++i) {
 				mdelay(100);
@@ -249,8 +249,20 @@ void x86_ps2_init() {
 					break;
 				}
 			}
+
+			if (ps2_has_data()) {
+				break;
+			}
 		}
-		port2_good = ps2_receive_data() == 0xAA;
+
+		if (!ps2_has_data()) {
+			println("[kernel][ps2]: port2 didn't respond to reset");
+			port2_good = false;
+		}
+		else {
+			port2_good = ps2_receive_data() == 0xAA;
+		}
+
 		if (SPACE.load(regs::STATUS) & status::OUTPUT_FULL) {
 			SPACE.load(regs::DATA);
 		}

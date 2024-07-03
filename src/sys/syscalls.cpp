@@ -13,12 +13,12 @@
 #include "service.hpp"
 #include "sched/ipc.hpp"
 #include "dev/net/tcp.hpp"
+#include "dev/net/udp.hpp"
 
 extern void hda_play();
 
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
-#include "dev/net/udp.hpp"
 #elif defined(__aarch64__)
 #include "arch/aarch64/dev/psci.hpp"
 #include "exe/elf_loader.hpp"

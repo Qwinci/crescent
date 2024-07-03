@@ -452,6 +452,12 @@ struct Rtl : public Nic {
 				while (!(phy_read(phy_regs::BMSR) & bmsr::AUTO_NEG_COMPLETE));
 				println("[kernel][nic]: done");
 				space.store(regs::ISR, imr_isr::LINK_CHG(true));
+
+				dhcp_discover(this);
+			}
+			else {
+				ip = 0;
+				ip_available_event.reset();
 			}
 		}
 
