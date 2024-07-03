@@ -147,12 +147,19 @@ public:
 		}
 	}
 
-	constexpr void insert_before(T* prev, T* value) {
-		(value->*Hook).next = prev;
+	constexpr void insert_before(T* next, T* value) {
+		(value->*Hook).next = next;
 
-		if (prev) {
-			(value->*Hook).prev = (prev->*Hook).prev;
-			(prev->*Hook).prev = value;
+		if (next) {
+			(value->*Hook).prev = (next->*Hook).prev;
+			(next->*Hook).prev = value;
+
+			if ((value->*Hook).prev) {
+				(static_cast<T*>((value->*Hook).prev)->*Hook).next = value;
+			}
+			else {
+				root = value;
+			}
 		}
 		else {
 			(value->*Hook).prev = nullptr;
@@ -164,10 +171,6 @@ public:
 				_end = value;
 			}
 			root = value;
-		}
-
-		if ((value->*Hook).prev) {
-			(static_cast<T*>((value->*Hook).prev)->*Hook).next = value;
 		}
 	}
 

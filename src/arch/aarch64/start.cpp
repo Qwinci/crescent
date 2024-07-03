@@ -203,7 +203,7 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 	auto kernel_vm_start = ALIGNUP(HHDM_START + max_addr, 1024ULL * 1024ULL * 1024ULL);
 	KERNEL_VSPACE.init(kernel_vm_start, reinterpret_cast<usize>(KERNEL_START) - kernel_vm_start);
 
-	KERNEL_PROCESS.initialize("kernel", false);
+	KERNEL_PROCESS.initialize("kernel", false, EmptyHandle {}, EmptyHandle {}, EmptyHandle {});
 	KERNEL_PROCESS->page_map = PageMap {AARCH64_EARLY_KERNEL_MAP->level0};
 	KERNEL_PROCESS->page_map.fill_high_half();
 

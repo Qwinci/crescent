@@ -114,7 +114,7 @@ static void x86_init_simd() {
 	}
 }
 
-static void x86_init_cpu_common(Cpu* self, u8 lapic_id) {
+static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	self->number = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
 	self->lapic_id = lapic_id;
 	x86_load_gdt(&self->tss);
@@ -129,7 +129,7 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id) {
 	self->scheduler.current = thread;
 	set_current_thread(thread);
 	init_usermode();
-	sched_init();
+	sched_init(bsp);
 
 	x86_init_simd();
 
@@ -155,7 +155,7 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id) {
 	{
 		auto guard = SMP_LOCK.lock();
 
-		x86_init_cpu_common(cpu, info->lapic_id);
+		x86_init_cpu_common(cpu, info->lapic_id, false);
 
 		// result is ignored because it doesn't need to be unregistered
 		(void) cpu->cpu_tick_source->callback_producer.add_callback([cpu]() {
@@ -174,7 +174,7 @@ void x86_smp_init() {
 	x86_detect_cpu_features();
 
 	CPUS[0].initialize();
-	x86_init_cpu_common(&*CPUS[0], SMP_REQUEST.response->bsp_lapic_id);
+	x86_init_cpu_common(&*CPUS[0], SMP_REQUEST.response->bsp_lapic_id, true);
 
 	int prev = 0;
 
@@ -207,6 +207,14 @@ void x86_smp_init() {
 	}
 
 	CPUS[0]->cpu_tick_source->oneshot(50 * US_IN_MS);
+}
+
+usize arch_get_cpu_count() {
+	return NUM_CPUS.load(kstd::memory_order::relaxed);
+}
+
+Cpu* arch_get_cpu(usize index) {
+	return &*CPUS[index];
 }
 
 CpuFeatures CPU_FEATURES {};

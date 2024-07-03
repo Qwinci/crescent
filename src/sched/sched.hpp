@@ -50,6 +50,6 @@ struct Scheduler {
 	Spinlock<DoubleList<Thread, &Thread::hook>> sleeping_threads {};
 };
 
-void sched_init();
+void sched_init(bool bsp);
 Thread* get_current_thread();
 void set_current_thread(Thread* thread);

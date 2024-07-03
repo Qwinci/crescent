@@ -9,6 +9,8 @@ asm(R"(
 .pushsection .text
 .globl sched_switch_thread
 .type sched_switch_thread, @function
+
+// void sched_switch_thread(ArchThread* prev, ArchThread* next)
 sched_switch_thread:
 	push %rdi
 	push %rbx
@@ -19,6 +21,10 @@ sched_switch_thread:
 	push %r15
 
 	mov %rsp, 8(%rdi)
+
+	// prev->sched_lock = false
+	movb $0, 207(%rdi)
+
 	mov 8(%rsi), %rsp
 
 	pop %r15

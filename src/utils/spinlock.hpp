@@ -109,6 +109,29 @@ public:
 		return Guard {this};
 	}
 
+	[[nodiscard]] inline bool is_locked() const {
+		return __atomic_load_n(&data.lock, __ATOMIC_RELAXED);
+	}
+
+	void manual_lock() {
+		while (true) {
+			if (!__atomic_exchange_n(&data.lock, true, __ATOMIC_ACQUIRE)) {
+				break;
+			}
+			while (__atomic_load_n(&data.lock, __ATOMIC_RELAXED)) {
+#if defined(__x86_64__)
+				__builtin_ia32_pause();
+#elif defined(__aarch64__)
+				asm volatile("wfe");
+#endif
+			}
+		}
+	}
+
+	void manual_unlock() {
+		__atomic_store_n(&data.lock, false, __ATOMIC_RELEASE);
+	}
+
 private:
 	__spinlock_detail::Data<void> data {};
 };

@@ -73,7 +73,7 @@ Log& Log::operator<<(Fmt new_fmt) {
 	return *this;
 }
 
-Log &Log::operator<<(Color new_color) {
+Log& Log::operator<<(Color new_color) {
 	for (auto& sink : sinks) {
 		sink.set_color(new_color);
 	}

@@ -50,4 +50,12 @@ struct Thread : public ArchThread {
 	Status status {Status::Waiting};
 	bool exited {};
 	bool pin_level {};
+	bool pin_cpu {};
+	Spinlock<void> sched_lock {};
 };
+
+#ifdef __x86_64__
+static_assert(offsetof(Thread, sched_lock) == 207);
+#elif defined(__aarch64__)
+static_assert(offsetof(Thread, sched_lock) == 199);
+#endif

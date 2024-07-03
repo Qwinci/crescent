@@ -122,7 +122,7 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	__builtin_unreachable();
 }
 
-static void aarch64_common_cpu_init(Cpu* self, int num) {
+static void aarch64_common_cpu_init(Cpu* self, int num, bool bsp) {
 	self->number = num;
 
 	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
@@ -135,7 +135,7 @@ static void aarch64_common_cpu_init(Cpu* self, int num) {
 	cpacr_el1 |= 0b11 << 20;
 	asm volatile("msr cpacr_el1, %0" : : "r"(cpacr_el1));
 
-	sched_init();
+	sched_init(bsp);
 	self->arm_tick_source.init_on_cpu(self);
 }
 
@@ -152,7 +152,7 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 		auto lock = SMP_LOCK.lock();
 		CPUS[num].initialize();
 		cpu = &*CPUS[num];
-		aarch64_common_cpu_init(cpu, num);
+		aarch64_common_cpu_init(cpu, num, false);
 
 		println("[kernel][smp]: cpu ", num, " online!");
 
@@ -168,7 +168,7 @@ extern "C" void aarch64_ap_entry_asm();
 
 void aarch64_smp_init(dtb::Dtb& dtb) {
 	CPUS[0].initialize();
-	aarch64_common_cpu_init(&*CPUS[0], 0);
+	aarch64_common_cpu_init(&*CPUS[0], 0, true);
 	// todo move this to its own place when its discovered from dtb
 	ARM_CLOCK_SOURCE.init();
 
@@ -223,4 +223,12 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 	}
 
 	println("[kernel][aarch64]: smp init done");
+}
+
+usize arch_get_cpu_count() {
+	return NUM_CPUS.load(kstd::memory_order::relaxed);
+}
+
+Cpu* arch_get_cpu(usize index) {
+	return &*CPUS[index];
 }

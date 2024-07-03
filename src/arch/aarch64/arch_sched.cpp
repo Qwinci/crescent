@@ -4,8 +4,11 @@
 
 asm(R"(
 .pushsection .text
+.arch armv8-a+fp-armv8
 .globl sched_switch_thread
 .type sched_switch_thread, @function
+
+// void sched_switch_thread(ArchThread* prev, ArchThread* next)
 sched_switch_thread:
 	sub sp, sp, #112
 	stp x0,  x1,  [sp, #0]
@@ -18,6 +21,8 @@ sched_switch_thread:
 
 	mov x2, sp
 	str x2, [x0]
+
+	strb wzr, [x0, #199]
 
 	ldr x3, [x1]
 	mov sp, x3

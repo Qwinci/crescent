@@ -114,6 +114,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			IrqGuard guard {};
 			cpu->scheduler.queue(new_thread);
+			cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
 
 			*frame->ret() = 0;
 			break;
@@ -242,6 +243,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				nullptr
 			};
 			cpu->scheduler.queue(new_thread);
+			cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
 
 			*frame->ret() = 0;
 			break;

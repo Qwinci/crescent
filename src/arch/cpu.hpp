@@ -17,4 +17,8 @@ struct Cpu : public ArchCpu {
 	TickSource* cpu_tick_source {};
 	DoubleList<DeferredIrqWork, &DeferredIrqWork::hook> deferred_work {};
 	int number {};
+	kstd::atomic<u32> thread_count {};
 };
+
+usize arch_get_cpu_count();
+Cpu* arch_get_cpu(usize index);

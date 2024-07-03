@@ -110,6 +110,7 @@ struct KernelStdoutVNode : public VNode {
 
 	println("[kernel]: launching init");
 	cpu->scheduler.queue(user_thread);
+	cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
 	cpu->scheduler.block();
 	panic("returned to kmain");
 }

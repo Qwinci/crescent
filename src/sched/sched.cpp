@@ -3,6 +3,62 @@
 #include "arch/cpu.hpp"
 #include "assert.hpp"
 
+[[noreturn]] void sched_load_balancer_fn(void*) {
+	auto& scheduler = get_current_thread()->cpu->scheduler;
+
+	usize cpu_count = arch_get_cpu_count();
+
+	while (true) {
+		u32 min_thread_count = UINT32_MAX;
+		u32 max_thread_count = 0;
+		usize min_cpu_index = 0;
+		usize max_cpu_index = 0;
+
+		for (usize i = 0; i < cpu_count; ++i) {
+			auto* cpu = arch_get_cpu(i);
+			u32 thread_count = cpu->thread_count.load(kstd::memory_order::relaxed);
+			if (thread_count < min_thread_count) {
+				min_thread_count = thread_count;
+				min_cpu_index = i;
+			}
+			if (thread_count > max_thread_count) {
+				max_thread_count = thread_count;
+				max_cpu_index = i;
+			}
+		}
+
+		u32 diff = max_thread_count - min_thread_count;
+		if (min_cpu_index != max_cpu_index && diff >= 2) {
+			auto* min_cpu = arch_get_cpu(min_cpu_index);
+			auto* max_cpu = arch_get_cpu(max_cpu_index);
+
+			IrqGuard irq_guard {};
+			for (usize i = Scheduler::SCHED_LEVELS; i > 0 && diff >= 2; --i) {
+				auto guard = max_cpu->scheduler.levels[i - 1].list.lock();
+
+				for (auto& thread : *guard) {
+					auto thread_guard = thread.sched_lock.lock();
+
+					if (!thread.pin_cpu && thread.status == Thread::Status::Waiting) {
+						println("[kernel][sched]: moving thread ", thread.name, " from cpu ", max_cpu_index, " to cpu ", min_cpu_index);
+
+						guard->remove(&thread);
+
+						thread.cpu = min_cpu;
+						min_cpu->scheduler.queue(&thread);
+
+						max_cpu->thread_count.fetch_sub(1, kstd::memory_order::seq_cst);
+						min_cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
+						--diff;
+					}
+				}
+			}
+		}
+
+		scheduler.sleep(US_IN_S);
+	}
+}
+
 [[noreturn]] void sched_thread_destroyer_fn(void*) {
 	auto cpu = get_current_thread()->cpu;
 	auto& list = cpu->sched_destroy_list;
@@ -29,10 +85,24 @@
 	}
 }
 
-void sched_init() {
+namespace {
+	Thread* SCHED_LOAD_BALANCE_THREAD;
+}
+
+void sched_init(bool bsp) {
 	IrqGuard irq_guard {};
 	auto cpu = get_current_thread()->cpu;
 	cpu->scheduler.queue(&cpu->thread_destroyer);
+
+	if (bsp) {
+		SCHED_LOAD_BALANCE_THREAD = new Thread {
+			"load balancer",
+			cpu,
+			&*KERNEL_PROCESS,
+			sched_load_balancer_fn,
+			nullptr};
+		cpu->scheduler.queue(SCHED_LOAD_BALANCE_THREAD);
+	}
 }
 
 extern "C" void sched_switch_thread(ArchThread* prev, ArchThread* next);
@@ -86,7 +156,7 @@ void Scheduler::update_schedule() {
 			guard->push(next);
 			next = guard->pop_front();
 			if (next == start) {
-				break;
+				assert(false);
 			}
 		}
 	}
@@ -115,7 +185,10 @@ void Scheduler::do_schedule() const {
 		return;
 	}
 
+	prev->sched_lock.manual_lock();
+
 	if (prev->process->killed || prev->exited) {
+		prev->cpu->thread_count.fetch_sub(1, kstd::memory_order::seq_cst);
 		prev->cpu->sched_destroy_list.lock()->push(prev);
 		prev->cpu->sched_destroy_event.signal_one();
 	}
@@ -138,7 +211,7 @@ void Scheduler::block() {
 	current->status = Thread::Status::Blocked;
 	current->cpu->cpu_tick_source->reset();
 
-	if (current->level_index > 0) {
+	if (!current->pin_level && current->level_index > 0) {
 		--current->level_index;
 	}
 
@@ -149,12 +222,12 @@ void Scheduler::block() {
 
 void Scheduler::yield() {
 	IrqGuard irq_guard {};
-	current->status = Thread::Status::Waiting;
 	current->cpu->cpu_tick_source->reset();
 
-	if (current->level_index > 0) {
+	if (!current->pin_level && current->level_index > 0) {
 		--current->level_index;
 	}
+	us_to_next_schedule = 0;
 
 	update_schedule();
 	enable_preemption(current->cpu);
@@ -187,7 +260,10 @@ void Scheduler::exit_thread(int status) {
 
 void Scheduler::unblock(Thread* thread, bool remove_sleeping) {
 	IrqGuard irq_guard {};
-	// thread->cpu is guaranteed to not change while its state is not running
+	assert(thread->status == Thread::Status::Blocked ||
+		   thread->status == Thread::Status::Sleeping);
+	assert(thread->sched_lock.is_locked());
+
 	auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
 	if (remove_sleeping && thread->status == Thread::Status::Sleeping) {
 		sleeping_threads.lock()->remove(thread);
@@ -217,6 +293,7 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 			break;
 		}
 		guard->remove(&thread);
+		auto thread_guard = thread.sched_lock.lock();
 		unblock(&thread, false);
 	}
 
@@ -239,21 +316,21 @@ void Scheduler::sleep(u64 us) {
 	}
 
 	{
-		Thread* prev_sleeping = nullptr;
+		Thread* next_sleeping = nullptr;
 		auto guard = sleeping_threads.lock();
 		for (auto& thread : *guard) {
 			if (thread.sleep_end > sleep_end) {
-				prev_sleeping = &thread;
+				next_sleeping = &thread;
 				break;
 			}
 		}
 
 		current->sleep_end = sleep_end;
-		guard->insert_before(prev_sleeping, current);
+		guard->insert_before(next_sleeping, current);
 		current->status = Thread::Status::Sleeping;
 	}
 
-	if (current->level_index > 0) {
+	if (!current->pin_level && current->level_index > 0) {
 		--current->level_index;
 	}
 
