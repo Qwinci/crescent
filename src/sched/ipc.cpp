@@ -142,9 +142,10 @@ int IpcSocket::send(const void* data, usize size) {
 	memcpy(target->buf + target->buf_write_ptr, data, copy);
 	target->buf_write_ptr += copy;
 	size -= copy;
-	if (size) {
-		target->buf_write_ptr = size;
+	if (target->buf_write_ptr == IPC_BUFFER_SIZE) {
+		target->buf_write_ptr = 0;
 		memcpy(target->buf, offset(data, void*, copy), size);
+		target->buf_write_ptr += size;
 	}
 
 	target->buf_event.signal_one();
@@ -181,9 +182,12 @@ int IpcSocket::receive(void* data, usize& size) {
 	memcpy(data, buf + buf_read_ptr, copy);
 	buf_read_ptr += copy;
 	buf_size -= copy;
-	if (size - copy && buf_size) {
-		buf_read_ptr = buf_size;
-		memcpy(offset(data, void*, copy), buf, buf_size);
+	if (buf_read_ptr == IPC_BUFFER_SIZE) {
+		buf_read_ptr = 0;
+		auto to_read = kstd::min(size - copy, buf_size);
+		memcpy(offset(data, void*, copy), buf, to_read);
+		buf_read_ptr += to_read;
+		buf_size -= to_read;
 	}
 
 	size = kstd::min(size, orig_buf_size);
