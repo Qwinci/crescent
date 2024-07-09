@@ -36,7 +36,7 @@ namespace controller_cmd {
 namespace config {
 	static constexpr u8 PORT1_IRQ = 1 << 0;
 	static constexpr u8 PORT2_IRQ = 1 << 1;
-	static constexpr u8 PORT2_CLOCk = 1 << 5;
+	static constexpr u8 PORT2_CLOCK = 1 << 5;
 	static constexpr u8 PORT1_TRANSLATION = 1 << 6;
 }
 
@@ -149,7 +149,6 @@ kstd::array<u8, 3> ps2_identify(bool second) {
 		return false;
 	}, US_IN_MS * 4);
 
-	ps2_send_data(second, cmd::ENABLE_SCANNING);
 	return bytes;
 }
 
@@ -166,9 +165,7 @@ void x86_ps2_init() {
 	send_cmd(controller_cmd::DISABLE_PORT1);
 	send_cmd(controller_cmd::DISABLE_PORT2);
 
-	while (SPACE.load(regs::STATUS) & status::OUTPUT_FULL) {
-		SPACE.load(regs::DATA);
-	}
+	SPACE.load(regs::DATA);
 
 	send_cmd(controller_cmd::READ_CONFIG);
 	u8 config = ps2_receive_data();
@@ -178,7 +175,7 @@ void x86_ps2_init() {
 	send_cmd(controller_cmd::WRITE_CONFIG);
 	write_data(config);
 
-	bool dual_channel = config & config::PORT2_CLOCk;
+	bool dual_channel = config & config::PORT2_CLOCK;
 
 	send_cmd(controller_cmd::TEST_CONTROLLER);
 	u8 test_resp = ps2_receive_data();
@@ -193,12 +190,11 @@ void x86_ps2_init() {
 		send_cmd(controller_cmd::ENABLE_PORT2);
 		send_cmd(controller_cmd::READ_CONFIG);
 		config = ps2_receive_data();
-		if (config & config::PORT2_CLOCk) {
+		if (config & config::PORT2_CLOCK) {
 			dual_channel = false;
 		}
 		else {
 			println("[kernel][x86]: ps2 controller has two ports");
-
 			send_cmd(controller_cmd::DISABLE_PORT2);
 		}
 	}
@@ -220,51 +216,20 @@ void x86_ps2_init() {
 
 	if (port1_good) {
 		send_cmd(controller_cmd::ENABLE_PORT1);
+		ps2_send_data(false, 0xFF);
+		port1_good = ps2_receive_data() == 0xAA;
+		while (ps2_has_data()) {
+			ps2_receive_data();
+		}
 	}
+
 	if (port2_good) {
 		send_cmd(controller_cmd::ENABLE_PORT2);
-	}
 
-	if (port1_good) {
-		while (!ps2_has_data()) {
-			ps2_send_data(false, 0xFF);
-			for (int i = 0; i < 5; ++i) {
-				mdelay(100);
-				if (ps2_has_data()) {
-					break;
-				}
-			}
-		}
-		port1_good = ps2_receive_data() == 0xAA;
-		if (SPACE.load(regs::STATUS) & status::OUTPUT_FULL) {
-			SPACE.load(regs::DATA);
-		}
-	}
-	if (port2_good) {
-		for (int j = 0; j < 5; ++j) {
-			ps2_send_data(true, 0xFF);
-			for (int i = 0; i < 5; ++i) {
-				mdelay(100);
-				if (ps2_has_data()) {
-					break;
-				}
-			}
-
-			if (ps2_has_data()) {
-				break;
-			}
-		}
-
-		if (!ps2_has_data()) {
-			println("[kernel][ps2]: port2 didn't respond to reset");
-			port2_good = false;
-		}
-		else {
-			port2_good = ps2_receive_data() == 0xAA;
-		}
-
-		if (SPACE.load(regs::STATUS) & status::OUTPUT_FULL) {
-			SPACE.load(regs::DATA);
+		ps2_send_data(true, 0xFF);
+		port2_good = ps2_receive_data() == 0xAA;
+		while (ps2_has_data()) {
+			ps2_receive_data();
 		}
 	}
 
@@ -288,8 +253,11 @@ void x86_ps2_init() {
 		}
 	}
 
-	while (ps2_has_data()) {
-		ps2_receive_data();
+	if (port1_good) {
+		ps2_send_data(false, cmd::ENABLE_SCANNING);
+	}
+	if (port2_good) {
+		ps2_send_data(true, cmd::ENABLE_SCANNING);
 	}
 
 	send_cmd(controller_cmd::READ_CONFIG);
