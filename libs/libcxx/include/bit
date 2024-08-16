@@ -1,0 +1,31 @@
+#ifndef _BIT_H
+#define _BIT_H
+
+namespace std {
+	enum class endian {
+		little = __ORDER_LITTLE_ENDIAN__,
+		big = __ORDER_BIG_ENDIAN__,
+		native = __BYTE_ORDER__
+	};
+
+	template<typename __T>
+	constexpr __T byteswap(__T __value) {
+		if constexpr (sizeof(__T) == 1) {
+			return __value;
+		}
+		else if constexpr (sizeof(__T) == 2) {
+			return __builtin_bswap16(__value);
+		}
+		else if constexpr (sizeof(__T) == 4) {
+			return __builtin_bswap32(__value);
+		}
+		else if constexpr (sizeof(__T) == 8) {
+			return __builtin_bswap64(__value);
+		}
+		else {
+			__builtin_unreachable();
+		}
+	}
+}
+
+#endif

@@ -24,7 +24,18 @@ namespace std {
 			__other.__size = 0;
 			__other.__cap = 0;
 		}
-		constexpr vector(const vector&) = delete;
+		constexpr vector(const vector& __other) {
+			__ptr = static_cast<__T*>(malloc(sizeof(__T) * __other.__size));
+			// todo
+			if (!__ptr) {
+				__builtin_trap();
+			}
+			__size = __other.__size;
+			__cap = __other.__size;
+			for (size_t __i = 0; __i < __size; ++__i) {
+				new (&__ptr[__i]) __T {__other.__ptr[__i]};
+			}
+		}
 
 		constexpr void reserve(size_t __new__cap) {
 			if (__new__cap <= __cap) {
@@ -208,7 +219,33 @@ namespace std {
 			return __is_end ? end() : const_cast<__T*>(__first);
 		}
 
-		constexpr vector& operator=(const vector&) = delete;
+		constexpr vector& operator=(const vector& __other) {
+			if (&__other == this) {
+				return *this;
+			}
+
+			for (size_t __i = 0; __i < __size; ++__i) {
+				__ptr[__i].~__T();
+			}
+
+			if (__other.__size > __cap) {
+				free(__ptr);
+				__ptr = static_cast<__T*>(malloc(sizeof(__T) * __other.__size));
+				// todo
+				if (!__ptr) {
+					__builtin_trap();
+				}
+				__cap = __other.__size;
+			}
+
+			__size = __other.__size;
+
+			for (size_t __i = 0; __i < __size; ++__i) {
+				new (&__ptr[__i]) __T {__other.__ptr[__i]};
+			}
+
+			return *this;
+		}
 
 		constexpr vector& operator=(vector&& __other) {
 			for (size_t __i = 0; __i < __size; ++__i) {

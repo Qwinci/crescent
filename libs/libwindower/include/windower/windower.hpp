@@ -1,5 +1,6 @@
 #pragma once
 #include "crescent/syscalls.h"
+#include "protocol.hpp"
 #include <stdint.h>
 
 namespace windower {
@@ -29,6 +30,10 @@ namespace windower {
 		[[nodiscard]] constexpr void* get_fb_mapping() const {
 			return fb_mapping;
 		}
+
+		protocol::WindowEvent wait_for_event();
+
+		void close();
 
 		uint32_t width {};
 		uint32_t height {};

@@ -1,0 +1,217 @@
+#ifndef _STRING_VIEW_H
+#define _STRING_VIEW_H
+
+#include <cstddef>
+
+namespace std {
+	namespace __detail {
+		template<typename __T>
+		constexpr size_t strlen(const __T* __ptr) {
+			size_t __len = 0;
+			while (*__ptr++) ++__len;
+			return __len;
+		}
+	}
+
+	template<typename __T>
+	class basic_string_view {
+	public:
+		using value_type = __T;
+		using pointer = __T*;
+		using const_pointer = const __T*;
+		using reference = __T&;
+		using const_reference = const __T&;
+		using const_iterator = const __T*;
+		using iterator = const_iterator;
+		using size_type = std::size_t;
+		using difference_type = std::ptrdiff_t;
+
+		static constexpr size_type npos = static_cast<size_type>(-1);
+
+		constexpr basic_string_view() noexcept : __ptr {}, __size {} {}
+		constexpr basic_string_view(const basic_string_view& __other) noexcept = default;
+		constexpr basic_string_view(const __T* __str, size_type __count) : __ptr {__str}, __size {__count} {}
+		constexpr basic_string_view(const __T* __str) : __ptr {__str}, __size {__detail::strlen(__str)} {}
+		constexpr basic_string_view(nullptr_t) = delete;
+
+		constexpr basic_string_view& operator=(const basic_string_view& __other) noexcept = default;
+
+		constexpr const_iterator begin() const noexcept {
+			return __ptr;
+		}
+		constexpr const_iterator cbegin() const noexcept {
+			return __ptr;
+		}
+		constexpr const_iterator end() const noexcept {
+			return __ptr + __size;
+		}
+		constexpr const_iterator cend() const noexcept {
+			return __ptr + __size;
+		}
+
+		constexpr const_reference operator[](size_type __index) const {
+			return __ptr[__index];
+		}
+
+		constexpr const_reference front() const {
+			return *__ptr;
+		}
+
+		constexpr const_reference back() const {
+			return __ptr[__size - 1];
+		}
+
+		constexpr const_pointer data() const noexcept {
+			return __ptr;
+		}
+
+		constexpr bool operator==(const basic_string_view& __other) const noexcept {
+			if (__size != __other.__size) {
+				return false;
+			}
+			for (size_type __i = 0; __i < __size; ++__i) {
+				if (__ptr[__i] != __other.__ptr[__i]) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		constexpr size_type size() const noexcept {
+			return __size;
+		}
+
+		constexpr size_type max_size() const noexcept {
+			return __SIZE_MAX__;
+		}
+
+		constexpr bool empty() const noexcept {
+			return !size();
+		}
+
+		constexpr void remove_prefix(size_type __count) {
+			__ptr += __count;
+			__size -= __count;
+		}
+
+		constexpr void remove_suffix(size_type __count) {
+			__size -= __count;
+		}
+
+		constexpr basic_string_view substr(size_type __index = 0, size_type __count = npos) {
+			if (__count > __size - __index) {
+				__count = __size - __index;
+			}
+			return {__ptr + __index, __count};
+		}
+
+		constexpr bool starts_with(basic_string_view __other) const noexcept {
+			if (__size < __other.__size) {
+				return false;
+			}
+			for (size_type __i = 0; __i < __other.__size; ++__i) {
+				if (__ptr[__i] != __other.__ptr[__i]) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		constexpr bool starts_with(__T __ch) const noexcept {
+			return !empty() && *__ptr == __ch;
+		}
+
+		constexpr bool ends_with(basic_string_view __other) const noexcept {
+			if (__size < __other.__size) {
+				return false;
+			}
+			for (size_type __i = __size - __other.__size; __i < __size; ++__i) {
+				if (__ptr[__i] != __other.__ptr[__i - (__size - __other.__size)]) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		constexpr bool ends_with(__T __ch) const noexcept {
+			return !empty() && __ptr[__size - 1] == __ch;
+		}
+
+		constexpr size_type find(basic_string_view __other, size_type __index = 0) const noexcept {
+			if (__size < __other.__size || __other.empty()) {
+				return npos;
+			}
+
+			for (size_type __i = __index; __i < __size - (__other.__size - 1); ++__i) {
+				bool __found = true;
+				for (size_type __j = 0; __j < __other.__size; ++__j) {
+					if (__ptr[__i + __j] != __other.__ptr[__j]) {
+						__found = false;
+						break;
+					}
+				}
+
+				if (__found) {
+					return __i;
+				}
+			}
+
+			return npos;
+		}
+
+		constexpr size_type find(__T __ch, size_type __index = 0) const noexcept {
+			for (size_type __i = __index; __i < __size; ++__i) {
+				if (__ptr[__i] == __ch) {
+					return __i;
+				}
+			}
+			return npos;
+		}
+
+		constexpr bool contains(basic_string_view __other) const noexcept {
+			return find(__other) != npos;
+		}
+
+		constexpr bool contains(__T __ch) const noexcept {
+			return find(__ch) != npos;
+		}
+
+	private:
+		const __T* __ptr;
+		size_type __size;
+	};
+
+	using string_view = basic_string_view<char>;
+	using wstring_view = basic_string_view<wchar_t>;
+	using u8string_view = basic_string_view<char8_t>;
+	using u16string_view = basic_string_view<char16_t>;
+	using u32string_view = basic_string_view<char32_t>;
+
+	namespace literals {
+		namespace string_view_literals {
+			constexpr string_view operator ""sv(const char* __str, size_t __len) noexcept {
+				return {__str, __len};
+			}
+
+			constexpr wstring_view operator ""sv(const wchar_t* __str, size_t __len) noexcept {
+				return {__str, __len};
+			}
+
+			constexpr u8string_view operator ""sv(const char8_t* __str, size_t __len) noexcept {
+				return {__str, __len};
+			}
+
+			constexpr u16string_view operator ""sv(const char16_t* __str, size_t __len) noexcept {
+				return {__str, __len};
+			}
+
+			constexpr u32string_view operator ""sv(const char32_t* __str, size_t __len) noexcept {
+				return {__str, __len};
+			}
+		}
+
+		using namespace string_view_literals;
+	}
+}
+
+#endif

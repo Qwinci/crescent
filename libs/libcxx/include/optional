@@ -1,0 +1,183 @@
+#ifndef _OPTIONAL_H
+#define _OPTIONAL_H
+
+#include <new>
+#include <utility>
+
+namespace std {
+	struct nullopt_t {};
+
+	inline constexpr nullopt_t nullopt {};
+
+	template<typename __T>
+	class optional {
+	public:
+		using value_type = __T;
+
+		constexpr optional() noexcept : __data {}, __has_value {false} {}
+		constexpr optional(nullopt_t) noexcept : __data {}, __has_value {false} {}
+		constexpr optional(optional&& __other) noexcept : __data {}, __has_value {false} {
+			if (__other.__has_value) {
+				new (&__data) __T(move(*launder(reinterpret_cast<__T*>(__other.__data))));
+				__has_value = true;
+			}
+		}
+		constexpr optional(const optional& __other) : __data {}, __has_value {false} {
+			if (__other.__has_value) {
+				new (&__data) __T(*launder(reinterpret_cast<const __T*>(__other.__data)));
+				__has_value = true;
+			}
+		}
+		template<typename __U, typename... __Args>
+		constexpr explicit optional(in_place_t, __Args&&... __args) : __data {}, __has_value {true} {
+			new (&__data) __T(forward<__Args>(__args)...);
+		}
+		template<typename __U = __T> requires(!is_same_v<remove_cvref_t<__U>, optional>)
+		constexpr optional(__U&& __value) : __data {}, __has_value {true} {
+			new (&__data) __T(forward<__U>(__value));
+		}
+
+		constexpr ~optional() {
+			if (__has_value) {
+				launder(reinterpret_cast<__T*>(__data))->~__T();
+			}
+		}
+
+		constexpr optional& operator=(nullopt_t) noexcept {
+			if (__has_value) {
+				launder(reinterpret_cast<__T*>(__data))->~__T();
+				__has_value = false;
+			}
+			return *this;
+		}
+
+		constexpr optional& operator=(optional&& __other) noexcept {
+			if (__other.__has_value) {
+				auto __other_value = launder(reinterpret_cast<__T*>(__other.__data));
+				if (__has_value) {
+					*launder(reinterpret_cast<__T*>(__data)) = move(*__other_value);
+				}
+				else {
+					new (&__data) __T(move(*__other_value));
+					__has_value = true;
+				}
+			}
+			else {
+				if (__has_value) {
+					launder(reinterpret_cast<__T*>(__data))->~__T();
+					__has_value = false;
+				}
+			}
+
+			return *this;
+		}
+
+		constexpr optional& operator=(const optional& __other) {
+			if (&__other == this) {
+				return *this;
+			}
+
+			if (__other.__has_value) {
+				auto __other_value = launder(reinterpret_cast<__T*>(__other.__data));
+				if (__has_value) {
+					*launder(reinterpret_cast<__T*>(__data)) = *__other_value;
+				}
+				else {
+					new (&__data) __T(*__other_value);
+					__has_value = true;
+				}
+			}
+			else {
+				if (__has_value) {
+					launder(reinterpret_cast<__T*>(__data))->~__T();
+					__has_value = false;
+				}
+			}
+
+			return *this;
+		}
+
+		template<typename __U = __T> requires(!is_same_v<remove_cvref_t<__U>, optional>)
+		constexpr optional& operator=(__U&& __value) {
+			if (__has_value) {
+				*launder(reinterpret_cast<__T*>(__data)) = forward<__U>(__value);
+			}
+			else {
+				new (&__data) __T(forward<__U>(__value));
+				__has_value = true;
+			}
+			return *this;
+		}
+
+		constexpr explicit operator bool() const noexcept {
+			return __has_value;
+		}
+
+		constexpr bool has_value() const noexcept {
+			return __has_value;
+		}
+
+		constexpr __T* operator->() noexcept {
+			return launder(reinterpret_cast<__T*>(__data));
+		}
+
+		constexpr const __T* operator->() const noexcept {
+			return launder(reinterpret_cast<const __T*>(__data));
+		}
+
+		constexpr __T& operator*() & noexcept {
+			return *launder(reinterpret_cast<__T*>(__data));
+		}
+
+		constexpr const __T& operator*() const& noexcept {
+			return *launder(reinterpret_cast<const __T*>(__data));
+		}
+
+		constexpr __T&& operator*() && noexcept {
+			return move(*launder(reinterpret_cast<__T*>(__data)));
+		}
+
+		constexpr const __T&& operator*() const&& noexcept {
+			return move(*launder(reinterpret_cast<const __T*>(__data)));
+		}
+
+		constexpr __T& value() & {
+			return *launder(reinterpret_cast<__T*>(__data));
+		}
+
+		constexpr const __T& value() const & {
+			return *launder(reinterpret_cast<const __T*>(__data));
+		}
+
+		constexpr __T&& value() && {
+			return move(*launder(reinterpret_cast<__T*>(__data)));
+		}
+
+		constexpr const __T&& value() const&& {
+			return move(*launder(reinterpret_cast<const __T*>(__data)));
+		}
+
+		constexpr void reset() {
+			if (__has_value) {
+				launder(reinterpret_cast<__T*>(__data))->~__T();
+				__has_value = false;
+			}
+		}
+
+		template<typename... __Args>
+		constexpr __T& emplace(__Args&&... __args) {
+			if (__has_value) {
+				launder(reinterpret_cast<__T*>(__data))->~__T();
+			}
+			auto __ptr = new (&__data) __T(forward<__Args>(__args)...);
+			__has_value = true;
+			return *__ptr;
+		}
+
+	private:
+		alignas(__T) char __data[sizeof(__T)];
+		bool __has_value;
+	};
+}
+
+#endif

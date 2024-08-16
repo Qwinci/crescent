@@ -1,0 +1,16 @@
+#ifndef _CONCEPTS_H
+#define _CONCEPTS_H
+
+#include <type_traits>
+
+namespace std {
+	namespace __detail {
+		template<typename __T, typename __U>
+		concept __same_helper = is_same_v<__T, __U>;
+	}
+
+	template<typename __T, typename __U>
+	concept same_as = __detail::__same_helper<__T, __U> && __detail::__same_helper<__U, __T>;
+}
+
+#endif

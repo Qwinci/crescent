@@ -236,3 +236,11 @@ void free(void* ptr) {
 		arena->freelist = hdr;
 	}
 }
+
+__attribute__((noreturn)) void exit(int status) {
+	sys_process_exit(status);
+}
+
+__attribute__((noreturn)) void abort() {
+	__builtin_trap();
+}

@@ -10,6 +10,9 @@ void* malloc(size_t __size);
 void* realloc(void* __old, size_t __new_size);
 void free(void* __ptr);
 
+__attribute__((noreturn)) void exit(int status);
+__attribute__((noreturn)) void abort();
+
 __end
 
 #endif

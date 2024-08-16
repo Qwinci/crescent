@@ -1,0 +1,357 @@
+#ifndef _STRING
+#define _STRING
+
+#include <string_view>
+#include <cstddef>
+#include <cstdlib>
+
+namespace std {
+	template<typename __T>
+	class basic_string {
+	public:
+		using value_type = __T;
+		using size_type = size_t;
+		using difference_type = ptrdiff_t;
+		using reference = value_type&;
+		using const_reference = const value_type&;
+		using pointer = __T*;
+		using const_pointer = const __T*;
+		using iterator = __T*;
+		using const_iterator = const __T*;
+
+		constexpr basic_string() {
+			__data = static_cast<__T*>(malloc(sizeof(__T)));
+			// todo
+			if (!__data) {
+				__builtin_trap();
+			}
+			__data[0] = 0;
+		}
+
+		constexpr basic_string(basic_string&& __other) {
+			__data = __other.__data;
+			__size = __other.__size;
+			__cap = __other.__cap;
+			__other.__data = nullptr;
+			__other.__size = 0;
+			__other.__cap = 0;
+		}
+
+		constexpr basic_string(const basic_string& __other) {
+			__data = static_cast<__T*>(malloc((__other.__size + 1) * sizeof(__T)));
+			// todo
+			if (!__data) {
+				__builtin_trap();
+			}
+			__size = __other.__size;
+			__cap = __other.__size;
+			for (size_type __i = 0; __i < __size; ++__i) {
+				__data[__i] = __other.__data[__i];
+			}
+			__data[0] = 0;
+		}
+
+		constexpr basic_string(basic_string_view<__T> __other) {
+			__data = static_cast<__T*>(malloc((__other.size() + 1) * sizeof(__T)));
+			// todo
+			if (!__data) {
+				__builtin_trap();
+			}
+			__size = __other.size();
+			__cap = __other.size();
+			for (size_type __i = 0; __i < __size; ++__i) {
+				__data[__i] = __other[__i];
+			}
+			__data[0] = 0;
+		}
+
+		~basic_string() {
+			if (__data) {
+				free(__data);
+			}
+		}
+
+		constexpr basic_string& operator=(basic_string&& __other) noexcept {
+			if (__data) {
+				free(__data);
+			}
+			__data = __other.__data;
+			__size = __other.__size;
+			__cap = __other.__cap;
+			__other.__data = nullptr;
+			__other.__size = 0;
+			__other.__cap = 0;
+			return *this;
+		}
+
+		constexpr basic_string& operator=(const basic_string& __other) {
+			if (&__other == this) {
+				return *this;
+			}
+
+			if (__data) {
+				free(__data);
+			}
+
+			__data = static_cast<__T*>(malloc((__other.__size + 1) * sizeof(__T)));
+			// todo
+			if (!__data) {
+				__builtin_trap();
+			}
+			__size = __other.__size;
+			__cap = __other.__size;
+			for (size_type __i = 0; __i < __size; ++__i) {
+				__data[__i] = __other.__data[__i];
+			}
+			__data[0] = 0;
+			return *this;
+		}
+
+		constexpr basic_string& operator=(basic_string_view<__T> __other) {
+			if (__data) {
+				free(__data);
+			}
+
+			__data = static_cast<__T*>(malloc((__other.size() + 1) * sizeof(__T)));
+			// todo
+			if (!__data) {
+				__builtin_trap();
+			}
+			__size = __other.size();
+			__cap = __other.size();
+			for (size_type __i = 0; __i < __size; ++__i) {
+				__data[__i] = __other[__i];
+			}
+			__data[0] = 0;
+			return *this;
+		}
+
+		constexpr __T& operator[](size_type __index) {
+			return __data[__index];
+		}
+
+		constexpr const __T& operator[](size_type __index) const {
+			return __data[__index];
+		}
+
+		constexpr __T& front() {
+			return *__data;
+		}
+
+		constexpr const __T& front() const {
+			return *__data;
+		}
+
+		constexpr __T& back() {
+			return __data[__size - 1];
+		}
+
+		constexpr const __T& back() const {
+			return __data[__size - 1];
+		}
+
+		constexpr __T* data() {
+			return __data;
+		}
+
+		constexpr const __T* data() const {
+			return __data;
+		}
+
+		constexpr const __T* c_str() const {
+			return __data;
+		}
+
+		constexpr operator basic_string_view<__T>() const noexcept {
+			return {__data, __size};
+		}
+
+		constexpr __T* begin() {
+			return __data;
+		}
+
+		constexpr const __T* begin() const {
+			return __data;
+		}
+
+		constexpr const __T* cbegin() const noexcept {
+			return __data;
+		}
+
+		constexpr __T* end() {
+			return __data + __size;
+		}
+
+		constexpr const __T* end() const {
+			return __data + __size;
+		}
+
+		constexpr const __T* cend() const noexcept {
+			return __data + __size;
+		}
+
+		constexpr bool empty() const {
+			return !__size;
+		}
+
+		constexpr size_type size() const {
+			return __size;
+		}
+
+		void reserve(size_type __new_cap) {
+			if (__new_cap <= __cap) {
+				return;
+			}
+			__ensure_space(__new_cap - __cap);
+		}
+
+		constexpr size_type capacity() const {
+			return __cap;
+		}
+
+		constexpr void shrink_to_fit() {
+			if (__cap > __size) {
+				auto* __new_data = static_cast<__T*>(malloc((__size + 1) * sizeof(__T)));
+				// todo
+				if (!__new_data) {
+					__builtin_trap();
+				}
+				for (size_type __i = 0; __i < __size; ++__i) {
+					__new_data[__i] = __data[__i];
+				}
+				__new_data[__size] = 0;
+				free(__data);
+				__data = __new_data;
+				__cap = __size;
+			}
+		}
+
+		constexpr void clear() {
+			if (__size) {
+				__data[0] = 0;
+				__size = 0;
+			}
+		}
+
+		constexpr void push_back(const __T __ch) {
+			__ensure_space(1);
+			__data[__size++] = __ch;
+			__data[__size] = 0;
+		}
+
+		constexpr void pop_back() {
+			__data[--__size] = 0;
+		}
+
+		constexpr void resize(size_type __new_size) {
+			if (__new_size <= __size) {
+				__size = __new_size;
+				__data[__new_size] = 0;
+			}
+			else {
+				auto __amount = __new_size - __size;
+				__ensure_space(__amount);
+				for (size_type __i = 0; __i < __new_size; ++__i) {
+					__data[__size++] = 0;
+				}
+				__data[__size] = 0;
+			}
+		}
+
+		constexpr void resize(size_type __new_size, __T __ch) {
+			if (__new_size <= __size) {
+				__size = __new_size;
+				__data[__new_size] = 0;
+			}
+			else {
+				auto __amount = __new_size - __size;
+				__ensure_space(__amount);
+				for (size_type __i = 0; __i < __new_size; ++__i) {
+					__data[__size++] = __ch;
+				}
+				__data[__size] = 0;
+			}
+		}
+
+		constexpr basic_string operator+(const basic_string& __other) {
+			basic_string new_str {*this};
+			new_str += __other;
+			return new_str;
+		}
+
+		constexpr basic_string& operator+=(const basic_string& __other) {
+			__ensure_space(__other.__size);
+			for (size_type __i = 0; __i < __other.__size; ++__i) {
+				__data[__size++] = __other.__data[__i];
+			}
+			__data[__size] = 0;
+			return *this;
+		}
+
+		constexpr basic_string operator+(basic_string_view<__T> __other) {
+			basic_string new_str {*this};
+			new_str += __other;
+			return new_str;
+		}
+
+		constexpr basic_string& operator+=(basic_string_view<__T> __other) {
+			__ensure_space(__other.size());
+			for (size_type __i = 0; __i < __other.size(); ++__i) {
+				__data[__size++] = __other[__i];
+			}
+			__data[__size] = 0;
+			return *this;
+		}
+
+		constexpr basic_string operator+(__T __ch) {
+			basic_string new_str {*this};
+			new_str += __ch;
+			return new_str;
+		}
+
+		constexpr basic_string& operator+=(__T __ch) {
+			push_back(__ch);
+			return *this;
+		}
+
+		constexpr bool operator==(const basic_string& __other) const noexcept {
+			return operator basic_string_view<__T>() == __other.operator basic_string_view<__T>();
+		}
+
+	private:
+		constexpr void __ensure_space(size_type __amount) {
+			if (__size + __amount <= __cap) {
+				return;
+			}
+
+			size_type __new_cap = __cap < 8 ? 8 : (__cap + __cap / 2);
+			if (__new_cap < __size + __amount) {
+				__new_cap = __size + __amount;
+			}
+			auto* __new_data = static_cast<__T*>(malloc((__new_cap + 1) * sizeof(__T)));
+			// todo
+			if (!__new_data) {
+				__builtin_trap();
+			}
+			for (size_type __i = 0; __i < __size; ++__i) {
+				__new_data[__i] = __data[__i];
+			}
+			__new_data[__size] = 0;
+			free(__data);
+			__data = __new_data;
+			__cap = __new_cap;
+		}
+
+		__T* __data {};
+		size_type __size {};
+		size_type __cap {};
+	};
+
+	using string = basic_string<char>;
+	using wstring = basic_string<wchar_t>;
+	using u8string = basic_string<char8_t>;
+	using u16string = basic_string<char16_t>;
+	using u32string = basic_string<char32_t>;
+}
+
+#endif

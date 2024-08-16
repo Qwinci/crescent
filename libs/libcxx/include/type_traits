@@ -17,6 +17,85 @@ namespace std {
 
 	template<typename __T>
 	using remove_reference_t = typename remove_reference<__T>::type;
+
+	template<typename __T>
+	struct remove_cv {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_cv<const __T> {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_cv<volatile __T> {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_cv<const volatile __T> {
+		using type = __T;
+	};
+
+	template<typename __T>
+	struct remove_const {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_const<const __T> {
+		using type = __T;
+	};
+
+	template<typename __T>
+	struct remove_volatile {
+		using type = __T;
+	};
+	template<typename __T>
+	struct remove_volatile<volatile __T> {
+		using type = __T;
+	};
+
+	template<typename __T>
+	using remove_cv_t = typename remove_cv<__T>::type;
+	template<typename __T>
+	using remove_const_t = typename remove_const<__T>::type;
+	template<typename __T>
+	using remove_volatile_t = typename remove_volatile<__T>::type;
+
+	template<typename __T>
+	struct remove_cvref {
+		using type = remove_cv_t<remove_reference_t<__T>>;
+	};
+
+	template<typename __T>
+	using remove_cvref_t = remove_cvref<__T>::type;
+
+	template<typename __T, __T __Value>
+	struct integral_constant {
+		using value_type = __T;
+		using type = integral_constant<__T, __Value>;
+
+		static constexpr __T value = __Value;
+
+		constexpr operator value_type() const noexcept {
+			return value;
+		}
+
+		constexpr value_type operator()() const noexcept {
+			return value;
+		}
+	};
+
+	template<bool __Value>
+	using bool_constant = integral_constant<bool, __Value>;
+	using true_type = integral_constant<bool, true>;
+	using false_type = integral_constant<bool, false>;
+
+	template<typename __T, typename __U>
+	struct is_same : false_type {};
+	template<typename __T>
+	struct is_same<__T, __T> : true_type {};
+
+	template<typename __T, typename __U>
+	inline constexpr bool is_same_v = is_same<__T, __U>::value;
 }
 
 #endif

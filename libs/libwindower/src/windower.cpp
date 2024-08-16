@@ -1,6 +1,7 @@
 #include "windower/windower.hpp"
 #include "windower/protocol.hpp"
 #include "sys.hpp"
+#include <cassert>
 
 namespace windower {
 	Window::~Window() {
@@ -11,12 +12,13 @@ namespace windower {
 					.window_handle = handle
 				}
 			};
-			sys_socket_send(owner->connection, &req, sizeof(req));
-			// todo assert(status == 0);
+			auto status = sys_socket_send(owner->connection, &req, sizeof(req));
+			assert(status == 0);
 			protocol::Response resp {};
 			size_t received;
-			sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
-			// todo assert(status == 0);
+			status = sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
+			assert(received == sizeof(resp));
+			assert(status == 0);
 		}
 
 		if (fb_mapping) {
@@ -29,6 +31,44 @@ namespace windower {
 
 	int Window::map_fb() {
 		return sys_shared_mem_map(fb_handle, &fb_mapping);
+	}
+
+	protocol::WindowEvent Window::wait_for_event() {
+		protocol::Response resp {};
+		size_t received;
+		auto status = sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
+		assert(received == sizeof(resp));
+		assert(resp.type == protocol::Response::WindowEvent);
+		assert(status == 0);
+		return resp.window_event;
+	}
+
+	void Window::close() {
+		if (owner) {
+			protocol::Request req {
+				.type = protocol::Request::CloseWindow,
+				.close_window {
+					.window_handle = handle
+				}
+			};
+			auto status = sys_socket_send(owner->connection, &req, sizeof(req));
+			assert(status == 0);
+			protocol::Response resp {};
+			size_t received;
+			status = sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
+			assert(received == sizeof(resp));
+			assert(status == 0);
+			owner = nullptr;
+		}
+
+		if (fb_mapping) {
+			sys_unmap(fb_mapping, (width * height * 4 + 0xFFF) & ~0xFFF);
+			fb_mapping = nullptr;
+		}
+		if (fb_handle != INVALID_CRESCENT_HANDLE) {
+			sys_close_handle(fb_handle);
+			fb_handle = INVALID_CRESCENT_HANDLE;
+		}
 	}
 
 	int Windower::connect(Windower& res) {
@@ -89,7 +129,8 @@ namespace windower {
 		if (status != 0) {
 			return status;
 		}
-		// todo verify received size and type
+		assert(received == sizeof(resp));
+		assert(resp.type == protocol::Response::WindowCreated);
 		res.owner = this;
 		res.width = width;
 		res.height = height;

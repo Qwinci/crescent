@@ -1,10 +1,9 @@
 LIB(libc
 	src/stdio.cpp
-)
-target_sources(libc PRIVATE
 	src/string.cpp
 	src/stdlib.cpp
 	src/cxx.cpp
+	src/assert.cpp
 )
 set_source_files_properties(src/string.cpp PROPERTIES COMPILE_FLAGS -O2)
 

@@ -26,6 +26,10 @@ namespace std {
 		first_type first;
 		second_type second;
 	};
+
+	struct in_place_t {};
+
+	inline constexpr in_place_t in_place {};
 }
 
 #endif

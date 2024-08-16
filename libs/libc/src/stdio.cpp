@@ -72,6 +72,14 @@ int printf(const char* __restrict fmt, ...) {
 	return ret;
 }
 
+int fprintf(FILE* __restrict file, const char* __restrict fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	int ret = vfprintf(file, fmt, ap);
+	va_end(ap);
+	return ret;
+}
+
 static constexpr char HEX_CHARS[] = "0123456789ABCDEF";
 
 int vfprintf(FILE* __restrict file, const char* __restrict fmt, va_list ap) {
@@ -114,6 +122,18 @@ int vfprintf(FILE* __restrict file, const char* __restrict fmt, va_list ap) {
 					*--ptr = '-';
 				}
 				file->write(ptr, (buf + 20) - ptr);
+				break;
+			}
+			case 'u':
+			{
+				auto value = va_arg(ap, unsigned int);
+				char buf[10];
+				char* ptr = buf + 10;
+				do {
+					*--ptr = static_cast<char>('0' + value % 10);
+					value /= 10;
+				} while (value);
+				file->write(ptr, (buf + 10) - ptr);
 				break;
 			}
 			case 'p':
