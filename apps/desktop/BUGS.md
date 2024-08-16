@@ -1,0 +1,1 @@
+- framebuffer update doesn't cause refresh

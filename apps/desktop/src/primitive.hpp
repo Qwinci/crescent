@@ -17,12 +17,12 @@ struct Rect {
 
 	[[nodiscard]] constexpr bool contains(const Point& point) const {
 		return point.x >= x && point.x < x + width &&
-		       point.y >= y && point.y < y + height;
+			   point.y >= y && point.y < y + height;
 	}
 
 	[[nodiscard]] constexpr bool intersects(const Rect& other) const {
 		return x < other.x + other.width && other.x < x + width &&
-			y < other.y + other.height && other.y < y + height;
+			   y < other.y + other.height && other.y < y + height;
 	}
 
 	[[nodiscard]] constexpr Rect intersect(const Rect& other) const {
@@ -42,15 +42,17 @@ struct Rect {
 		auto other_right_x = other.x + other.width;
 		auto other_bottom_y = other.y + other.height;
 
+		uint32_t left_side = 0;
+		uint32_t right_side = 0;
 		if (other.x > x) {
-			auto x_overlap = right_x - other.x;
 			Rect left {
 				.x = x,
 				.y = y,
-				.width = width - x_overlap,
+				.width = other.x - x,
 				.height = height
 			};
 			res[count++] = left;
+			left_side = other.x - x;
 		}
 		if (other_right_x < right_x) {
 			Rect right {
@@ -60,21 +62,22 @@ struct Rect {
 				.height = height
 			};
 			res[count++] = right;
+			right_side = right_x - other_right_x;
 		}
 		if (other.y > y) {
 			Rect top {
-				.x = x,
+				.x = x + left_side,
 				.y = y,
-				.width = width,
+				.width = width - left_side - right_side,
 				.height = other.y - y
 			};
 			res[count++] = top;
 		}
 		if (other_bottom_y < bottom_y) {
 			Rect bottom {
-				.x = x,
+				.x = x + left_side,
 				.y = other_bottom_y,
-				.width = width,
+				.width = width - left_side - right_side,
 				.height = bottom_y - other_bottom_y
 			};
 			res[count++] = bottom;

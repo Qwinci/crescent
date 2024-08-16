@@ -1,9 +1,17 @@
 #include "desktop.hpp"
+#include <cassert>
 
 Desktop::Desktop(Context& ctx) : ctx {ctx} {
-	root_window = std::make_unique<Window>();
-	root_window->set_size(ctx.width, ctx.height);
-	root_window->no_decorations = true;
+	assert(ctx.height > TaskbarWindow::HEIGHT);
+
+	root_window = std::make_unique<Window>(true);
+	root_window->set_size(ctx.width, ctx.height - TaskbarWindow::HEIGHT);
+	root_window->internal = true;
+
+	taskbar_unique = std::make_unique<TaskbarWindow>(ctx.width);
+	taskbar_unique->set_pos(0, ctx.height - TaskbarWindow::HEIGHT);
+	taskbar = static_cast<TaskbarWindow*>(taskbar_unique.get());
+
 	ctx.dirty_rects.push_back({
 		.x = 0,
 		.y = 0,
@@ -17,17 +25,28 @@ void Desktop::draw() {
 		return;
 	}
 
-	root_window->draw_generic(ctx);
-
-	ctx.set_clip_rect({.x = 0, .y = 0, .width = ctx.width, .height = ctx.height});
-	ctx.x_off = 0;
-	ctx.y_off = 0;
 	Rect mouse_rect {
 		.x = mouse_state.pos.x,
 		.y = mouse_state.pos.y,
 		.width = 10,
 		.height = 10
 	};
+	ctx.subtract_rects.push_back(mouse_rect);
+
+	root_window->draw_generic(ctx, {});
+	taskbar_unique->draw_generic(ctx, {});
+
+	ctx.x_off = 0;
+	ctx.y_off = 0;
+
+	ctx.clear_clip_rects();
+	ctx.subtract_rects.clear();
+	ctx.clip_rects.push_back({
+		.x = 0,
+		.y = 0,
+		.width = ctx.width,
+		.height = ctx.height
+	});
 	ctx.draw_filled_rect(mouse_rect, 0xFF0000);
 
 	ctx.dirty_rects.clear();
@@ -41,16 +60,22 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 			Rect bar_rect {
 				.x = window->rect.x + abs_offset.x,
 				.y = window->rect.y + abs_offset.y,
-				.width = window->rect.width,
+				.width = window->rect.width + BORDER_WIDTH * 2,
 				.height = TITLEBAR_HEIGHT
 			};
 
 			if (bar_rect.contains(new_state.pos)) {
+				if (window->titlebar->handle_mouse(desktop->ctx, desktop->mouse_state, new_state)) {
+					desktop->dragging = nullptr;
+					return true;
+				}
+
 				desktop->drag_x_off = new_state.pos.x - bar_rect.x;
 				desktop->drag_y_off = new_state.pos.y - bar_rect.y;
 
 				auto copy = std::move(window);
 				desktop->dragging = &*copy;
+				copy->parent->active_child = copy.get();
 				copy->parent->children.erase(
 					copy->parent->children.begin() +
 					static_cast<std::vector<std::unique_ptr<Window>>::difference_type>(&window - copy->parent->children.data()));
@@ -66,6 +91,9 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 	for (size_t i = window->children.size(); i > 0; --i) {
 		auto& child = window->children[i - 1];
 		if (handle_mouse_recursive(desktop, child, new_state)) {
+			if (new_state.left_pressed) {
+				window->active_child = child.get();
+			}
 			return true;
 		}
 	}
@@ -74,7 +102,7 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 		return false;
 	}
 
-	if (desktop->dragging) {
+	if (desktop->dragging == window.get()) {
 		return true;
 	}
 
@@ -88,49 +116,90 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 		if (content_rect.contains(desktop->mouse_state.pos)) {
 			window->on_mouse_leave(desktop->ctx, new_state);
 		}
+
+		if (!window->no_decorations) {
+			Rect titlebar_rect {
+				.x = window->rect.x + abs_offset.x,
+				.y = window->rect.y + abs_offset.y,
+				.width = window->rect.width + BORDER_WIDTH * 2,
+				.height = window->rect.height + TITLEBAR_HEIGHT + BORDER_WIDTH
+			};
+			if (!titlebar_rect.contains(new_state.pos)) {
+				if (titlebar_rect.contains(desktop->mouse_state.pos)) {
+					window->titlebar->on_mouse_leave(desktop->ctx, new_state);
+				}
+			}
+			else {
+				return window->titlebar->handle_mouse(desktop->ctx, desktop->mouse_state, new_state);
+			}
+		}
+
 		return false;
 	}
 
-	return window->handle_mouse(desktop->ctx, new_state);
+	return window->handle_mouse(desktop->ctx, desktop->mouse_state, new_state);
+}
+
+static bool handle_keyboard_recursive(
+	Desktop* desktop,
+	Window* window,
+	const KeyState& old_state,
+	const KeyState& new_state) {
+
+	if (window->active_child) {
+		if (handle_keyboard_recursive(desktop, window->active_child, old_state, new_state)) {
+			return true;
+		}
+	}
+
+	return window->handle_keyboard(desktop->ctx, old_state, new_state);
 }
 
 void Desktop::handle_mouse(MouseState new_state) {
-	handle_mouse_recursive(this, root_window, new_state);
+	if (!handle_mouse_recursive(this, taskbar_unique, new_state)) {
+		handle_mouse_recursive(this, root_window, new_state);
+	}
 
 	if (dragging) {
 		auto old = dragging->rect;
 
+		uint32_t new_x;
+		uint32_t new_y;
+
 		auto abs_offset = dragging->get_abs_pos_offset();
 		if (new_state.pos.x >= drag_x_off) {
 			if (new_state.pos.x <= abs_offset.x || (new_state.pos.x - abs_offset.x) < drag_x_off) {
-				dragging->rect.x = 0;
+				new_x = 0;
 			}
 			else if (new_state.pos.x - drag_x_off >=
-				abs_offset.x + dragging->parent->rect.width - dragging->rect.width) {
-				dragging->rect.x = dragging->parent->rect.width - dragging->rect.width;
+				abs_offset.x + dragging->parent->rect.width - (dragging->rect.width + BORDER_WIDTH * 2)) {
+				new_x = dragging->parent->rect.width - (dragging->rect.width + BORDER_WIDTH * 2);
 			}
 			else {
-				dragging->rect.x = (new_state.pos.x - abs_offset.x) - drag_x_off;
+				new_x = (new_state.pos.x - abs_offset.x) - drag_x_off;
 			}
 		}
 		else {
-			dragging->rect.x = 0;
+			new_x = 0;
 		}
+
 		if (new_state.pos.y >= drag_y_off) {
 			if (new_state.pos.y <= abs_offset.y || (new_state.pos.y - abs_offset.y) < drag_y_off) {
-				dragging->rect.y = 0;
+				new_y = 0;
 			}
 			else if (new_state.pos.y - drag_y_off >=
-				abs_offset.y + dragging->parent->rect.height - dragging->rect.height) {
-				dragging->rect.y = dragging->parent->rect.height - dragging->rect.height;
+				abs_offset.y + dragging->parent->rect.height - (dragging->rect.height + TITLEBAR_HEIGHT + BORDER_WIDTH)) {
+				new_y = dragging->parent->rect.height - (dragging->rect.height + TITLEBAR_HEIGHT + BORDER_WIDTH);
 			}
 			else {
-				dragging->rect.y = (new_state.pos.y - abs_offset.y) - drag_y_off;
+				new_y = (new_state.pos.y - abs_offset.y) - drag_y_off;
 			}
 		}
 		else {
-			dragging->rect.y = 0;
+			new_y = 0;
 		}
+
+		dragging->set_pos(new_x, new_y);
 
 		Rect abs_old {
 			.x = old.x + abs_offset.x,
@@ -189,4 +258,16 @@ void Desktop::handle_mouse(MouseState new_state) {
 	ctx.dirty_rects.push_back(new_mouse_rect);
 
 	mouse_state = new_state;
+}
+
+void Desktop::handle_keyboard(KeyState new_state) {
+	KeyState old_state {
+		.code = new_state.code,
+		.pressed = key_states[new_state.code]
+	};
+
+	if (!handle_keyboard_recursive(this, taskbar_unique.get(), old_state, new_state)) {
+		handle_keyboard_recursive(this, root_window.get(), old_state, new_state);
+	}
+	key_states[new_state.code] = new_state.pressed;
 }

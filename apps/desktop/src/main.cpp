@@ -3,6 +3,7 @@
 #include "desktop.hpp"
 #include "sys.hpp"
 #include "windower/protocol.hpp"
+#include <cassert>
 #include <stdio.h>
 #include <string.h>
 
@@ -52,6 +53,7 @@ private:
 };
 
 static NoDestroy<std::vector<std::pair<CrescentHandle, CrescentHandle>>> CONNECTIONS {};
+static NoDestroy<std::vector<std::pair<Window*, CrescentHandle>>> WINDOW_TO_CONNECTION {};
 
 void listener_thread(void* arg) {
 	auto* desktop = static_cast<Desktop*>(arg);
@@ -115,8 +117,105 @@ void listener_thread(void* arg) {
 
 namespace protocol = windower::protocol;
 
+void send_event_to_window(Window* window, protocol::WindowEvent event) {
+	protocol::Response resp {};
+	resp.type = protocol::Response::WindowEvent;
+	resp.window_event = event;
+
+	CrescentHandle connection = INVALID_CRESCENT_HANDLE;
+
+	for (auto& [iter_window, iter_connection] : *WINDOW_TO_CONNECTION) {
+		if (iter_window == window) {
+			connection = iter_connection;
+			break;
+		}
+	}
+
+	assert(connection != INVALID_CRESCENT_HANDLE);
+
+	// todo check status
+	while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+}
+
 int main() {
 	//dumb_loop();
+
+	/*CrescentHandle sock;
+	int err = sys_socket_create(sock, SOCKET_TYPE_TCP, 0);
+	if (err != 0) {
+		puts("failed to create socket");
+		return -1;
+	}
+
+	while (true) {
+		err = sys_socket_listen(sock, 8080);
+		if (err != 0) {
+			puts("failed to listen for connection");
+			return -1;
+		}
+
+		CrescentHandle new_sock;
+		err = sys_socket_accept(sock, new_sock, 0);
+		if (err != 0) {
+			puts("failed to accept connection");
+		}
+
+		char buffer[1024 * 8];
+		size_t buffer_size = 0;
+		while (true) {
+			size_t received = 0;
+			err = sys_socket_receive(new_sock, buffer + buffer_size, 1024 * 8 - buffer_size, received);
+			if (err != 0) {
+				printf("failed to receive data: %d\n", err);
+				return -1;
+			}
+			buffer_size += received;
+
+			size_t header_end = 0;
+
+			for (size_t i = 0; i < buffer_size; ++i) {
+				if (i + 3 < buffer_size) {
+					if (buffer[i] == '\r' && buffer[i + 1] == '\n' && buffer[i + 2] == '\r' && buffer[i + 3] == '\n') {
+						header_end = i;
+						break;
+					}
+				}
+				else {
+					break;
+				}
+			}
+
+			if (header_end) {
+				buffer[header_end] = 0;
+				break;
+			}
+
+			if (buffer_size == 1024 * 8) {
+				puts("header too big");
+				return -1;
+			}
+		}
+
+		printf("Received header: %s\n", buffer);
+
+		char http_response[] =
+			"HTTP/1.1 404 Not Found\r\n"
+			"Date: Fri, 24 May 2024 21:48:20 GMT\r\n"
+			"Server: desktop (Crescent X86_64)\r\n"
+			"Content-Length: 100\r\n"
+			"Connection: Closed\r\n"
+			"Content-Type: text/html; charset=iso-8859-1\r\n"
+			"\r\n"
+			"<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>Not Found</h1></body></html>"
+			;
+		puts("sending response");
+		sys_socket_send(new_sock, http_response, sizeof(http_response) - 1);
+		puts("response sent");
+
+		sys_close_handle(new_sock);
+	}
+
+	dumb_loop();*/
 
 	DevLinkRequest request {
 		.type = DevLinkRequestType::GetDevices,
@@ -133,6 +232,10 @@ int main() {
 		.response_buf_size = DEVLINK_BUFFER_SIZE
 	};
 	auto status = sys_devlink(link);
+	if (status != 0) {
+		puts("failed to get devices");
+		return 1;
+	}
 	request.type = DevLinkRequestType::OpenDevice;
 	request.data.open_device.device = link.response->get_devices.names[0];
 	request.data.open_device.device_len = link.response->get_devices.name_sizes[0];
@@ -151,7 +254,7 @@ int main() {
 	fb_link.request.handle = handle;
 	status = sys_devlink(link);
 	if (status != 0) {
-		puts("devlink failed");
+		puts("failed to get fb info");
 		return 1;
 	}
 	auto* fb_resp = static_cast<FbLinkResponse*>(link.response->specific);
@@ -162,11 +265,32 @@ int main() {
 		puts("failed to map fb");
 		return 1;
 	}
-	void* mapping = fb_resp->map.mapping;
-	sys_close_handle(handle);
+	void* back_mapping = fb_resp->map.mapping;
+
+	fb_link.op = FbLinkOp::Flip;
+	status = sys_devlink(link);
+	if (status != 0) {
+		puts("failed to flip fb");
+		return 1;
+	}
+
+	fb_link.op = FbLinkOp::Map;
+	status = sys_devlink(link);
+	if (status != 0) {
+		puts("failed to map fb");
+		return 1;
+	}
+	void* front_mapping = fb_resp->map.mapping;
+
+	fb_link.op = FbLinkOp::Flip;
+	status = sys_devlink(link);
+	if (status != 0) {
+		puts("failed to flip fb");
+		return 1;
+	}
 
 	Context ctx {};
-	ctx.fb = static_cast<uint32_t*>(mapping);
+	ctx.fb = static_cast<uint32_t*>(back_mapping);
 	ctx.pitch_32 = info.pitch / 4;
 	ctx.width = info.width;
 	ctx.height = info.height;
@@ -179,23 +303,26 @@ int main() {
 		return 1;
 	}
 
-	auto window1 = std::make_unique<Window>();
+	auto window1 = std::make_unique<Window>(false);
 	window1->set_pos(0, 0);
 	window1->set_size(100, 100);
 	window1->bg_color = 0x00FF00;
+	window1->internal = true;
 
-	auto window2 = std::make_unique<Window>();
+	auto window2 = std::make_unique<Window>(false);
 	window2->set_pos(200, 0);
 	window2->set_size(50, 50);
 	window2->bg_color = 0x0000FF;
+	window2->internal = true;
 
 	auto window3 = std::make_unique<ButtonWindow>();
-	window3->set_pos(0, TITLEBAR_HEIGHT);
+	window3->set_pos(0, 0);
 	window3->set_size(50, 50);
 	window3->bg_color = 0x00FFFF;
 	window3->callback = [](void*) {
 		sys_shutdown(SHUTDOWN_TYPE_REBOOT);
 	};
+	window3->internal = true;
 
 	window1->add_child(std::move(window3));
 
@@ -209,8 +336,17 @@ int main() {
 	window4->callback = [](void*) {
 		sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
 	};
+	window4->internal = true;
 
 	desktop.root_window->add_child(std::move(window4));
+
+	desktop.taskbar->add_icon(0xE81416);
+	desktop.taskbar->add_icon(0xFFA500);
+	desktop.taskbar->add_icon(0xFAEB36);
+	desktop.taskbar->add_icon(0x79C314);
+	desktop.taskbar->add_icon(0x487DE7);
+	desktop.taskbar->add_icon(0x4B369D);
+	desktop.taskbar->add_icon(0x70369D);
 
 	desktop.handle_mouse({
 		.pos {
@@ -241,7 +377,7 @@ int main() {
 			switch (req.type) {
 				case protocol::Request::CreateWindow:
 				{
-					auto window = std::make_unique<Window>();
+					auto window = std::make_unique<Window>(false);
 					window->set_pos(req.create_window.x, req.create_window.y);
 					window->set_size(req.create_window.width, req.create_window.height);
 
@@ -270,6 +406,8 @@ int main() {
 					resp.window_created.window_handle = window_ptr;
 					resp.window_created.fb_handle = fb_shareable_handle;
 
+					WINDOW_TO_CONNECTION->push_back({window_ptr, connection});
+
 					// todo check status
 					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
@@ -295,13 +433,37 @@ int main() {
 						}
 					}
 
+					for (size_t i = 0; i < WINDOW_TO_CONNECTION->size(); ++i) {
+						auto& iter = (*WINDOW_TO_CONNECTION)[i];
+						if (iter.first == window) {
+							WINDOW_TO_CONNECTION->erase(
+								WINDOW_TO_CONNECTION->begin() +
+								static_cast<std::vector<std::pair<Window*, CrescentHandle>>::difference_type>(i));
+							break;
+						}
+					}
+
+					// todo check status
+					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+
+					break;
+				}
+				case protocol::Request::Redraw:
+				{
+					auto* window = static_cast<Window*>(req.close_window.window_handle);
+					ctx.dirty_rects.push_back(window->get_abs_rect());
+
+					resp.ack.window_handle = window;
+					// todo check status
+					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+
 					break;
 				}
 			}
 		}
 
 		InputEvent event;
-		if (sys_poll_event(event, US_IN_MS) == ERR_TRY_AGAIN) {
+		if (sys_poll_event(event, US_IN_S / 144) == ERR_TRY_AGAIN) {
 
 		}
 		else if (event.type == EVENT_TYPE_MOUSE) {
@@ -341,9 +503,29 @@ int main() {
 			else if (event.key.code == SCANCODE_F5) {
 				sys_shutdown(SHUTDOWN_TYPE_REBOOT);
 			}
-			continue;
+			else {
+				desktop.handle_keyboard({
+					.code = event.key.code,
+					.pressed = event.key.pressed
+				});
+			}
 		}
 
+		memcpy(back_mapping, front_mapping, info.height * info.pitch);
+
+		//memset(back_mapping, 0xCF, info.height * info.pitch);
 		desktop.draw();
+
+		fb_link.op = FbLinkOp::Flip;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to flip fb");
+			return 1;
+		}
+
+		auto tmp = back_mapping;
+		back_mapping = front_mapping;
+		front_mapping = tmp;
+		ctx.fb = static_cast<uint32_t*>(back_mapping);
 	}
 }

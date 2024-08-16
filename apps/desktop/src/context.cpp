@@ -1,36 +1,35 @@
 #include "context.hpp"
 #include <algorithm>
-
-void Context::set_clip_rect(const Rect& rect) {
-	Rect ctx_rect {
-		.x = 0,
-		.y = 0,
-		.width = width,
-		.height = height
-	};
-	if (!rect.intersects(ctx_rect)) {
-		clip_rect = {.x = 0, .y = 0, .width = 0, .height = 0};
-		return;
-	}
-	clip_rect = rect.intersect(ctx_rect);
-}
+#include <cassert>
 
 void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 	auto rect_x = rect.x + x_off;
 	auto rect_y = rect.y + y_off;
 
-	if (rect_x + rect.width <= clip_rect.x || rect_y >= clip_rect.y + clip_rect.height) {
-		return;
+	for (auto& clip_rect : clip_rects) {
+		for (auto& other : clip_rects) {
+			if (&clip_rect == &other) {
+				continue;
+			}
+			assert(!clip_rect.intersects(other));
+		}
 	}
 
-	auto start_x = std::max(rect_x, clip_rect.x);
-	auto res_width = std::min(rect_x + rect.width, clip_rect.x + clip_rect.width) - start_x;
-	auto start_y = std::max(rect_y, clip_rect.y);
-	auto res_height = std::min(rect_y + rect.height, clip_rect.y + clip_rect.height) - start_y;
+	for (auto& clip_rect : clip_rects) {
+		if (rect_x + rect.width <= clip_rect.x || rect_y >= clip_rect.y + clip_rect.height) {
+			continue;
+		}
 
-	for (uint32_t y = start_y; y < start_y + res_height; ++y) {
-		for (uint32_t x = start_x; x < start_x + res_width; ++x) {
-			fb[y * pitch_32 + x] = color;
+		auto start_x = std::max(rect_x, clip_rect.x);
+		auto res_width = std::min(rect_x + rect.width, clip_rect.x + clip_rect.width) - start_x;
+		auto start_y = std::max(rect_y, clip_rect.y);
+		auto res_height = std::min(rect_y + rect.height, clip_rect.y + clip_rect.height) - start_y;
+
+		for (uint32_t y = start_y; y < start_y + res_height; ++y) {
+			for (uint32_t x = start_x; x < start_x + res_width; ++x) {
+				//assert(fb[y * pitch_32 + x] == 0xCFCFCFCF);
+				fb[y * pitch_32 + x] = color;
+			}
 		}
 	}
 }
@@ -41,7 +40,7 @@ void Context::draw_rect_outline(const Rect& rect, uint32_t color, uint32_t thick
 		.y = rect.y,
 		.width = rect.width,
 		.height = thickness
-	}, color);
+	 }, color);
 	draw_filled_rect({
 		.x = rect.x,
 		.y = rect.y + rect.height - thickness,
@@ -60,4 +59,34 @@ void Context::draw_rect_outline(const Rect& rect, uint32_t color, uint32_t thick
 		.width = thickness,
 		.height = rect.height
 	}, color);
+}
+
+void Context::add_clip_rect(const Rect& rect) {
+	std::vector<Rect> res;
+	res.push_back(rect);
+
+	for (auto& subtract : subtract_rects) {
+		for (size_t i = 0; i < res.size();) {
+			if (res[i].intersects(subtract)) {
+				auto [splits, count] = res[i].subtract(subtract);
+				res.erase(
+					res.begin() +
+					static_cast<ptrdiff_t>(i));
+				for (int j = 0; j < count; ++j) {
+					res.push_back(splits[j]);
+				}
+				continue;
+			}
+
+			++i;
+		}
+	}
+
+	for (auto& res_rect : res) {
+		clip_rects.push_back(res_rect);
+	}
+}
+
+void Context::clear_clip_rects() {
+	clip_rects.clear();
 }
