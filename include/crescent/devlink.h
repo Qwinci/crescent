@@ -6,6 +6,7 @@
 
 enum class CrescentDeviceType {
 	Fb,
+	Gpu,
 	Max
 };
 
@@ -63,7 +64,8 @@ struct DevLink {
 
 enum class FbLinkOp {
 	GetInfo,
-	Map
+	Map,
+	Flip
 };
 
 struct FbLink {

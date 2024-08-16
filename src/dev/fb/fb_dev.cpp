@@ -2,11 +2,18 @@
 #include "fb.hpp"
 #include "sched/sched.hpp"
 #include "sched/process.hpp"
+#include "dev/gpu/gpu_dev.hpp"
 
-struct FbDev : public Device {
-	explicit FbDev(Framebuffer* fb) : Device {}, fb {fb} {
+struct GpuFbDev : public Device {
+	explicit GpuFbDev(Framebuffer* fb, Gpu* gpu) : Device {}, fb {fb}, gpu {gpu} {
 		name = "";
-		name += "a";
+		front_surface = gpu->create_surface();
+		back_surface = gpu->create_surface();
+	}
+
+	~GpuFbDev() override {
+		gpu->destroy_surface(front_surface);
+		gpu->destroy_surface(back_surface);
 	}
 
 	int handle_request(const kstd::vector<u8>& data, kstd::vector<u8>& res, usize max_size) override {
@@ -33,10 +40,12 @@ struct FbDev : public Device {
 					return ERR_NO_MEM;
 				}
 
+				auto phys = back_surface->get_phys();
+
 				for (usize i = 0; i < size; i += PAGE_SIZE) {
 					if (!process->page_map.map(
 							mem + i,
-							fb->phys + i,
+							phys + i,
 							PageFlags::Read | PageFlags::Write | PageFlags::User,
 							CacheMode::WriteCombine)) {
 						for (usize j = 0; j < i; j += PAGE_SIZE) {
@@ -49,10 +58,20 @@ struct FbDev : public Device {
 
 				resp->map.mapping = reinterpret_cast<void*>(mem);
 
-				IrqGuard irq_guard {};
-				LOG.lock()->unregister_sink(fb);
-				fb->clear();
+				if (fb_log_registered) {
+					IrqGuard irq_guard {};
+					LOG.lock()->unregister_sink(fb);
+					fb_log_registered = false;
+				}
 
+				break;
+			}
+			case FbLinkOp::Flip:
+			{
+				auto tmp = front_surface;
+				front_surface = back_surface;
+				back_surface = tmp;
+				gpu->flip(front_surface);
 				break;
 			}
 		}
@@ -62,11 +81,58 @@ struct FbDev : public Device {
 
 private:
 	Framebuffer* fb;
+	GpuSurface* front_surface;
+	GpuSurface* back_surface;
+	Gpu* gpu;
+	bool fb_log_registered {true};
 };
 
-ManuallyInit<kstd::shared_ptr<FbDev>> BOOT_FB_DEV;
+struct DummySurface : public GpuSurface {
+	explicit DummySurface(usize phys) : phys {phys} {}
+
+	usize get_phys() override {
+		return phys;
+	}
+
+	usize phys;
+};
+
+struct DummyGpu : public Gpu {
+	explicit DummyGpu(usize phys) : phys {phys} {}
+
+	GpuSurface* create_surface() override {
+		return new DummySurface {phys};
+	}
+
+	void destroy_surface(GpuSurface* surface) override {
+		delete surface;
+	}
+
+	void flip(GpuSurface*) override {}
+
+	usize phys;
+};
+
+ManuallyInit<kstd::shared_ptr<GpuFbDev>> BOOT_FB_DEV;
+static ManuallyInit<DummyGpu> DUMMY_GPU;
 
 void fb_dev_register_boot_fb() {
-	BOOT_FB_DEV.initialize(kstd::make_shared<FbDev>(&*BOOT_FB));
+	Gpu* gpu = nullptr;
+	IrqGuard irq_guard {};
+	auto guard = DEVICES[static_cast<int>(CrescentDeviceType::Gpu)]->lock();
+	for (auto& device : *guard) {
+		if (static_cast<GpuDevice*>(device.data())->gpu->owns_boot_fb) {
+			gpu = static_cast<GpuDevice*>(device.data())->gpu;
+			break;
+		}
+	}
+
+	if (!gpu) {
+		println("[kernel][fb]: using dummy gpu with no page flip support");
+		DUMMY_GPU.initialize(BOOT_FB->phys);
+		gpu = &*DUMMY_GPU;
+	}
+
+	BOOT_FB_DEV.initialize(kstd::make_shared<GpuFbDev>(&*BOOT_FB, gpu));
 	dev_add(*BOOT_FB_DEV, CrescentDeviceType::Fb);
 }
