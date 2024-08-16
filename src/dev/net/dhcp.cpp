@@ -73,6 +73,7 @@ void dhcp_process_packet(Nic& nic, ReceivedPacket& packet) {
 		u32 ip = dhcp_hdr->yiaddr;
 		u32 lease_seconds = 0;
 		u32 dns_server = 0;
+		u32 subnet_mask = 0;
 		Op type;
 
 		for (int i = 0; i < options_len;) {
@@ -80,6 +81,9 @@ void dhcp_process_packet(Nic& nic, ReceivedPacket& packet) {
 			if (op == Option::Pad) {
 				++i;
 				continue;
+			}
+			else if (op == Option::SubnetMask) {
+				memcpy(&subnet_mask, options + i + 2, 4);
 			}
 			else if (op == Option::DnsServer) {
 				memcpy(&dns_server, options + i + 2, 4);
@@ -155,13 +159,18 @@ void dhcp_process_packet(Nic& nic, ReceivedPacket& packet) {
 			IrqGuard irq_guard {};
 			auto guard = nic.lock.lock();
 			nic.ip = ip;
+			nic.subnet_mask = subnet_mask;
+			nic.gateway_ip = dhcp_hdr->giaddr;
+			if (!nic.gateway_ip) {
+				nic.gateway_ip = dhcp_hdr->siaddr;
+			}
 			nic.ip_available_event.signal_count(256);
 		}
 	}
 }
 
 void dhcp_discover(Nic* nic) {
-	u16 options_len = 7;
+	u16 options_len = 9;
 	u16 discover_payload_size = sizeof(UdpHeader) + sizeof(DhcpHeader) + options_len;
 
 	Packet discover_packet {static_cast<u32>(sizeof(EthernetHeader) + sizeof(Ipv4Header) + discover_payload_size)};
@@ -193,9 +202,13 @@ void dhcp_discover(Nic* nic) {
 	options[4] = 1;
 	// domain name server
 	options[5] = 6;
+	// len
+	options[6] = 4;
+	// subnet mask
+	options[7] = 1;
 
 	// end
-	options[6] = static_cast<u8>(Option::End);
+	options[8] = static_cast<u8>(Option::End);
 
 	nic->send(discover_packet.data, discover_packet.size);
 }

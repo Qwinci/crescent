@@ -99,7 +99,7 @@ int sys_socket_create(CrescentHandle& handle, SocketType type, int flags) {
 	return static_cast<int>(syscall(SYS_SOCKET_CREATE, &handle, type, flags));
 }
 
-int sys_socket_connect(CrescentHandle handle, SocketAddress& address) {
+int sys_socket_connect(CrescentHandle handle, const SocketAddress& address) {
 	return static_cast<int>(syscall(SYS_SOCKET_CONNECT, handle, &address));
 }
 
@@ -115,8 +115,16 @@ int sys_socket_send(CrescentHandle handle, const void* data, size_t size) {
 	return static_cast<int>(syscall(SYS_SOCKET_SEND, handle, data, size));
 }
 
+int sys_socket_send_to(CrescentHandle handle, const void* data, size_t size, const SocketAddress& address) {
+	return static_cast<int>(syscall(SYS_SOCKET_SEND_TO, handle, data, size, &address));
+}
+
 int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& actual) {
 	return static_cast<int>(syscall(SYS_SOCKET_RECEIVE, handle, data, size, &actual));
+}
+
+int sys_socket_receive_from(CrescentHandle handle, void* data, size_t size, size_t& actual, SocketAddress& address) {
+	return static_cast<int>(syscall(SYS_SOCKET_RECEIVE_FROM, handle, data, size, &actual, &address));
 }
 
 int sys_socket_get_peer_name(CrescentHandle handle, SocketAddress& address) {

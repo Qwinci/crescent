@@ -31,11 +31,13 @@ int sys_service_create(const CrescentStringView* features, size_t feature_count)
 int sys_service_get(CrescentHandle& handle, const CrescentStringView* needed_features, size_t feature_count);
 
 int sys_socket_create(CrescentHandle& handle, SocketType type, int flags);
-int sys_socket_connect(CrescentHandle handle, SocketAddress& address);
+int sys_socket_connect(CrescentHandle handle, const SocketAddress& address);
 int sys_socket_listen(CrescentHandle handle, uint32_t port);
 int sys_socket_accept(CrescentHandle handle, CrescentHandle& connection_handle, int connection_flags);
 int sys_socket_send(CrescentHandle handle, const void* data, size_t size);
+int sys_socket_send_to(CrescentHandle handle, const void* data, size_t size, const SocketAddress& address);
 int sys_socket_receive(CrescentHandle handle, void* data, size_t size, size_t& actual);
+int sys_socket_receive_from(CrescentHandle handle, void* data, size_t size, size_t& actual, SocketAddress& address);
 int sys_socket_get_peer_name(CrescentHandle handle, SocketAddress& address);
 
 int sys_shared_mem_alloc(CrescentHandle& handle, size_t size);

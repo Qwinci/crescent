@@ -36,6 +36,25 @@ void arp_send_query(Nic& nic, u32 ip) {
 }
 
 kstd::optional<Mac> arp_get_mac(u32 ip) {
+	bool found = false;
+	{
+		IrqGuard irq_guard {};
+		auto guard = NICS->lock();
+		for (auto& nic : *guard) {
+			if (nic->ip && (nic->ip & nic->subnet_mask) == (ip & nic->subnet_mask)) {
+				found = true;
+				break;
+			}
+		}
+	}
+
+	if (!found) {
+		// todo choose nic
+		IrqGuard irq_guard {};
+		auto guard = NICS->lock();
+		ip = (*guard->front())->gateway_ip;
+	}
+
 	while (true) {
 		auto ptr = IP_TABLE->get(ip);
 		if (ptr) {

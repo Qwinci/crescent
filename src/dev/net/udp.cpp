@@ -20,7 +20,7 @@ struct Udp4Socket;
 static void remove_socket(Udp4Socket* socket);
 
 struct Udp4Socket : public Socket {
-	explicit Udp4Socket(int flags) : Socket {flags} {}
+	explicit Udp4Socket(int flags, u16 port) : Socket {flags}, own_port {port} {}
 
 	~Udp4Socket() override {
 		remove_socket(this);
@@ -35,8 +35,7 @@ struct Udp4Socket : public Socket {
 	}
 
 	int listen(uint32_t port) override {
-		own_port = port;
-		return 0;
+		return ERR_UNSUPPORTED;
 	}
 
 	int accept(kstd::shared_ptr<Socket>&, int) override {
@@ -69,7 +68,7 @@ struct Udp4Socket : public Socket {
 			nic = *NICS->lock()->front();
 		}
 
-		Packet packet {sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(UdpHeader)};
+		Packet packet {static_cast<u32>(sizeof(EthernetHeader) + sizeof(Ipv4Header) + sizeof(UdpHeader) + size)};
 
 		packet.add_ethernet(nic->mac, mac.value(), EtherType::Ipv4);
 		packet.add_ipv4(IpProtocol::Udp, sizeof(UdpHeader) + size, nic->ip, dest.ipv4.ipv4);
@@ -129,7 +128,7 @@ struct Udp4Socket : public Socket {
 		return ERR_UNSUPPORTED;
 	}
 
-	u32 own_port {};
+	u16 own_port {};
 	Spinlock<DoubleList<Udp4BufferPacket, &Udp4BufferPacket::hook>> packet_list;
 	Spinlock<usize> packet_count;
 	Event event {};
@@ -152,9 +151,30 @@ static void remove_socket(Udp4Socket* socket) {
 }
 
 kstd::shared_ptr<Socket> udp_socket_create(int flags) {
-	auto socket = kstd::make_shared<Udp4Socket>(flags);
 	IrqGuard irq_guard {};
 	auto guard = SOCKETS->lock();
+	u16 port = UINT16_MAX;
+	while (true) {
+		bool found = true;
+		for (auto sock : *guard) {
+			if (sock->own_port == port) {
+				found = false;
+				break;
+			}
+		}
+
+		if (found) {
+			break;
+		}
+
+		if (!port) {
+			return nullptr;
+		}
+		--port;
+	}
+
+	auto socket = kstd::make_shared<Udp4Socket>(flags, port);
+
 	guard->push(socket.data());
 	return std::move(socket);
 }
@@ -187,6 +207,7 @@ void udp_process_packet(Nic& nic, ReceivedPacket& packet) {
 				hdr.length - sizeof(UdpHeader));
 
 			packet_list_guard->push(udp_buffer_packet);
+			socket->event.signal_one();
 			break;
 		}
 	}

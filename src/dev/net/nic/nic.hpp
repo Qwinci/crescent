@@ -15,6 +15,8 @@ struct Nic {
 
 	Mac mac {};
 	u32 ip {};
+	u32 subnet_mask {};
+	u32 gateway_ip {};
 	Spinlock<void> lock {};
 	Event ip_available_event {};
 };

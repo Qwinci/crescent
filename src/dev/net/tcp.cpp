@@ -236,7 +236,7 @@ struct Tcp4Socket : public Socket {
 
 	int send(const void* data, usize size) override {
 		if (state != State::Connected) {
-			return ERR_UNSUPPORTED;
+			return ERR_CONNECTION_CLOSED;
 		}
 		send_buffer.write_block(data, size);
 		send_event.signal_one();
@@ -245,17 +245,16 @@ struct Tcp4Socket : public Socket {
 	}
 
 	int receive(void* data, usize& size) override {
-		if (state != State::Connected) {
-			return ERR_UNSUPPORTED;
-		}
-
 		size = receive_buffer.read(data, size);
+		if (!size && state != State::Connected) {
+			return ERR_CONNECTION_CLOSED;
+		}
 		return 0;
 	}
 
 	int get_peer_name(AnySocketAddress& address) override {
 		if (state != State::Connected) {
-			return ERR_UNSUPPORTED;
+			return ERR_CONNECTION_CLOSED;
 		}
 		address.ipv4 = target;
 		address.generic.type = SOCKET_ADDRESS_TYPE_IPV4;

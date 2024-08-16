@@ -937,6 +937,60 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
+		case SYS_SOCKET_SEND_TO:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto size = *frame->arg2();
+
+			kstd::vector<u8> data;
+			data.resize(size);
+			if (!UserAccessor(*frame->arg1()).load(data.data(), size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			SocketAddress generic_addr;
+			if (!UserAccessor(*frame->arg3()).load(generic_addr)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			AnySocketAddress addr {};
+			if (generic_addr.type == SOCKET_ADDRESS_TYPE_IPC) {
+				IpcSocketAddress ipc;
+				if (!UserAccessor(*frame->arg3()).load(ipc)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+
+				auto target = thread->process->handles.get(ipc.target);
+				kstd::shared_ptr<ProcessDescriptor>* target_desc;
+				if (!target || !(target_desc = target->get<kstd::shared_ptr<ProcessDescriptor>>())) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				}
+				addr.ipc.generic.type = SOCKET_ADDRESS_TYPE_IPC;
+				addr.ipc.descriptor = target_desc->data();
+			}
+			else {
+				if (!UserAccessor(*frame->arg3()).load(&addr, socket_address_type_to_size(generic_addr.type))) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+
+			auto socket = socket_ptr->data();
+			*frame->ret() = socket->send_to(data.data(), size, addr);
+
+			break;
+		}
 		case SYS_SOCKET_RECEIVE:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
@@ -963,6 +1017,61 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			if (!UserAccessor(*frame->arg3()).store(size)) {
 				*frame->ret() = ERR_FAULT;
 				break;
+			}
+
+			break;
+		}
+		case SYS_SOCKET_RECEIVE_FROM:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<Socket>* socket_ptr;
+			if (!handle || !(socket_ptr = handle->get<kstd::shared_ptr<Socket>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			usize size = *frame->arg2();
+
+			auto socket = socket_ptr->data();
+
+			AnySocketAddress addr {};
+
+			kstd::vector<u8> data;
+			data.resize(size);
+			auto ret = socket->receive_from(data.data(), size, addr);
+			*frame->ret() = ret;
+
+			if (ret == 0) {
+				if (!UserAccessor(*frame->arg1()).store(data.data(), size)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+
+				if (!UserAccessor(*frame->arg3()).store(size)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+
+				if (addr.generic.type == SOCKET_ADDRESS_TYPE_IPC) {
+					IpcSocketAddress ipc_addr {
+						.generic {
+							.type = SOCKET_ADDRESS_TYPE_IPC
+						},
+						.target = INVALID_CRESCENT_HANDLE
+					};
+
+					if (!UserAccessor(*frame->arg4()).store(ipc_addr)) {
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+				}
+				else {
+					if (!UserAccessor(*frame->arg4()).store(&addr, socket_address_type_to_size(addr.generic.type))) {
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+				}
 			}
 
 			break;
