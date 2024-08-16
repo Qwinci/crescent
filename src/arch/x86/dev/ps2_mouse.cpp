@@ -13,31 +13,35 @@ enum class PacketType {
 
 namespace {
 	PacketType PACKET_TYPE {};
+
+	enum class State {
+		Flags,
+		X,
+		Y,
+		Z
+	} STATE {};
+
+	u8 FLAGS = 0;
+	u8 X = 0;
+	u8 Y = 0;
+	u8 Z = 0;
 }
 
-static bool handle_irq(IrqFrame*) {
-	if (!ps2_has_data()) {
-		return true;
-	}
+static void add_event() {
+	bool left_pressed = FLAGS & 1;
+	bool right_pressed = FLAGS >> 1 & 1;
+	bool middle_pressed = FLAGS >> 2 & 1;
+	bool negative_x = FLAGS >> 4 & 1;
+	bool negative_y = FLAGS >> 5 & 1;
 
-	u8 byte0 = ps2_receive_data();
-	u8 byte1 = ps2_receive_data();
-	u8 byte2 = ps2_receive_data();
-
-	bool left_pressed = byte0 & 1;
-	bool right_pressed = byte0 >> 1 & 1;
-	bool middle_pressed = byte0 >> 2 & 1;
-	bool negative_x = byte0 >> 4 & 1;
-	bool negative_y = byte0 >> 5 & 1;
-
-	i16 x_movement = static_cast<i16>(negative_x ? (byte1 - 0x100) : byte1);
-	i16 y_movement = static_cast<i16>(negative_y ? (byte2 - 0x100) : byte2);
+	i16 x_movement = static_cast<i16>(negative_x ? (X - 0x100) : X);
+	i16 y_movement = static_cast<i16>(negative_y ? (Y - 0x100) : Y);
 	i8 z_movement = 0;
 	switch (PACKET_TYPE) {
 		case PacketType::Generic:
 			break;
 		case PacketType::ZAxis:
-			z_movement = static_cast<i8>(ps2_receive_data());
+			z_movement = static_cast<i8>(Z);
 			break;
 	}
 
@@ -52,6 +56,39 @@ static bool handle_irq(IrqFrame*) {
 			.middle_pressed = middle_pressed
 		}
 	});
+}
+
+static bool handle_irq(IrqFrame*) {
+	if (!ps2_has_data()) {
+		return false;
+	}
+
+	u8 byte = ps2_receive_data();
+	switch (STATE) {
+		case State::Flags:
+			FLAGS = byte;
+			STATE = State::X;
+			break;
+		case State::X:
+			X = byte;
+			STATE = State::Y;
+			break;
+		case State::Y:
+			Y = byte;
+			if (PACKET_TYPE == PacketType::Generic) {
+				STATE = State::Flags;
+				add_event();
+			}
+			else {
+				STATE = State::Z;
+			}
+			break;
+		case State::Z:
+			Z = byte;
+			STATE = State::Flags;
+			add_event();
+			break;
+	}
 
 	return true;
 }

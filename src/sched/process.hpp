@@ -104,6 +104,7 @@ struct Process {
 	Spinlock<kstd::shared_ptr<IpcSocket>> ipc_socket {nullptr};
 	bool user;
 	bool killed {};
+	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
 private:
 	struct Mapping {
 		RbTreeHook hook {};
@@ -118,7 +119,6 @@ private:
 
 	VMem vmem {};
 	Spinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
-	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
 	Spinlock<DoubleList<ProcessDescriptor, &ProcessDescriptor::hook>> descriptors {};
 };
 

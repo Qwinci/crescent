@@ -277,7 +277,7 @@ namespace {
 
 static bool handle_irq(IrqFrame*) {
 	if (!ps2_has_data()) {
-		return true;
+		return false;
 	}
 
 	u8 byte = ps2_receive_data();

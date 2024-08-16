@@ -52,6 +52,9 @@ kstd::optional<Mac> arp_get_mac(u32 ip) {
 		// todo choose nic
 		IrqGuard irq_guard {};
 		auto guard = NICS->lock();
+		if (guard->is_empty()) {
+			return {};
+		}
 		ip = (*guard->front())->gateway_ip;
 	}
 

@@ -11,7 +11,6 @@ include(qacpi/lib.cmake)
 
 add_executable(crescent
 	src/main.cpp
-	src/sched/thread.hpp
 )
 target_include_directories(crescent PRIVATE
 	src

@@ -45,6 +45,9 @@ Log& Log::operator<<(isize value) {
 
 Log& Log::operator<<(kstd::string_view str) {
 	if (str.size() + 1 > LOG_SIZE) {
+		for (auto& sink : sinks) {
+			sink.write(str);
+		}
 		return *this;
 	}
 

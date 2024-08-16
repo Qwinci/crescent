@@ -18,7 +18,7 @@ struct [[gnu::packed]] HpetTable {
 namespace regs {
 	constexpr BitRegister<u64> GCIDR {0};
 	constexpr BitRegister<u64> GCR {0x10};
-	constexpr BasicRegister<u32> MCVR {0xF0};
+	constexpr BasicRegister<u64> MCVR {0xF0};
 }
 
 namespace gcidr {

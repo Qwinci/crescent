@@ -226,11 +226,11 @@ void x86_ps2_init() {
 	if (port2_good) {
 		send_cmd(controller_cmd::ENABLE_PORT2);
 
-		ps2_send_data(true, 0xFF);
-		port2_good = ps2_receive_data() == 0xAA;
-		while (ps2_has_data()) {
-			ps2_receive_data();
-		}
+		//ps2_send_data(true, 0xFF);
+		//port2_good = ps2_receive_data() == 0xAA;
+		//while (ps2_has_data()) {
+		//	ps2_receive_data();
+		//}
 	}
 
 	if (port1_good) {

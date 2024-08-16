@@ -154,43 +154,47 @@ int IpcSocket::send(const void* data, usize size) {
 }
 
 int IpcSocket::receive(void* data, usize& size) {
-	bool wait;
-	{
+	size_t received = 0;
+	size_t total = size;
+	while (received < total) {
+		bool wait;
+		{
+			IrqGuard irq_guard {};
+			auto guard = lock.lock();
+			if (!target && !buf_size) {
+				return ERR_INVALID_ARGUMENT;
+			}
+			wait = !buf_size;
+		}
+
+		if (wait && (flags & SOCK_NONBLOCK)) {
+			if (received) {
+				size = received;
+				return 0;
+			}
+			else {
+				return ERR_TRY_AGAIN;
+			}
+		}
+
+		if (wait) {
+			buf_event.wait();
+			continue;
+		}
+
 		IrqGuard irq_guard {};
 		auto guard = lock.lock();
-		if (!target && !buf_size) {
-			return ERR_INVALID_ARGUMENT;
+
+		auto remaining_at_end = IPC_BUFFER_SIZE - buf_read_ptr;
+		auto copy = kstd::min(kstd::min(total - received, buf_size), remaining_at_end);
+		memcpy(offset(data, void*, received), buf + buf_read_ptr, copy);
+		buf_read_ptr += copy;
+		buf_size -= copy;
+		received += copy;
+		if (buf_read_ptr == IPC_BUFFER_SIZE) {
+			buf_read_ptr = 0;
 		}
-		wait = !buf_size;
 	}
-
-	if (wait && (flags & SOCK_NONBLOCK)) {
-		return ERR_TRY_AGAIN;
-	}
-
-	if (wait) {
-		buf_event.wait();
-	}
-
-	IrqGuard irq_guard {};
-	auto guard = lock.lock();
-
-	auto orig_buf_size = buf_size;
-
-	auto remaining_at_end = IPC_BUFFER_SIZE - buf_read_ptr;
-	auto copy = kstd::min(kstd::min(size, buf_size), remaining_at_end);
-	memcpy(data, buf + buf_read_ptr, copy);
-	buf_read_ptr += copy;
-	buf_size -= copy;
-	if (buf_read_ptr == IPC_BUFFER_SIZE) {
-		buf_read_ptr = 0;
-		auto to_read = kstd::min(size - copy, buf_size);
-		memcpy(offset(data, void*, copy), buf, to_read);
-		buf_read_ptr += to_read;
-		buf_size -= to_read;
-	}
-
-	size = kstd::min(size, orig_buf_size);
 
 	return 0;
 }

@@ -3,6 +3,7 @@
 #include "arch/cpu.hpp"
 #include "dev/fb/fb_dev.hpp"
 #include "dev/net/nic/nic.hpp"
+#include "dev/net/tcp.hpp"
 #include "dev/pci.hpp"
 #include "exe/elf_loader.hpp"
 #include "fs/tar.hpp"
@@ -28,10 +29,37 @@ struct KernelStdoutVNode : public VNode {
 	}
 };
 
+struct NetworkLogSink : LogSink {
+	explicit NetworkLogSink(u32 ip) {
+		sock = tcp_socket_create(0);
+		AnySocketAddress server_addr {
+			.ipv4 {
+				.generic {
+					.type = SOCKET_ADDRESS_TYPE_IPV4
+				},
+				.ipv4 = ip,
+				.port = 8989
+			}
+		};
+		if (sock->connect(server_addr) != 0) {
+			sock = nullptr;
+			return;
+		}
+		assert(sock->send("network logging connected\n", sizeof("network logging connected\n") - 1) == 0);
+
+		IrqGuard guard {};
+		LOG.lock()->register_sink(this);
+	}
+
+	void write(kstd::string_view str) override {
+		sock->send(str.data(), str.size());
+	}
+
+	kstd::shared_ptr<Socket> sock;
+};
+
 [[noreturn, gnu::used]] void kmain(const void* initrd, usize initrd_size) {
     println("[kernel]: entered kmain");
-
-	fb_dev_register_boot_fb();
 
 #if ARCH_X86_64
 	println("[kernel]: acpi init...");
@@ -86,8 +114,19 @@ struct KernelStdoutVNode : public VNode {
 	//println("[kernel]: done");
 #endif
 
+	fb_dev_register_boot_fb();
+
 	println("[kernel]: waiting for network");
 	nics_wait_ready();
+
+	// 192.168.1.102
+	//u32 log_ip = 192 | 168 << 8 | 1 << 16 | 102 << 24;
+	// 10.0.2.2
+	u32 log_ip = 10 | 0 << 8 | 2 << 16 | 2 << 24;
+	auto netlog = new NetworkLogSink {log_ip};
+	if (!netlog->sock) {
+		delete netlog;
+	}
 
 	tar_initramfs_init(initrd, initrd_size);
 
