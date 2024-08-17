@@ -8,35 +8,23 @@ struct TitlebarWindow : public Window {
 	explicit TitlebarWindow(Window* parent) : Window {true} {
 		this->parent = parent;
 		is_titlebar = true;
-		close_button.parent = this;
-		close_button.set_size(TITLEBAR_HEIGHT - BORDER_WIDTH / 2, TITLEBAR_HEIGHT - BORDER_WIDTH / 2);
 		rect.height = TITLEBAR_HEIGHT;
+		bg_color = TITLEBAR_ACTIVE_COLOR;
+
+		auto close_button_unique = std::make_unique<ButtonWindow>();
+		close_button_unique->set_size(TITLEBAR_HEIGHT - BORDER_WIDTH / 2, TITLEBAR_HEIGHT - BORDER_WIDTH / 2);
+
+		close_button = close_button_unique.get();
+		add_child(std::move(close_button_unique));
 	}
 
 	void update_titlebar(uint32_t width) override {
 		rect.width = width + BORDER_WIDTH * 2;
-		close_button.set_pos(rect.width - TITLEBAR_HEIGHT - BORDER_WIDTH, BORDER_WIDTH / 4);
+		close_button->set_pos(rect.width - TITLEBAR_HEIGHT - BORDER_WIDTH, BORDER_WIDTH / 4);
 	}
 
 	bool handle_mouse(Context& ctx, const MouseState& old_state, const MouseState& new_state) override {
-		auto abs_offset = get_abs_pos_offset();
-		abs_offset.x -= BORDER_WIDTH;
-		abs_offset.y -= TITLEBAR_HEIGHT;
-
-		Rect button_rect {
-			.x = abs_offset.x + close_button.rect.x,
-			.y = abs_offset.y + close_button.rect.y,
-			.width = close_button.rect.width,
-			.height = close_button.rect.height
-		};
-		if (!button_rect.contains(new_state.pos)) {
-			if (button_rect.contains(old_state.pos)) {
-				close_button.on_mouse_leave(ctx, new_state);
-			}
-			return false;
-		}
-
-		return close_button.handle_mouse(ctx, old_state, new_state);
+		return false;
 	}
 
 	void on_mouse_leave(Context&, const MouseState&) override {}
@@ -47,25 +35,14 @@ struct TitlebarWindow : public Window {
 		return false;
 	}
 
-	void draw(Context& ctx) override {
-		assert(rect.intersects(close_button.rect));
-		auto [bg_rects, count] = rect.subtract(close_button.rect);
-
-		for (int i = 0; i < count; ++i) {
-			ctx.draw_filled_rect(bg_rects[i], TITLEBAR_ACTIVE_COLOR);
-		}
-
-		close_button.draw(ctx);
-	}
-
-	ButtonWindow close_button {};
+	ButtonWindow* close_button;
 };
 
 Window::Window(bool no_decorations) : no_decorations {no_decorations} {
 	if (!no_decorations) {
 		titlebar = std::make_unique<TitlebarWindow>(this);
-		auto& close_button = static_cast<TitlebarWindow*>(titlebar.get())->close_button;
-		close_button.callback = [](void* arg) {
+		auto close_button = static_cast<TitlebarWindow*>(titlebar.get())->close_button;
+		close_button->callback = [](void* arg) {
 			auto* window = static_cast<Window*>(arg);
 
 			protocol::WindowEvent event {
@@ -75,12 +52,20 @@ Window::Window(bool no_decorations) : no_decorations {no_decorations} {
 			};
 			send_event_to_window(window, event);
 		};
-		close_button.arg = this;
+		close_button->arg = this;
 	}
 }
 
 void Window::draw(Context& ctx) {
 	ctx.draw_filled_rect(rect, bg_color);
+}
+
+static void draw_decorations_generic(Context& ctx, Window* window) {
+	window->draw(ctx);
+
+	for (auto& child : window->children) {
+		draw_decorations_generic(ctx, child.get());
+	}
 }
 
 void Window::draw_decorations(Context& ctx) {
@@ -103,7 +88,7 @@ void Window::draw_decorations(Context& ctx) {
 		.height = BORDER_WIDTH
 	};
 
-	titlebar->draw(ctx);
+	draw_decorations_generic(ctx, titlebar.get());
 
 	ctx.draw_filled_rect(left_border_rect, BORDER_COLOR);
 	ctx.draw_filled_rect(bottom_border_rect, BORDER_COLOR);

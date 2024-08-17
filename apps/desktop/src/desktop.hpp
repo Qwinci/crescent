@@ -18,5 +18,6 @@ struct Desktop {
 	uint32_t drag_x_off {};
 	uint32_t drag_y_off {};
 	Window* dragging {};
+	Window* last_mouse_over {};
 	bool key_states[SCANCODE_MAX] {};
 };

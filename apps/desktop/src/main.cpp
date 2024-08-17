@@ -417,6 +417,36 @@ int main() {
 				{
 					auto* window = static_cast<Window*>(req.close_window.window_handle);
 
+					if (window->parent->active_child == window) {
+						window->parent->active_child = nullptr;
+					}
+
+					desktop.dragging = nullptr;
+
+					if (desktop.last_mouse_over == window ||
+						desktop.last_mouse_over == window->titlebar.get()) {
+						desktop.last_mouse_over = nullptr;
+					}
+					else {
+						std::vector<Window*> stack;
+						stack.push_back(window);
+						if (!window->no_decorations) {
+							stack.push_back(window->titlebar.get());
+						}
+
+						while (!stack.empty()) {
+							auto entry = stack.back();
+							stack.pop_back();
+							if (desktop.last_mouse_over == entry) {
+								desktop.last_mouse_over = nullptr;
+							}
+
+							for (auto& child : entry->children) {
+								stack.push_back(child.get());
+							}
+						}
+					}
+
 					for (size_t i = 0; i < window->parent->children.size(); ++i) {
 						if (window->parent->children[i].get() == window) {
 							auto dirty_rect = window->get_abs_rect();

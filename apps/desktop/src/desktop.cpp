@@ -65,7 +65,8 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 			};
 
 			if (bar_rect.contains(new_state.pos)) {
-				if (window->titlebar->handle_mouse(desktop->ctx, desktop->mouse_state, new_state)) {
+				desktop->last_mouse_over = window->titlebar.get();
+				if (handle_mouse_recursive(desktop, window->titlebar, new_state)) {
 					desktop->dragging = nullptr;
 					return true;
 				}
@@ -113,10 +114,6 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 		.height = window->rect.height
 	};
 	if (!content_rect.contains(new_state.pos)) {
-		if (content_rect.contains(desktop->mouse_state.pos)) {
-			window->on_mouse_leave(desktop->ctx, new_state);
-		}
-
 		if (!window->no_decorations) {
 			Rect titlebar_rect {
 				.x = window->rect.x + abs_offset.x,
@@ -124,19 +121,18 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 				.width = window->rect.width + BORDER_WIDTH * 2,
 				.height = window->rect.height + TITLEBAR_HEIGHT + BORDER_WIDTH
 			};
-			if (!titlebar_rect.contains(new_state.pos)) {
-				if (titlebar_rect.contains(desktop->mouse_state.pos)) {
-					window->titlebar->on_mouse_leave(desktop->ctx, new_state);
+			if (titlebar_rect.contains(new_state.pos)) {
+				desktop->last_mouse_over = window->titlebar.get();
+				if (handle_mouse_recursive(desktop, window->titlebar, new_state)) {
+					return true;
 				}
-			}
-			else {
-				return window->titlebar->handle_mouse(desktop->ctx, desktop->mouse_state, new_state);
 			}
 		}
 
 		return false;
 	}
 
+	desktop->last_mouse_over = window.get();
 	return window->handle_mouse(desktop->ctx, desktop->mouse_state, new_state);
 }
 
@@ -156,6 +152,25 @@ static bool handle_keyboard_recursive(
 }
 
 void Desktop::handle_mouse(MouseState new_state) {
+	if (last_mouse_over) {
+		auto window = last_mouse_over;
+		auto abs_offset = window->get_abs_pos_offset();
+
+		Rect content_rect {
+			.x = window->rect.x + abs_offset.x + (!window->no_decorations ? BORDER_WIDTH : 0),
+			.y = window->rect.y + abs_offset.y + (!window->no_decorations ? TITLEBAR_HEIGHT : 0),
+			.width = window->rect.width,
+			.height = window->rect.height
+		};
+
+		if (!content_rect.contains(new_state.pos)) {
+			if (content_rect.contains(mouse_state.pos)) {
+				window->on_mouse_leave(ctx, new_state);
+			}
+		}
+		last_mouse_over = nullptr;
+	}
+
 	if (!handle_mouse_recursive(this, taskbar_unique, new_state)) {
 		handle_mouse_recursive(this, root_window, new_state);
 	}
