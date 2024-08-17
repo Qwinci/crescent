@@ -17,7 +17,8 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 	}
 
 	Elf64_Ehdr ehdr {};
-	if (auto status = file->read(&ehdr, sizeof(Elf64_Ehdr), 0); status != FsStatus::Success) {
+	usize to_read = sizeof(Elf64_Ehdr);
+	if (auto status = file->read(&ehdr, to_read, 0); status != FsStatus::Success) {
 		return ElfLoadError::Invalid;
 	}
 	if (ehdr.e_ident[EI_MAG0] != ELFMAG0 ||
@@ -37,8 +38,9 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 
 	kstd::vector<Elf64_Phdr> phdrs;
 	phdrs.resize(ehdr.e_phnum);
+	to_read = sizeof(Elf64_Phdr);
 	for (usize i = 0; i < ehdr.e_phnum; ++i) {
-		if (file->read(&phdrs[i], sizeof(Elf64_Phdr), ehdr.e_phoff + i * ehdr.e_phentsize) != FsStatus::Success) {
+		if (file->read(&phdrs[i], to_read, ehdr.e_phoff + i * ehdr.e_phentsize) != FsStatus::Success) {
 			return ElfLoadError::Invalid;
 		}
 	}
@@ -79,7 +81,8 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 		}
 		void* ptr = offset(mapping.data(), void*, phdr.p_vaddr - base);
 
-		if (file->read(ptr, phdr.p_filesz, phdr.p_offset) != FsStatus::Success) {
+		to_read = phdr.p_filesz;
+		if (file->read(ptr, to_read, phdr.p_offset) != FsStatus::Success) {
 			process->free(user_mem, map_size);
 			return ElfLoadError::Invalid;
 		}

@@ -55,6 +55,10 @@ int sys_close_handle(CrescentHandle handle) {
 	return static_cast<int>(syscall(SYS_CLOSE_HANDLE, handle));
 }
 
+int sys_move_handle(CrescentHandle& handle, CrescentHandle process_handle) {
+	return static_cast<int>(syscall(SYS_MOVE_HANDLE, &handle, process_handle));
+}
+
 int sys_poll_event(InputEvent& event, size_t timeout_us) {
 	return static_cast<int>(syscall(SYS_POLL_EVENT, &event, timeout_us));
 }
@@ -79,8 +83,13 @@ int sys_stat(CrescentHandle handle, CrescentStat& stat) {
 	return static_cast<int>(syscall(SYS_STAT, handle, &stat));
 }
 
-int sys_pipe_create(CrescentHandle& handle1, CrescentHandle& handle2, size_t max_size) {
-	return static_cast<int>(syscall(SYS_PIPE_CREATE, &handle1, &handle2, max_size));
+int sys_pipe_create(
+	CrescentHandle& read_handle,
+	CrescentHandle& write_handle,
+	size_t max_size,
+	int read_flags,
+	int write_flags) {
+	return static_cast<int>(syscall(SYS_PIPE_CREATE, &read_handle, &write_handle, max_size, read_flags, write_flags));
 }
 
 int sys_replace_std_handle(CrescentHandle std_handle, CrescentHandle new_handle) {

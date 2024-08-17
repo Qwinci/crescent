@@ -598,6 +598,56 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 			break;
 		}
+		case SYS_MOVE_HANDLE:
+		{
+			CrescentHandle user_handle;
+			if (!UserAccessor(*frame->arg0()).load(user_handle)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			auto handle = thread->process->handles.get(user_handle);
+			if (!handle) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			CrescentHandle user_proc_handle = *frame->arg1();
+			auto proc_handle = thread->process->handles.get(user_proc_handle);
+			if (!proc_handle) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			Spinlock<Process*>* process_lock;
+			if (auto proc_desc_ptr = proc_handle->get<kstd::shared_ptr<ProcessDescriptor>>()) {
+				process_lock = &proc_desc_ptr->data()->process;
+			}
+			else {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto copy = std::move(handle.value());
+			thread->process->handles.remove(user_handle);
+
+			auto guard = process_lock->lock();
+			if (!*guard) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+			auto res_handle = (*guard)->handles.insert(std::move(copy));
+
+			if (!UserAccessor(*frame->arg0()).store(res_handle)) {
+				(*guard)->handles.remove(res_handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+
+			break;
+		}
 		case SYS_POLL_EVENT:
 		{
 			InputEvent event {};
@@ -1325,6 +1375,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				case FsStatus::OutOfBounds:
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
+				case FsStatus::TryAgain:
+					*frame->ret() = ERR_TRY_AGAIN;
+					break;
 			}
 
 			break;
@@ -1359,6 +1412,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					break;
 				case FsStatus::OutOfBounds:
 					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				case FsStatus::TryAgain:
+					*frame->ret() = ERR_TRY_AGAIN;
 					break;
 			}
 
@@ -1399,6 +1455,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				case FsStatus::OutOfBounds:
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
+				case FsStatus::TryAgain:
+					*frame->ret() = ERR_TRY_AGAIN;
+					break;
 			}
 
 			break;
@@ -1406,8 +1465,10 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_PIPE_CREATE:
 		{
 			auto max_size = static_cast<size_t>(*frame->arg2());
+			int read_flags = static_cast<int>(*frame->arg3());
+			int write_flags = static_cast<int>(*frame->arg4());
 
-			auto opt = PipeVNode::create(max_size);
+			auto opt = PipeVNode::create(max_size, static_cast<FileFlags>(read_flags), static_cast<FileFlags>(write_flags));
 			if (!opt) {
 				*frame->ret() = ERR_NO_MEM;
 				break;

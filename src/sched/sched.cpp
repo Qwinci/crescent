@@ -192,13 +192,23 @@ void Scheduler::update_schedule() {
 		}
 
 		while (true) {
-			if (next->status == Thread::Status::Waiting) {
+			if (next->process->killed) {
+				next->cpu->thread_count.fetch_sub(1, kstd::memory_order::seq_cst);
+				next->cpu->sched_destroy_list.lock()->push(next);
+				next->cpu->sched_destroy_event.signal_one();
+				next = guard->pop_front();
+				if (!next) {
+					break;
+				}
+				continue;
+			}
+			else if (next->status == Thread::Status::Waiting) {
 				goto found;
 			}
 			guard->push(next);
 			next = guard->pop_front();
 			if (next == start) {
-				assert(false);
+				break;
 			}
 		}
 	}

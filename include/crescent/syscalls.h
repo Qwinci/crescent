@@ -26,7 +26,9 @@ typedef enum {
 
 	SYS_SYSLOG,
 	SYS_DEVLINK,
+
 	SYS_CLOSE_HANDLE,
+	SYS_MOVE_HANDLE,
 
 	SYS_MAP,
 	SYS_UNMAP,
@@ -101,5 +103,8 @@ typedef struct {
 typedef struct {
 	size_t size;
 } CrescentStat;
+
+#define OPEN_NONE 0
+#define OPEN_NONBLOCK (1 << 0)
 
 #endif

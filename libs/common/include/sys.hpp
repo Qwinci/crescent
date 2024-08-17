@@ -15,7 +15,10 @@ int sys_syslog(const char* str, size_t size);
 int sys_map(void** addr, size_t size, int protection);
 int sys_unmap(void* ptr, size_t size);
 int sys_devlink(const DevLink& dev_link);
+
 int sys_close_handle(CrescentHandle handle);
+int sys_move_handle(CrescentHandle& handle, CrescentHandle process_handle);
+
 int sys_poll_event(InputEvent& event, size_t timeout_us);
 int sys_shutdown(ShutdownType type);
 
@@ -24,7 +27,12 @@ int sys_read(CrescentHandle handle, void* data, size_t offset, size_t size);
 int sys_write(CrescentHandle handle, const void* data, size_t offset, size_t size);
 int sys_stat(CrescentHandle handle, CrescentStat& stat);
 
-int sys_pipe_create(CrescentHandle& handle1, CrescentHandle& handle2, size_t max_size);
+int sys_pipe_create(
+	CrescentHandle& read_handle,
+	CrescentHandle& write_handle,
+	size_t max_size,
+	int read_flags,
+	int write_flags);
 int sys_replace_std_handle(CrescentHandle std_handle, CrescentHandle new_handle);
 
 int sys_service_create(const CrescentStringView* features, size_t feature_count);

@@ -18,7 +18,9 @@
 // a0c8 == audio
 
 struct KernelStdoutVNode : public VNode {
-	FsStatus write(const void* data, usize size, usize offset) override {
+	KernelStdoutVNode() : VNode {FileFlags::None} {}
+
+	FsStatus write(const void* data, usize& size, usize offset) override {
 		if (offset) {
 			return FsStatus::Unsupported;
 		}

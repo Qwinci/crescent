@@ -1,18 +1,29 @@
 #pragma once
 #include "string_view.hpp"
 #include "shared_ptr.hpp"
+#include "utils/flags_enum.hpp"
 
 enum class FsStatus {
 	Success,
 	Unsupported,
-	OutOfBounds
+	OutOfBounds,
+	TryAgain
 };
+
+enum class FileFlags {
+	None = 0,
+	NonBlock = 1 << 0
+};
+
+FLAGS_ENUM(FileFlags);
 
 struct FsStat {
 	usize size;
 };
 
 struct VNode {
+	constexpr explicit VNode(FileFlags flags) : flags {flags} {}
+
 	virtual ~VNode() = default;
 
 	virtual kstd::shared_ptr<VNode> lookup(kstd::string_view) {
@@ -23,13 +34,16 @@ struct VNode {
 		return FsStatus::Unsupported;
 	}
 
-	virtual FsStatus read(void* data, usize size, usize offset) {
+	virtual FsStatus read(void* data, usize& size, usize offset) {
 		return FsStatus::Unsupported;
 	}
 
-	virtual FsStatus write(const void* data, usize size, usize offset) {
+	virtual FsStatus write(const void* data, usize& size, usize offset) {
 		return FsStatus::Unsupported;
 	}
+
+protected:
+	FileFlags flags;
 };
 
 struct Vfs {

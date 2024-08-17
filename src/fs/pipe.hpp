@@ -7,14 +7,14 @@
 
 class PipeVNode : public VNode {
 public:
-	static kstd::optional<kstd::pair<PipeVNode, PipeVNode>> create(usize max_size);
+	static kstd::optional<kstd::pair<PipeVNode, PipeVNode>> create(usize max_size, FileFlags read_flags, FileFlags write_flags);
 
-	FsStatus read(void* data, usize size, usize offset) override;
-	FsStatus write(const void* data, usize size, usize offset) override;
+	FsStatus read(void* data, usize& size, usize offset) override;
+	FsStatus write(const void* data, usize& size, usize offset) override;
 	FsStatus stat(FsStat& data) override;
 
 private:
-	PipeVNode(kstd::shared_ptr<RingBuffer<u8>> buffer, bool reading);
+	PipeVNode(kstd::shared_ptr<RingBuffer<u8>> buffer, FileFlags flags, bool reading);
 
 	kstd::shared_ptr<RingBuffer<u8>> buffer;
 	bool reading = false;

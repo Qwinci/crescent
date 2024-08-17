@@ -55,7 +55,6 @@ int IpcSocket::disconnect() {
 	auto target_lock = target->lock.lock();
 	assert(target->target == this);
 	target->target = nullptr;
-	assert(target->target_address.descriptor == owner_desc.data());
 	target->target_address.descriptor = nullptr;
 	target = nullptr;
 
