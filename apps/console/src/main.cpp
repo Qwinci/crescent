@@ -129,6 +129,8 @@ int main() {
 		}
 	}
 
+	window.redraw();
+
 	while (true) {
 		auto event = window.wait_for_event();
 		if (event.type == protocol::WindowEvent::CloseRequested) {

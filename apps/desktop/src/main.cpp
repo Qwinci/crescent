@@ -52,8 +52,16 @@ private:
 	alignas(alignof(T)) char data[sizeof(T)] {};
 };
 
-static NoDestroy<std::vector<std::pair<CrescentHandle, CrescentHandle>>> CONNECTIONS {};
-static NoDestroy<std::vector<std::pair<Window*, CrescentHandle>>> WINDOW_TO_CONNECTION {};
+struct Connection {
+	CrescentHandle process;
+	CrescentHandle control;
+	CrescentHandle event;
+};
+
+static NoDestroy<std::vector<Connection>> CONNECTIONS {};
+static NoDestroy<std::vector<std::pair<Window*, CrescentHandle>>> WINDOW_TO_EVENT_PIPE {};
+
+namespace protocol = windower::protocol;
 
 void listener_thread(void* arg) {
 	auto* desktop = static_cast<Desktop*>(arg);
@@ -111,30 +119,45 @@ void listener_thread(void* arg) {
 			sys_thread_exit(1);
 		}
 
-		CONNECTIONS->push_back({peer_addr.target, connection_socket});
+		CrescentHandle event_read_handle;
+		CrescentHandle event_write_handle;
+		auto status = sys_pipe_create(
+			event_read_handle,
+			event_write_handle,
+			64 * sizeof(protocol::WindowEvent),
+			0,
+			OPEN_NONBLOCK);
+		assert(status == 0);
+		status = sys_move_handle(event_read_handle, peer_addr.target);
+		assert(status == 0);
+
+		protocol::Response resp {};
+		resp.type = protocol::Response::Connected;
+		resp.connected.event_handle = event_read_handle;
+		// todo check status
+		while (sys_socket_send(connection_socket, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+
+		CONNECTIONS->push_back({
+			.process = peer_addr.target,
+			.control = connection_socket,
+			.event = event_write_handle});
 	}
 }
 
-namespace protocol = windower::protocol;
-
 void send_event_to_window(Window* window, protocol::WindowEvent event) {
-	protocol::Response resp {};
-	resp.type = protocol::Response::WindowEvent;
-	resp.window_event = event;
+	CrescentHandle event_pipe = INVALID_CRESCENT_HANDLE;
 
-	CrescentHandle connection = INVALID_CRESCENT_HANDLE;
-
-	for (auto& [iter_window, iter_connection] : *WINDOW_TO_CONNECTION) {
+	for (auto& [iter_window, iter_event_pipe] : *WINDOW_TO_EVENT_PIPE) {
 		if (iter_window == window) {
-			connection = iter_connection;
+			event_pipe = iter_event_pipe;
 			break;
 		}
 	}
 
-	assert(connection != INVALID_CRESCENT_HANDLE);
+	assert(event_pipe != INVALID_CRESCENT_HANDLE);
 
 	// todo check status
-	while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+	sys_write(event_pipe, &event, 0, sizeof(event));
 }
 
 int main() {
@@ -362,10 +385,10 @@ int main() {
 	auto mouse_y = static_cast<int32_t>(info.height / 2);
 
 	while (true) {
-		for (auto [proc_handle, connection] : *CONNECTIONS) {
+		for (auto& connection : *CONNECTIONS) {
 			protocol::Request req {};
 			size_t received;
-			auto req_status = sys_socket_receive(connection, &req, sizeof(req), received);
+			auto req_status = sys_socket_receive(connection.control, &req, sizeof(req), received);
 			if (req_status == ERR_TRY_AGAIN) {
 				continue;
 			}
@@ -385,7 +408,7 @@ int main() {
 					CrescentHandle fb_shared_mem_handle;
 					sys_shared_mem_alloc(fb_shared_mem_handle, window->rect.width * window->rect.height * 4);
 					CrescentHandle fb_shareable_handle;
-					sys_shared_mem_share(fb_shared_mem_handle, proc_handle, fb_shareable_handle);
+					sys_shared_mem_share(fb_shared_mem_handle, connection.process, fb_shareable_handle);
 					sys_shared_mem_map(fb_shared_mem_handle, reinterpret_cast<void**>(&window->fb));
 					memset(window->fb, 0, window->rect.width * window->rect.height * 4);
 					sys_close_handle(fb_shared_mem_handle);
@@ -406,10 +429,10 @@ int main() {
 					resp.window_created.window_handle = window_ptr;
 					resp.window_created.fb_handle = fb_shareable_handle;
 
-					WINDOW_TO_CONNECTION->push_back({window_ptr, connection});
+					WINDOW_TO_EVENT_PIPE->push_back({window_ptr, connection.event});
 
 					// todo check status
-					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
 					break;
 				}
@@ -463,18 +486,18 @@ int main() {
 						}
 					}
 
-					for (size_t i = 0; i < WINDOW_TO_CONNECTION->size(); ++i) {
-						auto& iter = (*WINDOW_TO_CONNECTION)[i];
+					for (size_t i = 0; i < WINDOW_TO_EVENT_PIPE->size(); ++i) {
+						auto& iter = (*WINDOW_TO_EVENT_PIPE)[i];
 						if (iter.first == window) {
-							WINDOW_TO_CONNECTION->erase(
-								WINDOW_TO_CONNECTION->begin() +
+							WINDOW_TO_EVENT_PIPE->erase(
+								WINDOW_TO_EVENT_PIPE->begin() +
 								static_cast<std::vector<std::pair<Window*, CrescentHandle>>::difference_type>(i));
 							break;
 						}
 					}
 
 					// todo check status
-					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
 					break;
 				}
@@ -485,7 +508,7 @@ int main() {
 
 					resp.ack.window_handle = window;
 					// todo check status
-					while (sys_socket_send(connection, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
 					break;
 				}

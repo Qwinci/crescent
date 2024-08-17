@@ -28,6 +28,29 @@ namespace windower::protocol {
 		};
 	};
 
+	struct Response {
+		enum {
+			Ack,
+			Connected,
+			WindowCreated
+		} type;
+
+		union {
+			struct {
+				CrescentHandle event_handle;
+			} connected;
+
+			struct {
+				void* window_handle;
+			} ack;
+
+			struct {
+				void* window_handle;
+				CrescentHandle fb_handle;
+			} window_created;
+		};
+	};
+
 	struct WindowEvent {
 		enum {
 			CloseRequested,
@@ -55,27 +78,6 @@ namespace windower::protocol {
 				bool prev_pressed;
 				bool pressed;
 			} key;
-		};
-	};
-
-	struct Response {
-		enum {
-			Ack,
-			WindowCreated,
-			WindowEvent
-		} type;
-
-		union {
-			struct {
-				void* window_handle;
-			} ack;
-
-			struct {
-				void* window_handle;
-				CrescentHandle fb_handle;
-			} window_created;
-
-			struct WindowEvent window_event;
 		};
 	};
 }

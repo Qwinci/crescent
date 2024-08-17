@@ -84,9 +84,6 @@ static bool handle_mouse_recursive(Desktop* desktop, std::unique_ptr<Window>& wi
 				return true;
 			}
 		}
-		else if (!new_state.left_pressed) {
-			desktop->dragging = nullptr;
-		}
 	}
 
 	for (size_t i = window->children.size(); i > 0; --i) {
@@ -171,8 +168,8 @@ void Desktop::handle_mouse(MouseState new_state) {
 		last_mouse_over = nullptr;
 	}
 
-	if (!handle_mouse_recursive(this, taskbar_unique, new_state)) {
-		handle_mouse_recursive(this, root_window, new_state);
+	if (!new_state.left_pressed) {
+		dragging = nullptr;
 	}
 
 	if (dragging) {
@@ -246,6 +243,11 @@ void Desktop::handle_mouse(MouseState new_state) {
 			ctx.dirty_rects.push_back(abs_old);
 		}
 		ctx.dirty_rects.push_back(abs_new);
+	}
+	else {
+		if (!handle_mouse_recursive(this, taskbar_unique, new_state)) {
+			handle_mouse_recursive(this, root_window, new_state);
+		}
 	}
 
 	Rect mouse_rect {

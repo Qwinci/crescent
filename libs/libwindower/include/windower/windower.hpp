@@ -33,6 +33,8 @@ namespace windower {
 
 		protocol::WindowEvent wait_for_event();
 
+		void redraw();
+
 		void close();
 
 		uint32_t width {};
@@ -56,6 +58,7 @@ namespace windower {
 	private:
 		friend Window;
 
-		CrescentHandle connection = INVALID_CRESCENT_HANDLE;
+		CrescentHandle control_connection = INVALID_CRESCENT_HANDLE;
+		CrescentHandle event_pipe = INVALID_CRESCENT_HANDLE;
 	};
 }

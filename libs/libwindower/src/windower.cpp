@@ -12,13 +12,14 @@ namespace windower {
 					.window_handle = handle
 				}
 			};
-			auto status = sys_socket_send(owner->connection, &req, sizeof(req));
+			auto status = sys_socket_send(owner->control_connection, &req, sizeof(req));
 			assert(status == 0);
 			protocol::Response resp {};
 			size_t received;
-			status = sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
+			status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), received);
 			assert(received == sizeof(resp));
 			assert(status == 0);
+			assert(resp.type == protocol::Response::Ack);
 		}
 
 		if (fb_mapping) {
@@ -34,13 +35,27 @@ namespace windower {
 	}
 
 	protocol::WindowEvent Window::wait_for_event() {
+		protocol::WindowEvent event {};
+		auto status = sys_read(owner->event_pipe, &event, 0, sizeof(event));
+		assert(status == 0);
+		return event;
+	}
+
+	void Window::redraw() {
+		protocol::Request req {
+			.type = protocol::Request::Redraw,
+			.redraw {
+				.window_handle = handle
+			}
+		};
+		auto status = sys_socket_send(owner->control_connection, &req, sizeof(req));
+		assert(status == 0);
 		protocol::Response resp {};
 		size_t received;
-		auto status = sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
+		status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), received);
 		assert(received == sizeof(resp));
-		assert(resp.type == protocol::Response::WindowEvent);
 		assert(status == 0);
-		return resp.window_event;
+		assert(resp.type == protocol::Response::Ack);
 	}
 
 	void Window::close() {
@@ -51,13 +66,14 @@ namespace windower {
 					.window_handle = handle
 				}
 			};
-			auto status = sys_socket_send(owner->connection, &req, sizeof(req));
+			auto status = sys_socket_send(owner->control_connection, &req, sizeof(req));
 			assert(status == 0);
 			protocol::Response resp {};
 			size_t received;
-			status = sys_socket_receive(owner->connection, &resp, sizeof(resp), received);
+			status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), received);
 			assert(received == sizeof(resp));
 			assert(status == 0);
+			assert(resp.type == protocol::Response::Ack);
 			owner = nullptr;
 		}
 
@@ -99,13 +115,24 @@ namespace windower {
 
 		sys_close_handle(desktop_handle);
 
-		res.connection = connection;
+		protocol::Response resp {};
+		size_t received;
+		auto status = sys_socket_receive(connection, &resp, sizeof(resp), received);
+		assert(received == sizeof(resp));
+		assert(status == 0);
+		assert(resp.type == protocol::Response::Connected);
+
+		res.control_connection = connection;
+		res.event_pipe = resp.connected.event_handle;
 		return 0;
 	}
 
 	Windower::~Windower() {
-		if (connection != INVALID_CRESCENT_HANDLE) {
-			sys_close_handle(connection);
+		if (control_connection != INVALID_CRESCENT_HANDLE) {
+			sys_close_handle(control_connection);
+		}
+		if (event_pipe != INVALID_CRESCENT_HANDLE) {
+			sys_close_handle(event_pipe);
 		}
 	}
 
@@ -119,13 +146,13 @@ namespace windower {
 				.height = height
 			}
 		};
-		auto status = sys_socket_send(connection, &req, sizeof(req));
+		auto status = sys_socket_send(control_connection, &req, sizeof(req));
 		if (status != 0) {
 			return status;
 		}
 		protocol::Response resp {};
 		size_t received;
-		status = sys_socket_receive(connection, &resp, sizeof(resp), received);
+		status = sys_socket_receive(control_connection, &resp, sizeof(resp), received);
 		if (status != 0) {
 			return status;
 		}
@@ -140,4 +167,3 @@ namespace windower {
 		return 0;
 	}
 }
-
