@@ -50,7 +50,7 @@ if(ARCH STREQUAL "x86_64")
 
 	include(cmake/image_x86_64.cmake)
 elseif(ARCH STREQUAL "aarch64")
-	target_compile_options(crescent PRIVATE -fno-PIE)
+	target_compile_options(crescent PRIVATE -fno-PIE -mno-unaligned-access)
 	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/aarch64.ld)
 	target_compile_definitions(crescent PRIVATE ARCH_AARCH64)
 

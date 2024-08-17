@@ -101,14 +101,16 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 		.len = aligned_kernel_size
 	};
 	mem_reserve[mem_reserve_count++] = {
-		.base = to_phys(dtb_ptr) & ~(0x1000 - 1),
-		.len = (dtb.total_size + 0x1000 - 1) & ~(0x1000 - 1)
+		.base = to_phys(dtb_ptr) & ~0xFFF,
+		.len = (dtb.total_size + (to_phys(dtb_ptr) & 0xFFF) + 0xFFF) & ~0xFFF
 	};
 
 	for (auto& reserved : dtb.get_reserved()) {
+		u64 addr = kstd::byteswap(reserved.addr);
+		u64 size = kstd::byteswap(reserved.size);
 		mem_reserve[mem_reserve_count++] = {
-			.base = kstd::byteswap(reserved.addr) & ~(0x1000 - 1),
-			.len = (kstd::byteswap(reserved.size) + 0x1000 - 1) & ~(0x1000 - 1)
+			.base = addr & ~0xFFF,
+			.len = (size + (addr & 0xFFF) + 0xFFF) & ~0xFFF
 		};
 	}
 
@@ -141,8 +143,8 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 
 		if (initrd_start && initrd_end) {
 			mem_reserve[mem_reserve_count++] = {
-				.base = initrd_start & ~(0x1000 - 1),
-				.len = (initrd_end - initrd_start + 0x1000 - 1) & ~(0x1000 - 1)
+				.base = initrd_start & ~0xFFF,
+				.len = ((initrd_start & 0xFFF) + (initrd_end - initrd_start) + 0xFFF) & ~0xFFF
 			};
 			initrd = to_virt<void>(initrd_start);
 			initrd_size = initrd_end - initrd_start;
@@ -166,8 +168,8 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 				if (auto reg_opt = child.reg(cells, index++)) {
 					auto reg = reg_opt.value();
 					mem_reserve[mem_reserve_count++] = {
-						.base = reg.addr & ~(0x1000 - 1),
-						.len = (reg.size + 0x1000 - 1) & ~(0x1000 - 1)
+						.base = reg.addr & ~0xFFF,
+						.len = ((reg.addr & 0xFFF) + reg.size + 0xFFF) & ~0xFFF
 					};
 				}
 				else {

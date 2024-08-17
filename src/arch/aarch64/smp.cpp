@@ -210,8 +210,10 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 
 		auto phys_entry = KERNEL_MAP.get_phys(reinterpret_cast<u64>(aarch64_ap_entry_asm));
 
-		u8* stack = new u8[0x1000] {};
-		stack += 0x1000;
+		auto stack_phys = pmalloc(16);
+		assert(stack_phys);
+		u8* stack = to_virt<u8>(stack_phys);
+		stack += 16 * PAGE_SIZE;
 
 		auto old = NUM_CPUS.load(kstd::memory_order::relaxed);
 
