@@ -34,3 +34,5 @@ void pmalloc_add_mem(usize phys, usize size);
 usize pmalloc(usize count);
 void pfree(usize addr, usize count);
 usize pmalloc_get_total_mem();
+usize pmalloc_get_reserved_mem();
+usize pmalloc_get_used_mem();

@@ -38,7 +38,7 @@ struct BitValue {
 		return *this;
 	}
 
-	T value {};
+	T value;
 };
 
 template<typename B, typename T>

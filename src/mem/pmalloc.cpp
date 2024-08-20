@@ -4,6 +4,7 @@
 #include "cstring.hpp"
 #include "mem.hpp"
 #include "new.hpp"
+#include "atomic.hpp"
 #ifdef ARCH_USER
 #include <assert.h>
 #endif
@@ -16,6 +17,8 @@ static constexpr usize FREELIST_COUNT = 14;
 namespace {
 	Spinlock<DoubleList<Page, &Page::hook>> FREELISTS[FREELIST_COUNT] {};
 	usize TOTAL_MEMORY = 0;
+	usize RESERVED_MEMORY = 0;
+	kstd::atomic<usize> USED_MEMORY {0};
 }
 
 static constexpr usize index_to_size(usize index) {
@@ -141,6 +144,7 @@ void pmalloc_add_mem(usize phys, usize size) {
 	usize res_pages = ALIGNUP(needed, PAGE_SIZE) / PAGE_SIZE;
 
 	TOTAL_MEMORY += size;
+	RESERVED_MEMORY += res_pages * PAGE_SIZE;
 
 	auto* region = new (to_virt<void>(phys)) PRegion {
 		.hook {},
@@ -207,6 +211,8 @@ usize pmalloc(usize count) {
 	auto page = freelist_get(size_to_index(count));
 	if (page) {
 		memset(to_virt<void>(page->phys()), 0xCB, count * PAGE_SIZE);
+
+		USED_MEMORY.fetch_add(count * PAGE_SIZE, kstd::memory_order::relaxed);
 		return page->phys();
 	}
 	else {
@@ -221,6 +227,7 @@ void pfree(usize addr, usize count) {
 	assert(page->list_index == size_to_index(count));
 
 	memset(to_virt<void>(addr), 0xFD, count * PAGE_SIZE);
+	USED_MEMORY.fetch_sub(count * PAGE_SIZE, kstd::memory_order::relaxed);
 	freelist_insert(page->list_index, page);
 }
 
@@ -239,4 +246,13 @@ Page* Page::from_phys(usize phys) {
 
 usize pmalloc_get_total_mem() {
 	return TOTAL_MEMORY;
+}
+
+usize pmalloc_get_reserved_mem() {
+	return RESERVED_MEMORY;
+}
+
+usize pmalloc_get_used_mem() {
+	IrqGuard irq_guard {};
+	return USED_MEMORY.load(kstd::memory_order::relaxed);
 }
