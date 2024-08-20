@@ -85,9 +85,9 @@ There are also different targets that may be useful:
         - [x] ARP
         - [x] IPv4
         - [ ] IPv6
-        - [ ] UDP v4
+        - [x] UDP v4
         - [ ] UDP v6
-        - [ ] TCP v4 (partially done)
+        - [ ] TCP v4 (mostly done)
         - [ ] TCP v6
     - [ ] USB
         - [ ] Generic HCI interface abstraction
