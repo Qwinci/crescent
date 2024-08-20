@@ -289,27 +289,37 @@ int main() {
 		return 1;
 	}
 	void* back_mapping = fb_resp->map.mapping;
+	void* front_mapping = nullptr;
 
-	fb_link.op = FbLinkOp::Flip;
-	status = sys_devlink(link);
-	if (status != 0) {
-		puts("failed to flip fb");
-		return 1;
+	bool double_buffer = info.flags & FB_LINK_DOUBLE_BUFFER;
+
+	if (double_buffer) {
+		puts("[desktop]: using double buffering");
+
+		fb_link.op = FbLinkOp::Flip;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to flip fb");
+			return 1;
+		}
+
+		fb_link.op = FbLinkOp::Map;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to map fb");
+			return 1;
+		}
+		front_mapping = fb_resp->map.mapping;
+
+		fb_link.op = FbLinkOp::Flip;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to flip fb");
+			return 1;
+		}
 	}
-
-	fb_link.op = FbLinkOp::Map;
-	status = sys_devlink(link);
-	if (status != 0) {
-		puts("failed to map fb");
-		return 1;
-	}
-	void* front_mapping = fb_resp->map.mapping;
-
-	fb_link.op = FbLinkOp::Flip;
-	status = sys_devlink(link);
-	if (status != 0) {
-		puts("failed to flip fb");
-		return 1;
+	else {
+		puts("[desktop]: not using double buffering");
 	}
 
 	Context ctx {};
@@ -564,21 +574,25 @@ int main() {
 			}
 		}
 
-		memcpy(back_mapping, front_mapping, info.height * info.pitch);
+		if (double_buffer) {
+			memcpy(back_mapping, front_mapping, info.height * info.pitch);
 
-		//memset(back_mapping, 0xCF, info.height * info.pitch);
-		desktop.draw();
+			desktop.draw();
 
-		fb_link.op = FbLinkOp::Flip;
-		status = sys_devlink(link);
-		if (status != 0) {
-			puts("failed to flip fb");
-			return 1;
+			fb_link.op = FbLinkOp::Flip;
+			status = sys_devlink(link);
+			if (status != 0) {
+				puts("failed to flip fb");
+				return 1;
+			}
+
+			auto tmp = back_mapping;
+			back_mapping = front_mapping;
+			front_mapping = tmp;
+			ctx.fb = static_cast<uint32_t*>(back_mapping);
 		}
-
-		auto tmp = back_mapping;
-		back_mapping = front_mapping;
-		front_mapping = tmp;
-		ctx.fb = static_cast<uint32_t*>(back_mapping);
+		else {
+			desktop.draw();
+		}
 	}
 }

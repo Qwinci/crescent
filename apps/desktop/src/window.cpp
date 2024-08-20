@@ -44,6 +44,9 @@ Window::Window(bool no_decorations) : no_decorations {no_decorations} {
 		auto close_button = static_cast<TitlebarWindow*>(titlebar.get())->close_button;
 		close_button->callback = [](void* arg) {
 			auto* window = static_cast<Window*>(arg);
+			if (window->internal) {
+				return;
+			}
 
 			protocol::WindowEvent event {
 				.type = protocol::WindowEvent::CloseRequested,
