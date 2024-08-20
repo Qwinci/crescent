@@ -5,14 +5,19 @@
 #include "dev/gpu/gpu_dev.hpp"
 
 struct GpuFbDev : public Device {
-	explicit GpuFbDev(Framebuffer* fb, Gpu* gpu) : Device {}, fb {fb}, gpu {gpu} {
+	explicit GpuFbDev(Framebuffer* fb, Gpu* gpu)
+		: Device {}, fb {fb}, gpu {gpu}, supports_page_flip {gpu->supports_page_flipping} {
 		name = "";
-		front_surface = gpu->create_surface();
+		if (gpu->supports_page_flipping) {
+			front_surface = gpu->create_surface();
+		}
 		back_surface = gpu->create_surface();
 	}
 
 	~GpuFbDev() override {
-		gpu->destroy_surface(front_surface);
+		if (front_surface) {
+			gpu->destroy_surface(front_surface);
+		}
 		gpu->destroy_surface(back_surface);
 	}
 
@@ -30,6 +35,7 @@ struct GpuFbDev : public Device {
 				resp->info.width = fb->width;
 				resp->info.height = fb->height;
 				resp->info.bpp = fb->bpp;
+				resp->info.flags = gpu->supports_page_flipping ? FB_LINK_DOUBLE_BUFFER : 0;
 				break;
 			case FbLinkOp::Map:
 			{
@@ -68,10 +74,12 @@ struct GpuFbDev : public Device {
 			}
 			case FbLinkOp::Flip:
 			{
-				auto tmp = front_surface;
-				front_surface = back_surface;
-				back_surface = tmp;
-				gpu->flip(front_surface);
+				if (supports_page_flip) {
+					auto tmp = front_surface;
+					front_surface = back_surface;
+					back_surface = tmp;
+					gpu->flip(front_surface);
+				}
 				break;
 			}
 		}
@@ -85,6 +93,7 @@ private:
 	GpuSurface* back_surface;
 	Gpu* gpu;
 	bool fb_log_registered {true};
+	bool supports_page_flip {};
 };
 
 struct DummySurface : public GpuSurface {
@@ -117,6 +126,10 @@ ManuallyInit<kstd::shared_ptr<GpuFbDev>> BOOT_FB_DEV;
 static ManuallyInit<DummyGpu> DUMMY_GPU;
 
 void fb_dev_register_boot_fb() {
+	if (!BOOT_FB.is_initialized()) {
+		return;
+	}
+
 	Gpu* gpu = nullptr;
 	IrqGuard irq_guard {};
 	auto guard = DEVICES[static_cast<int>(CrescentDeviceType::Gpu)]->lock();

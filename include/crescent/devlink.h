@@ -84,6 +84,7 @@ struct FbLinkResponse {
 			uint32_t width;
 			uint32_t height;
 			uint32_t bpp;
+			uint32_t flags;
 		} info;
 
 		struct {
@@ -91,5 +92,7 @@ struct FbLinkResponse {
 		} map;
 	};
 };
+
+#define FB_LINK_DOUBLE_BUFFER (1 << 0)
 
 #endif

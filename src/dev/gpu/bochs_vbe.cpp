@@ -50,6 +50,10 @@ struct VbeGpuSurface : public GpuSurface {
 };
 
 struct VbeGpu : public Gpu {
+	constexpr VbeGpu() {
+		supports_page_flipping = true;
+	}
+
 	GpuSurface* create_surface() override {
 		auto pitch = BOOT_FB->pitch;
 

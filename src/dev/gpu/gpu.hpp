@@ -12,4 +12,5 @@ public:
 	virtual void destroy_surface(GpuSurface* surface) = 0;
 	virtual void flip(GpuSurface* surface) = 0;
 	bool owns_boot_fb {};
+	bool supports_page_flipping {};
 };
