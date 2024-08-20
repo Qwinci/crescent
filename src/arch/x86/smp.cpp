@@ -19,7 +19,7 @@ static volatile limine_smp_request SMP_REQUEST {
 };
 
 static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
-static kstd::atomic<int> NUM_CPUS {};
+static kstd::atomic<u32> NUM_CPUS {};
 static Spinlock<void> SMP_LOCK {};
 
 extern "C" void x86_syscall_stub();
@@ -176,7 +176,7 @@ void x86_smp_init() {
 	CPUS[0].initialize();
 	x86_init_cpu_common(&*CPUS[0], SMP_REQUEST.response->bsp_lapic_id, true);
 
-	int prev = 0;
+	u32 prev = 0;
 
 	for (u64 i = 0; i < kstd::min(SMP_REQUEST.response->cpu_count, static_cast<u64>(CONFIG_MAX_CPUS)); ++i) {
 		auto* cpu = SMP_REQUEST.response->cpus[i];

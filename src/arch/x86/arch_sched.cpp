@@ -23,7 +23,7 @@ sched_switch_thread:
 	mov %rsp, 8(%rdi)
 
 	// prev->sched_lock = false
-	movb $0, 207(%rdi)
+	movb $0, 223(%rdi)
 
 	mov 8(%rsi), %rsp
 
@@ -78,6 +78,9 @@ void sched_before_switch(Thread* prev, Thread* thread) {
 		else {
 			asm volatile("fxrstorq %0" : : "m"(*thread->simd) : "memory");
 		}
+
+		msrs::IA32_FSBASE.write(thread->fs_base);
+		msrs::IA32_KERNEL_GSBASE.write(thread->gs_base);
 	}
 
 	auto& tss = thread->cpu->tss;
