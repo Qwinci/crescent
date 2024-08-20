@@ -719,7 +719,7 @@ kstd::shared_ptr<Socket> tcp_socket_create(int flags) {
 	IrqGuard irq_guard {};
 	auto guard = SOCKETS->lock();
 	guard->push(socket.data());
-	return std::move(socket);
+	return socket;
 }
 
 void tcp_process_packet(Nic& nic, ReceivedPacket& packet) {

@@ -92,6 +92,7 @@ void* malloc(size_t size) {
 
 		auto* hdr = new (mem) Header {
 			.size = size + sizeof(Header),
+			.arena = nullptr,
 			.type = Header::Large,
 			.magic = ALLOC_MAGIC
 		};

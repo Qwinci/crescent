@@ -122,4 +122,10 @@ namespace kstd {
 
 	template<typename T>
 	inline constexpr bool is_trivially_copyable_v = is_trivially_copyable<T>::value;
+
+	template<typename T>
+	struct is_trivially_assignable : integral_constant<bool, __is_trivially_assignable(T, T)> {};
+
+	template<typename T>
+	inline constexpr bool is_trivially_assignable_v = is_trivially_assignable<T>::value;
 }

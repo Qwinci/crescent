@@ -176,7 +176,7 @@ kstd::shared_ptr<Socket> udp_socket_create(int flags) {
 	auto socket = kstd::make_shared<Udp4Socket>(flags, port);
 
 	guard->push(socket.data());
-	return std::move(socket);
+	return socket;
 }
 
 void udp_process_packet(Nic& nic, ReceivedPacket& packet) {

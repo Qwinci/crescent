@@ -228,7 +228,7 @@ kstd::shared_ptr<ProcessDescriptor> ProcessDescriptor::duplicate() {
 	else {
 		auto ptr = kstd::make_shared<ProcessDescriptor>(*guard, exit_status);
 		(*guard)->add_descriptor(ptr.data());
-		return std::move(ptr);
+		return ptr;
 	}
 }
 

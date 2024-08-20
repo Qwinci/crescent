@@ -12,7 +12,7 @@ kstd::optional<Handle> HandleTable::get(CrescentHandle handle) {
 	if (loc.get<kstd::monostate>()) {
 		return {};
 	}
-	return std::move(loc);
+	return loc;
 }
 
 CrescentHandle HandleTable::insert(Handle&& handle) {

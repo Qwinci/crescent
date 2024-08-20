@@ -43,7 +43,7 @@ namespace kstd {
 	template<typename T>
 	class vector {
 	private:
-		static constexpr bool is_copyable = is_trivially_copyable_v<T>;
+		static constexpr bool is_copyable = is_trivially_copyable_v<T> && is_trivially_assignable_v<T>;
 
 	public:
 		constexpr vector() = default;
