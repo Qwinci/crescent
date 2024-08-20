@@ -3,10 +3,10 @@
 
 ManuallyInit<Dtb> DTB {};
 
-void kernel_dtb_init(dtb::Dtb plain_dtb) {
+void kernel_dtb_init(dtb::Dtb* plain_dtb) {
 	DTB.initialize();
 
-	auto root = plain_dtb.get_root();
+	auto root = plain_dtb->get_root();
 
 	kstd::vector<kstd::pair<DtbNode*, dtb::Node>> traverse_stack {};
 	traverse_stack.push({nullptr, root});
@@ -16,13 +16,9 @@ void kernel_dtb_init(dtb::Dtb plain_dtb) {
 
 		println("creating node ", node.name);
 
-		auto* new_node = new DtbNode {
-			.name = node.name,
-			.parent = parent,
-			.children {},
-			.compatible {},
-			.cells {}
-		};
+		auto* new_node = new DtbNode {node};
+		new_node->name = node.name;
+		new_node->parent = parent;
 		if (parent) {
 			parent->children.push(new_node);
 		}
@@ -35,7 +31,7 @@ void kernel_dtb_init(dtb::Dtb plain_dtb) {
 			u32 len = kstd::byteswap(*next_ptr++);
 			u32 name_off = kstd::byteswap(*next_ptr++);
 
-			auto* name_ptr = plain_dtb.strings + name_off;
+			auto* name_ptr = plain_dtb->strings + name_off;
 			kstd::string_view name {name_ptr};
 			if (name == "phandle" || name == "linux,phandle") {
 				assert(len == 4);
@@ -44,11 +40,11 @@ void kernel_dtb_init(dtb::Dtb plain_dtb) {
 			}
 			else if (name == "#size-cells") {
 				assert(len == 4);
-				new_node->cells.size = kstd::byteswap(*next_ptr);
+				new_node->cells.size_cells = kstd::byteswap(*next_ptr);
 			}
 			else if (name == "#address-cells") {
 				assert(len == 4);
-				new_node->cells.addr = kstd::byteswap(*next_ptr);
+				new_node->cells.addr_cells = kstd::byteswap(*next_ptr);
 			}
 			else if (name == "compatible") {
 				kstd::string_view whole_compatible {reinterpret_cast<const char*>(next_ptr), len - 1};

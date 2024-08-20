@@ -4,18 +4,16 @@
 #include "unordered_map.hpp"
 #include "concepts.hpp"
 #include "manually_init.hpp"
+#include "dtb.hpp"
 
-struct DtbCells {
-	u32 addr;
-	u32 size;
-};
+struct DtbNode : dtb::Node {
+	explicit DtbNode(dtb::Node data) : dtb::Node {data} {}
 
-struct DtbNode {
-	kstd::string_view name;
-	DtbNode* parent;
+	kstd::string_view name {};
+	DtbNode* parent {};
 	kstd::vector<DtbNode*> children;
 	kstd::vector<kstd::string_view> compatible;
-	DtbCells cells {2, 1};
+	dtb::SizeAddrCells cells {1, 2};
 
 	inline bool is_compatible(kstd::string_view comp) {
 		for (const auto& i : compatible) {
@@ -33,7 +31,7 @@ struct Dtb {
 
 	template<typename C, typename F> requires requires(C c, F f, DtbNode& node) {
 		{c(node)} -> kstd::same_as<bool>;
-		{f(node)} -> kstd::same_as<void>;
+		{f(node)} -> kstd::same_as<bool>;
 	}
 	void traverse(C condition, F fn) {
 		kstd::vector<DtbNode*> stack;
@@ -43,8 +41,9 @@ struct Dtb {
 			auto node = stack.pop().value();
 
 			if (condition(*node)) {
-				fn(*node);
-				break;
+				if (fn(*node)) {
+					break;
+				}
 			}
 
 			for (auto child : node->children) {

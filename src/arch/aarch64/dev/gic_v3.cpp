@@ -86,11 +86,11 @@ void config_irq(u32 irq, bool edge) {
 	}
 }
 
-static bool gic_v3_init(dtb::Node node, dtb::Node parent) {
+static bool gic_v3_init(DtbNode& node) {
 	return true;
 
-	auto [dist_phys, dist_size] = node.reg(parent.size_cells(), 0).value();
-	auto [redist_phys, redist_size] = node.reg(parent.size_cells(), 1).value();
+	auto [dist_phys, dist_size] = node.reg(node.parent->cells, 0).value();
+	auto [redist_phys, redist_size] = node.reg(node.parent->cells, 1).value();
 
 	DIST_SPACE.set_phys(dist_phys, dist_size);
 	REDIST_SPACE.set_phys(redist_phys, redist_size);

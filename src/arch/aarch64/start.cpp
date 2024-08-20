@@ -73,7 +73,7 @@ static void run_constructors() {
 
 constexpr usize KERNEL_SIZE_ALIGN = 1024 * 1024 * 128;
 
-extern void kernel_dtb_init(dtb::Dtb plain_dtb);
+extern void kernel_dtb_init(dtb::Dtb* plain_dtb);
 
 extern EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 
@@ -222,10 +222,10 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 
 	println("Total memory: ", pmalloc_get_total_mem(), " MB: ", pmalloc_get_total_mem() / 1024 / 1024);
 
-	kernel_dtb_init(dtb);
+	kernel_dtb_init(&dtb);
 
 	println("dtb device discovery start");
-	dtb_discover_devices(dtb);
+	dtb_discover_devices();
 	println("dtb device discovery end");
 
 	aarch64_smp_init(dtb);

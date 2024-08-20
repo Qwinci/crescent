@@ -170,10 +170,10 @@ struct PmicArb {
 	u16 apid_count;
 };
 
-bool spmi_init(dtb::Node node, dtb::Node parent) {
+bool spmi_init(DtbNode& node) {
 	println("spmi init");
 
-	auto cells = parent.size_cells();
+	auto cells = node.parent->cells;
 
 	auto [core_phys, core_size] = node.reg(cells, 0).value();
 	auto [chnls_phys, chnls_size] = node.reg(cells, 1).value();

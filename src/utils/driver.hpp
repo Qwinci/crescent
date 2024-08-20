@@ -1,12 +1,16 @@
 #pragma once
 #include "initializer_list.hpp"
+#include "string_view.hpp"
 
 #if __aarch64__
-#include "arch/aarch64/dtb.hpp"
+
+#include "arch/aarch64/kernel_dtb.hpp"
 
 struct DtDriver {
-	bool (*init)(dtb::Node node, dtb::Node parent) {};
+	bool (*init)(DtbNode& node) {};
 	std::initializer_list<const kstd::string_view> compatible {};
+	std::initializer_list<const kstd::string_view> depends {};
+	std::initializer_list<const kstd::string_view> provides {};
 };
 
 struct Driver {
@@ -14,12 +18,12 @@ struct Driver {
 		Dt
 	} type;
 	union {
-		DtDriver* dt;
+		const DtDriver* dt;
 	};
 };
 
 #define DT_DRIVER(variable) [[gnu::section(".drivers"), gnu::used]] \
-static Driver DRIVER_ ## variable {.type = Driver::Type::Dt, .dt = &(variable)}
+static constexpr Driver DRIVER_ ## variable {.type = Driver::Type::Dt, .dt = &(variable)}
 
 #elif __x86_64__
 #include "dev/pci.hpp"
@@ -63,6 +67,6 @@ struct Driver {
 };
 
 #define PCI_DRIVER(variable) [[gnu::section(".drivers"), gnu::used]] \
-static Driver DRIVER_ ## variable {.type = Driver::Type::Pci, .pci = &(variable)}
+static constexpr Driver DRIVER_ ## variable {.type = Driver::Type::Pci, .pci = &(variable)}
 
 #endif

@@ -1,5 +1,6 @@
 #include "psci.hpp"
 #include "utils/driver.hpp"
+#include "assert.hpp"
 
 namespace {
 	bool USE_SMC = false;
@@ -84,7 +85,7 @@ void psci_system_reset() {
 	psci_call(0x84000009);
 }
 
-static bool psci_init(dtb::Node node, dtb::Node) {
+static bool psci_init(DtbNode& node) {
 	auto method_opt = node.prop("method");
 	if (!method_opt) {
 		panic("psci node contains no method");
@@ -106,7 +107,7 @@ static bool psci_init(dtb::Node node, dtb::Node) {
 	return true;
 }
 
-static DtDriver PSCI_DRIVER {
+static constexpr DtDriver PSCI_DRIVER {
 	.init = psci_init,
 	.compatible {"arm,psci-1.0"}
 };
