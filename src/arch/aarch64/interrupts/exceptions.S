@@ -40,25 +40,39 @@
 	stp x18, x29, [sp, #144]
 	.cfi_offset x18, 144
 	.cfi_offset x29, 152
-	mrs x0, ELR_EL1
-	stp x30, x0, [sp, #160]
-	.cfi_offset x30, 168
+	str x30, [sp, #160]
 
-	mrs x0, ESR_EL1
-	mrs x1, FAR_EL1
+.if \el == 0
+	mrs x0, sp_el0
+	str x0, [sp, #168]
+.endif
+
+	mrs x0, esr_el1
+	mrs x1, far_el1
+	mrs x2, elr_el1
+	mrs x3, spsr_el1
+
 	stp x0, x1, [sp, #176]
-
-	mrs x2, spsr_el1
-	stp x2, xzr, [sp, #192]
+	stp x2, x3, [sp, #192]
+	.cfi_offset x30, 192
+	.cfi_offset pstate, 200
 
 	mov x0, sp
+	mov x29, xzr
 	bl arch_exception_handler
 
-	ldp x0, xzr, [sp, #192]
-	msr spsr_el1, x0
+	ldp x0, x1, [sp, #176]
+	ldp x2, x3, [sp, #192]
 
-	ldr x0, [sp, #168]
-	msr elr_el1, x0
+	msr esr_el1, x0
+	msr far_el1, x1
+	msr elr_el1, x2
+	msr spsr_el1, x3
+
+.if \el == 0
+	ldr x4, [sp, #168]
+	msr sp_el0, x4
+.endif
 
 	ldp x0, x1, [sp, #0]
 	ldp x2, x3, [sp, #16]

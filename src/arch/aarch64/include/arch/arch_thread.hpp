@@ -16,6 +16,7 @@ struct ArchThread {
 	usize* kernel_stack_base {};
 	u8* user_stack_base {};
 	u8* simd {};
+	usize tpidr_el0 {};
 };
 
 static_assert(offsetof(ArchThread, sp) == 0);

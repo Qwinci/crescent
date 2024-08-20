@@ -8,7 +8,7 @@
 #include "sched/process.hpp"
 
 static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
-static kstd::atomic<int> NUM_CPUS {1};
+static kstd::atomic<u32> NUM_CPUS {1};
 static Spinlock<void> SMP_LOCK {};
 
 struct ApInitCtx {
@@ -110,7 +110,6 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	sctlr_el1 &= ~(1 << 19);
 	asm volatile("tlbi vmalle1; dsb nsh; msr SCTLR_EL1, %0; isb" : : "r"(sctlr_el1) : "memory");
 
-	register auto x1 asm("x1") = reinterpret_cast<usize>(KERNEL_START);
 	asm volatile(R"(
 		add sp, sp, %2
 		adrp x2, aarch64_ap_entry
@@ -118,11 +117,11 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 		sub x2, x2, %0
 		add x2, x2, %1
 		br x2
-		)" : : "r"(KERNEL_START), "r"(KERNEL_OFFSET), "r"(HHDM_OFFSET), "r"(x1) : "x2");
+		)" : : "r"(KERNEL_START), "r"(KERNEL_OFFSET), "r"(HHDM_OFFSET) : "x2");
 	__builtin_unreachable();
 }
 
-static void aarch64_common_cpu_init(Cpu* self, int num, bool bsp) {
+static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 	self->number = num;
 
 	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
@@ -147,7 +146,7 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 	Cpu* cpu;
 
 	{
-		int num = NUM_CPUS.load(kstd::memory_order::relaxed);
+		u32 num = NUM_CPUS.load(kstd::memory_order::relaxed);
 
 		auto lock = SMP_LOCK.lock();
 		CPUS[num].initialize();

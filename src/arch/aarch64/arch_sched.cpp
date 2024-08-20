@@ -22,7 +22,8 @@ sched_switch_thread:
 	mov x2, sp
 	str x2, [x0]
 
-	strb wzr, [x0, #199]
+	// prev->sched_lock = false
+	strb wzr, [x0, #207]
 
 	ldr x3, [x1]
 	mov sp, x3
@@ -126,8 +127,10 @@ void sched_before_switch(Thread* prev, Thread* thread) {
 	if (prev->process->user) {
 		save_simd_regs(prev->simd);
 	}
+
 	if (thread->process->user) {
 		restore_simd_regs(thread->simd);
+		asm volatile("msr tpidr_el0, %0" : : "r"(thread->tpidr_el0));
 	}
 }
 

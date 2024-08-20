@@ -55,7 +55,7 @@ struct Thread : public ArchThread {
 };
 
 #ifdef __x86_64__
-static_assert(offsetof(Thread, sched_lock) == 207);
+static_assert(offsetof(Thread, sched_lock) == 223);
 #elif defined(__aarch64__)
-static_assert(offsetof(Thread, sched_lock) == 199);
+static_assert(offsetof(Thread, sched_lock) == 207);
 #endif

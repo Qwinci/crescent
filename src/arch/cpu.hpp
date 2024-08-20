@@ -16,7 +16,7 @@ struct Cpu : public ArchCpu {
 	Event sched_destroy_event {};
 	TickSource* cpu_tick_source {};
 	DoubleList<DeferredIrqWork, &DeferredIrqWork::hook> deferred_work {};
-	int number {};
+	u32 number {};
 	kstd::atomic<u32> thread_count {};
 };
 
