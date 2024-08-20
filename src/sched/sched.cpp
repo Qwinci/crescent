@@ -254,6 +254,8 @@ void Scheduler::do_schedule() const {
 
 	current->status = Thread::Status::Running;
 
+	current->process->cpu_set.lock()->set(current->cpu->number);
+
 	current->process->page_map.use();
 
 	set_current_thread(current);

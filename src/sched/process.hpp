@@ -6,6 +6,7 @@
 #include "sched/sched.hpp"
 #include "manually_init.hpp"
 #include "handle_table.hpp"
+#include "sched/cpu_set.hpp"
 
 struct IpcSocket;
 
@@ -105,6 +106,7 @@ struct Process {
 	bool user;
 	bool killed {};
 	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
+	Spinlock<CpuSet> cpu_set {};
 private:
 	struct Mapping {
 		RbTreeHook hook {};
