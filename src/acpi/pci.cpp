@@ -36,6 +36,10 @@ namespace acpi {
 				u32 gsi = routing.source_index;
 				u16 routing_device = routing.address >> 16;
 
+				if (routing_device != device || routing.pin + 1 != pci_pin) {
+					continue;
+				}
+
 				bool edge_triggered = true;
 				bool active_high = true;
 
@@ -53,6 +57,8 @@ namespace acpi {
 					}
 
 					usize offset = 0;
+					u32 index = 0;
+					bool found = false;
 					while (true) {
 						qacpi::Resource res;
 						status = qacpi::resource_parse(buffer->data->data, buffer->data->size, offset, res);
@@ -64,6 +70,13 @@ namespace acpi {
 							return {};
 						}
 
+						if (index != routing.source_index) {
+							++index;
+							continue;
+						}
+
+						found = true;
+
 						if (auto irq = res.get<qacpi::IrqDescriptor>()) {
 							edge_triggered = irq->info & qacpi::IRQ_INFO_EDGE_TRIGGERED;
 							active_high = !(irq->info & qacpi::IRQ_INFO_ACTIVE_LOW);
@@ -73,6 +86,7 @@ namespace acpi {
 									break;
 								}
 							}
+							break;
 						}
 						else if (auto ext_irq = res.get<qacpi::ExtendedIrqDescriptor>()) {
 							edge_triggered = ext_irq->info & qacpi::EXT_IRQ_INFO_EDGE_TRIGGERED;
@@ -81,16 +95,19 @@ namespace acpi {
 							gsi = ext_irq->irq_table[0];
 							break;
 						}
+						else {
+							assert(!"unsupported irq resource");
+						}
 					}
+
+					assert(found);
 				}
 
-				if (routing_device == device && routing.pin + 1 == pci_pin) {
-					return {LegacyPciIrq {
-						.gsi = gsi,
-						.edge_triggered = edge_triggered,
-						.active_high = active_high
-					}};
-				}
+				return {LegacyPciIrq {
+					.gsi = gsi,
+					.edge_triggered = edge_triggered,
+					.active_high = active_high
+				}};
 			}
 		}
 
