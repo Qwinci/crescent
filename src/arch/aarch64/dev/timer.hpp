@@ -1,5 +1,6 @@
 #pragma once
 #include "dev/clock.hpp"
+#include "arch/irq.hpp"
 
 struct Cpu;
 
@@ -8,18 +9,14 @@ struct ArmTickSource : public TickSource {
 
 	void init_on_cpu(Cpu* cpu);
 
-	void oneshot(u64 us) override {}
-	void reset() override {}
+	void oneshot(u64 us) override;
+	void reset() override;
 };
 
 struct ArmClockSource : public ClockSource {
 	constexpr ArmClockSource() : ClockSource {"arm clock source", 1} {}
 
-	void init();
-
-	u64 get() override {
-		return 0;
-	}
+	u64 get_ns() override;
 };
 
 extern ArmClockSource ARM_CLOCK_SOURCE;

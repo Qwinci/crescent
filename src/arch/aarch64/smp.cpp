@@ -6,18 +6,14 @@
 #include "loader/early_paging.hpp"
 #include "mem/mem.hpp"
 #include "sched/process.hpp"
+#include "dev/gic.hpp"
 
 static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
 static kstd::atomic<u32> NUM_CPUS {1};
 static Spinlock<void> SMP_LOCK {};
 
-struct ApInitCtx {
-	usize sp;
-};
-
 asm(R"(
 .pushsection .text
-.globl aarch64_ap_entry_asm
 .globl aarch64_ap_entry_asm
 aarch64_ap_entry_asm:
 	mov sp, x0
@@ -52,11 +48,11 @@ extern EarlyPageMap* AARCH64_IDENTITY_MAP;
 extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	u64 ttbr0_el1 = reinterpret_cast<u64>(AARCH64_IDENTITY_MAP);
 	u64 ttbr1_el1 = to_phys(KERNEL_PROCESS->page_map.level0);
-	asm volatile("msr TTBR0_EL1, %0" : : "r"(ttbr0_el1));
-	asm volatile("msr TTBR1_EL1, %0" : : "r"(ttbr1_el1));
+	asm volatile("msr ttbr0_el1, %0" : : "r"(ttbr0_el1));
+	asm volatile("msr ttbr1_el1, %0" : : "r"(ttbr1_el1));
 
 	u64 id_aa64mmfr0_el1;
-	asm volatile("mrs %0, ID_AA64MMFR0_EL1" : "=r"(id_aa64mmfr0_el1));
+	asm volatile("mrs %0, id_aa64mmfr0_el1" : "=r"(id_aa64mmfr0_el1));
 
 	u64 tcr_el1 = 0; // control register
 	// T0SZ
@@ -81,7 +77,7 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	// SH1 (TTBR1 shareability) outer shareable
 	tcr_el1 |= 0b10 << 28;
 
-	asm volatile("msr TCR_EL1, %0" : : "r"(tcr_el1));
+	asm volatile("msr tcr_el1, %0" : : "r"(tcr_el1));
 
 	u64 mair_el1 = 0;
 	// normal write-back
@@ -95,20 +91,20 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	// 0b10 == nGRE
 	// 0b11 == GRE     | type
 	mair_el1 |= 0b0000'00'00U << 16;
-	asm volatile("msr MAIR_EL1, %0" : : "r"(mair_el1));
+	asm volatile("msr mair_el1, %0" : : "r"(mair_el1));
 
 	// force changes
 	asm volatile("isb");
 
 	u64 sctlr_el1;
-	asm volatile("mrs %0, SCTLR_EL1" : "=r"(sctlr_el1));
+	asm volatile("mrs %0, sctlr_el1" : "=r"(sctlr_el1));
 	// enable mmu
 	sctlr_el1 |= 1;
 	// enable cache
 	sctlr_el1 |= 1 << 2;
 	sctlr_el1 |= 1 << 12;
 	sctlr_el1 &= ~(1 << 19);
-	asm volatile("tlbi vmalle1; dsb nsh; msr SCTLR_EL1, %0; isb" : : "r"(sctlr_el1) : "memory");
+	asm volatile("tlbi vmalle1; dsb nsh; msr sctlr_el1, %0; isb" : : "r"(sctlr_el1) : "memory");
 
 	asm volatile(R"(
 		add sp, sp, %2
@@ -125,6 +121,7 @@ static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 	self->number = num;
 
 	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
+	thread->status = Thread::Status::Running;
 	self->scheduler.current = thread;
 	set_current_thread(thread);
 
@@ -135,13 +132,16 @@ static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 	asm volatile("msr cpacr_el1, %0" : : "r"(cpacr_el1));
 
 	sched_init(bsp);
-	self->arm_tick_source.init_on_cpu(self);
+
+	u64 mpidr;
+	asm volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
+	self->affinity = (mpidr & 0xFFFFFF) | (mpidr >> 32 & 0xFF) << 24;
 }
 
 extern char EXCEPTION_HANDLERS_START[];
 
 extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
-	asm volatile("msr VBAR_EL1, %0" : : "r"(EXCEPTION_HANDLERS_START));
+	asm volatile("msr vbar_el1, %0" : : "r"(EXCEPTION_HANDLERS_START));
 
 	Cpu* cpu;
 
@@ -152,6 +152,8 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 		CPUS[num].initialize();
 		cpu = &*CPUS[num];
 		aarch64_common_cpu_init(cpu, num, false);
+		gic_init_on_cpu();
+		cpu->arm_tick_source.init_on_cpu(cpu);
 
 		println("[kernel][smp]: cpu ", num, " online!");
 
@@ -159,17 +161,20 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 		asm volatile("sev");
 	}
 
+	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
 	cpu->scheduler.block();
 	panic("scheduler block returned");
 }
 
 extern "C" void aarch64_ap_entry_asm();
 
-void aarch64_smp_init(dtb::Dtb& dtb) {
+void aarch64_bsp_init() {
 	CPUS[0].initialize();
 	aarch64_common_cpu_init(&*CPUS[0], 0, true);
-	// todo move this to its own place when its discovered from dtb
-	ARM_CLOCK_SOURCE.init();
+}
+
+void aarch64_smp_init(dtb::Dtb& dtb) {
+	CPUS[0]->arm_tick_source.init_on_cpu(&*CPUS[0]);
 
 	auto root = dtb.get_root();
 
@@ -208,6 +213,7 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 		auto& KERNEL_MAP = KERNEL_PROCESS->page_map;
 
 		auto phys_entry = KERNEL_MAP.get_phys(reinterpret_cast<u64>(aarch64_ap_entry_asm));
+		assert(phys_entry);
 
 		auto stack_phys = pmalloc(16);
 		assert(stack_phys);
@@ -224,6 +230,13 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 	}
 
 	println("[kernel][aarch64]: smp init done");
+
+	// result is ignored because it doesn't need to be unregistered
+	(void) CPUS[0]->cpu_tick_source->callback_producer.add_callback([]() {
+		CPUS[0]->scheduler.on_timer(&*CPUS[0]);
+	});
+
+	CPUS[0]->cpu_tick_source->oneshot(50 * US_IN_MS);
 }
 
 usize arch_get_cpu_count() {

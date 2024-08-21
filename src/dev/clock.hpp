@@ -6,14 +6,15 @@
 #include "event.hpp"
 
 struct ClockSource {
-	constexpr ClockSource(kstd::string_view name, u64 ticks_in_us) : name {name}, ticks_in_us {ticks_in_us} {}
+	constexpr ClockSource(kstd::string_view name, u64 frequency)
+		: name {name}, frequency {frequency} {}
 
 	DoubleListHook hook;
 
-	virtual u64 get() = 0;
+	virtual u64 get_ns() = 0;
 
 	kstd::string_view name;
-	u64 ticks_in_us;
+	u64 frequency;
 };
 
 struct TickSource {
@@ -36,6 +37,7 @@ void udelay(usize us);
 
 extern RwSpinlock<ClockSource*> CLOCK_SOURCE;
 
+static constexpr u64 NS_IN_US = 1000;
 static constexpr u64 US_IN_MS = 1000;
 static constexpr u64 US_IN_S = US_IN_MS * 1000;
 
@@ -46,13 +48,12 @@ inline bool with_timeout(F f, usize us) {
 	auto guard = CLOCK_SOURCE.lock_read();
 	assert(guard && "no clock source available");
 	auto source = *guard;
-	auto ticks_in_us = source->ticks_in_us;
-	auto start = source->get();
-	auto end = start + ticks_in_us * us;
+	auto start = source->get_ns();
+	auto end = start + us * NS_IN_US;
 	do {
 		if (f()) {
 			return true;
 		}
-	} while (source->get() < end);
+	} while (source->get_ns() < end);
 	return false;
 }

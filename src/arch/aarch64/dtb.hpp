@@ -45,6 +45,8 @@ namespace dtb {
 
 		template<kstd::integral T>
 		[[nodiscard]] inline T read(u32 offset) const {
+			assert(offset + sizeof(T) <= len);
+
 			if constexpr (sizeof(T) == 8) {
 				u32 first = *offset(ptr, const u32*, offset);
 				u64 second = *offset(ptr, const u32*, offset + 4);
@@ -53,6 +55,19 @@ namespace dtb {
 			}
 			else {
 				return kstd::byteswap(*offset(ptr, const T*, offset));
+			}
+		}
+
+		[[nodiscard]] inline u64 read_cells(u32 offset, u32 cells) const {
+			assert(offset + cells * 4 <= len);
+			if (cells == 1) {
+				return read<u32>(offset);
+			}
+			else if (cells == 2) {
+				return read<u64>(offset);
+			}
+			else {
+				__builtin_trap();
 			}
 		}
 	};

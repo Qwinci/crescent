@@ -11,10 +11,12 @@ void VirtualSpace::init(usize base, usize size) {
 }
 
 void VirtualSpace::destroy() {
+	IrqGuard irq_guard {};
 	vmem.destroy(true);
 }
 
 void* VirtualSpace::alloc(usize size) {
+	IrqGuard irq_guard {};
 	auto ret = vmem.xalloc(size, 0, 0);
 	if (!ret) {
 		return nullptr;
@@ -29,6 +31,7 @@ void* VirtualSpace::alloc(usize size) {
 }
 
 void VirtualSpace::free(void* ptr, usize size) {
+	IrqGuard irq_guard {};
 	vmem.xfree(reinterpret_cast<usize>(ptr), size);
 	auto guard = regions.lock();
 	auto reg = guard->find<usize, &Region::base>(reinterpret_cast<usize>(ptr));

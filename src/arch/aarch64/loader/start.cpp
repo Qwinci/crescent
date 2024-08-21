@@ -61,11 +61,11 @@ EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 
 	u64 ttbr0_el1 = reinterpret_cast<u64>(AARCH64_IDENTITY_MAP);
 	u64 ttbr1_el1 = reinterpret_cast<u64>(kernel_map);
-	asm volatile("msr TTBR0_EL1, %0" : : "r"(ttbr0_el1));
-	asm volatile("msr TTBR1_EL1, %0" : : "r"(ttbr1_el1));
+	asm volatile("msr ttbr0_el1, %0" : : "r"(ttbr0_el1));
+	asm volatile("msr ttbr1_el1, %0" : : "r"(ttbr1_el1));
 
 	u64 id_aa64mmfr0_el1;
-	asm volatile("mrs %0, ID_AA64MMFR0_EL1" : "=r"(id_aa64mmfr0_el1));
+	asm volatile("mrs %0, id_aa64mmfr0_el1" : "=r"(id_aa64mmfr0_el1));
 
 	u64 tcr_el1 = 0; // control register
 	// T0SZ
@@ -90,7 +90,7 @@ EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 	// SH1 (TTBR1 shareability) outer shareable
 	tcr_el1 |= 0b10 << 28;
 
-	asm volatile("msr TCR_EL1, %0" : : "r"(tcr_el1));
+	asm volatile("msr tcr_el1, %0" : : "r"(tcr_el1));
 
 	u64 mair_el1 = 0;
 	// normal write-back
@@ -104,20 +104,20 @@ EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 	// 0b10 == nGRE
 	// 0b11 == GRE     | type
 	mair_el1 |= 0b0000'00'00U << 16;
-	asm volatile("msr MAIR_EL1, %0" : : "r"(mair_el1));
+	asm volatile("msr mair_el1, %0" : : "r"(mair_el1));
 
 	// force changes
 	asm volatile("isb");
 
 	u64 sctlr_el1;
-	asm volatile("mrs %0, SCTLR_EL1" : "=r"(sctlr_el1));
+	asm volatile("mrs %0, sctlr_el1" : "=r"(sctlr_el1));
 	// enable mmu
 	sctlr_el1 |= 1;
 	// enable cache
 	sctlr_el1 |= 1 << 2;
 	sctlr_el1 |= 1 << 12;
 	sctlr_el1 &= ~(1 << 19);
-	asm volatile("tlbi vmalle1; dsb nsh; msr SCTLR_EL1, %0; isb" : : "r"(sctlr_el1) : "memory");
+	asm volatile("tlbi vmalle1; dsb nsh; msr sctlr_el1, %0; isb" : : "r"(sctlr_el1) : "memory");
 
 	extern usize HHDM_START;
 	HHDM_START = HHDM_OFFSET;

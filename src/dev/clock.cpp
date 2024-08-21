@@ -16,7 +16,7 @@ void clock_source_register(ClockSource* source) {
 		println("[kernel][clock]: switched to clock source ", source->name);
 	}
 	else {
-		if (source->ticks_in_us > guard->front()->ticks_in_us) {
+		if (source->frequency > guard->front()->frequency) {
 			guard->push_front(source);
 			*CLOCK_SOURCE.lock_write() = source;
 			println("[kernel][clock]: switched to clock source ", source->name);
@@ -50,19 +50,18 @@ void mdelay(usize ms) {
 	auto guard = CLOCK_SOURCE.lock_read();
 	assert(guard && "no clock source available");
 	auto source = *guard;
-	auto ticks_in_ms = source->ticks_in_us * US_IN_MS;
-	auto start = source->get();
-	auto end = start + ticks_in_ms * ms;
-	while (source->get() < end);
+	auto start = source->get_ns();
+	auto end = start + US_IN_MS * NS_IN_US * ms;
+	while (source->get_ns() < end);
 }
 
 void udelay(usize us) {
 	auto guard = CLOCK_SOURCE.lock_read();
 	assert(guard && "no clock source available");
 	auto source = *guard;
-	auto start = source->get();
-	auto end = start + source->ticks_in_us * us;
-	while (source->get() < end);
+	auto start = source->get_ns();
+	auto end = start + NS_IN_US * us;
+	while (source->get_ns() < end);
 }
 
 RwSpinlock<ClockSource*> CLOCK_SOURCE {};

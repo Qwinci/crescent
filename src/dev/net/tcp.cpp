@@ -129,6 +129,14 @@ struct Tcp4Socket : public Socket {
 		u32 addr = address.ipv4.ipv4;
 		u16 port = address.ipv4.port;
 
+		{
+			IrqGuard irq_guard {};
+			auto guard = NICS->lock();
+			if (guard->is_empty()) {
+				return ERR_NO_ROUTE_TO_HOST;
+			}
+		}
+
 		u16 src_port = 0;
 		random_generate(&src_port, 2);
 

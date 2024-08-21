@@ -348,7 +348,7 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	usize now;
 	{
 		auto guard = CLOCK_SOURCE.lock_read();
-		now = (*guard)->get() / (*guard)->ticks_in_us;
+		now = (*guard)->get_ns() / NS_IN_US;
 	}
 
 	usize first_sleep_end = UINTPTR_MAX;
@@ -377,7 +377,7 @@ void Scheduler::sleep(u64 us) {
 	usize sleep_end;
 	{
 		auto guard = CLOCK_SOURCE.lock_read();
-		auto now = (*guard)->get() / (*guard)->ticks_in_us;
+		auto now = (*guard)->get_ns() / NS_IN_US;
 		sleep_end = now + us;
 	}
 

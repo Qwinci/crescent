@@ -12,7 +12,7 @@ This repository hosts the Crescent kernel and apps.
   file manager, desktop environment, browser, media player and some games.
   (**TODO, currently the only userspace application is a very basic desktop environment**)
 - Works on real hardware and supports different kinds of devices
-- Architectures supported: X86-64, AArch64 (it lacks some critical features right now though)
+- Architectures supported: X86-64, AArch64
 
 ### Building the kernel and apps
 The required tools for building are:

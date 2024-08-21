@@ -3,4 +3,5 @@
 
 struct ArchCpu {
 	ArmTickSource arm_tick_source {};
+	u32 affinity {};
 };

@@ -173,13 +173,11 @@ struct PmicArb {
 bool spmi_init(DtbNode& node) {
 	println("spmi init");
 
-	auto cells = node.parent->cells;
-
-	auto [core_phys, core_size] = node.reg(cells, 0).value();
-	auto [chnls_phys, chnls_size] = node.reg(cells, 1).value();
-	auto [obsrvr_phys, obsrvr_size] = node.reg(cells, 2).value();
-	auto [intr_phys, intr_size] = node.reg(cells, 3).value();
-	auto [cnfg_phys, cnfg_size] = node.reg(cells, 4).value();
+	auto [core_phys, core_size] = node.regs[0];
+	auto [chnls_phys, chnls_size] = node.regs[1];
+	auto [obsrvr_phys, obsrvr_size] = node.regs[2];
+	auto [intr_phys, intr_size] = node.regs[3];
+	auto [cnfg_phys, cnfg_size] = node.regs[4];
 
 	IoSpace core_space {core_phys, core_size};
 	IoSpace read_space {obsrvr_phys, obsrvr_size};

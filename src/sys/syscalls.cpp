@@ -342,7 +342,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			{
 				IrqGuard irq_guard {};
 				auto guard = CLOCK_SOURCE.lock_read();
-				now = (*guard)->get() / (*guard)->ticks_in_us;
+				now = (*guard)->get_ns() / NS_IN_US;
 			}
 
 			if (!UserAccessor(*frame->arg0()).store(now)) {

@@ -150,8 +150,7 @@ void qacpi_os_fatal(uint8_t type, uint16_t code, uint64_t arg) {
 // in 100ns increments
 uint64_t qacpi_os_timer() {
 	auto src = CLOCK_SOURCE.lock_read();
-	auto ticks_in_us = (*src)->ticks_in_us;
-	return (*src)->get() / ticks_in_us / 10;
+	return (*src)->get_ns() / 100;
 }
 
 void qacpi_os_breakpoint() {}

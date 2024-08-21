@@ -3,7 +3,7 @@
 
 .cfi_sections .debug_frame
 
-.macro stub_exception_handler name el
+.macro stub_exception_handler name el handler
 \name:
 	.cfi_startproc simple
 	.cfi_signal_frame
@@ -44,8 +44,10 @@
 
 .if \el == 0
 	mrs x0, sp_el0
-	str x0, [sp, #168]
+.else
+	mov x0, sp
 .endif
+	str x0, [sp, #168]
 
 	mrs x0, esr_el1
 	mrs x1, far_el1
@@ -59,7 +61,7 @@
 
 	mov x0, sp
 	mov x29, xzr
-	bl arch_exception_handler
+	bl \handler
 
 	ldp x0, x1, [sp, #176]
 	ldp x2, x3, [sp, #192]
@@ -92,25 +94,25 @@
 .cfi_endproc
 .endm
 
-stub_exception_handler curr_el_sp0_sync 1
-stub_exception_handler curr_el_sp0_irq 1
-stub_exception_handler curr_el_sp0_fiq 1
-stub_exception_handler curr_el_sp0_serror 1
+stub_exception_handler curr_el_sp0_sync 1 arch_exception_handler
+stub_exception_handler curr_el_sp0_irq 1 arch_irq_handler
+stub_exception_handler curr_el_sp0_fiq 1 arch_exception_handler
+stub_exception_handler curr_el_sp0_serror 1 arch_exception_handler
 
-stub_exception_handler curr_el_spx_sync 1
-stub_exception_handler curr_el_spx_irq 1
-stub_exception_handler curr_el_spx_fiq 1
-stub_exception_handler curr_el_spx_serror 1
+stub_exception_handler curr_el_spx_sync 1 arch_exception_handler
+stub_exception_handler curr_el_spx_irq 1 arch_irq_handler
+stub_exception_handler curr_el_spx_fiq 1 arch_exception_handler
+stub_exception_handler curr_el_spx_serror 1 arch_exception_handler
 
-stub_exception_handler lower_el_aarch64_sync 0
-stub_exception_handler lower_el_aarch64_irq 0
-stub_exception_handler lower_el_aarch64_fiq 0
-stub_exception_handler lower_el_aarch64_serror 0
+stub_exception_handler lower_el_aarch64_sync 0 arch_exception_handler
+stub_exception_handler lower_el_aarch64_irq 0 arch_irq_handler
+stub_exception_handler lower_el_aarch64_fiq 0 arch_exception_handler
+stub_exception_handler lower_el_aarch64_serror 0 arch_exception_handler
 
-stub_exception_handler lower_el_aarch32_sync 0
-stub_exception_handler lower_el_aarch32_irq 0
-stub_exception_handler lower_el_aarch32_fiq 0
-stub_exception_handler lower_el_aarch32_serror 0
+stub_exception_handler lower_el_aarch32_sync 0 arch_exception_handler
+stub_exception_handler lower_el_aarch32_irq 0 arch_irq_handler
+stub_exception_handler lower_el_aarch32_fiq 0 arch_exception_handler
+stub_exception_handler lower_el_aarch32_serror 0 arch_exception_handler
 
 .balign 0x800
 EXCEPTION_HANDLERS_START:

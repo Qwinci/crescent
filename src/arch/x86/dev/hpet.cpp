@@ -34,11 +34,13 @@ namespace {
 }
 
 struct Hpet final : ClockSource {
-	constexpr explicit Hpet(usize freq_in_us) : ClockSource {"hpet", freq_in_us} {}
+	constexpr explicit Hpet(usize frequency) : ClockSource {"hpet", frequency} {}
 
-	u64 get() override {
-		return SPACE.load(regs::MCVR);
+	u64 get_ns() override {
+		return SPACE.load(regs::MCVR) * ns_in_tick;
 	}
+
+	u64 ns_in_tick {};
 };
 
 namespace {
@@ -57,9 +59,10 @@ void hpet_init() {
 
 	auto fs_in_tick = SPACE.load(regs::GCIDR) & gcidr::COUNTER_CLK_PERIOD;
 	auto ns_in_tick = fs_in_tick / 1000000;
-	auto ticks_in_us = 1000 / ns_in_tick;
+	auto ticks_in_s = NS_IN_US * US_IN_S / ns_in_tick;
 
 	SPACE.store(regs::GCR, gcr::ENABLE_CNF(true));
-	HPET.initialize(ticks_in_us);
+	HPET.initialize(ticks_in_s);
+	HPET->ns_in_tick = ns_in_tick;
 	clock_source_register(&*HPET);
 }

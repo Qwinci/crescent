@@ -91,7 +91,7 @@ static bool psci_init(DtbNode& node) {
 		panic("psci node contains no method");
 	}
 
-	kstd::string_view method {static_cast<const char*>(method_opt->ptr)};
+	auto method = method_opt->as_string();
 	if (method == "smc") {
 		USE_SMC = true;
 	}

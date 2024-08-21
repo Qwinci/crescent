@@ -1,6 +1,7 @@
-#include "arch/aarch64/dev/discovery.hpp"
-#include "arch/aarch64/loader/early_paging.hpp"
-#include "arch/aarch64/mem/aarch64_mem.hpp"
+#include "dev/discovery.hpp"
+#include "dev/psci.hpp"
+#include "loader/early_paging.hpp"
+#include "mem/aarch64_mem.hpp"
 #include "dtb.hpp"
 #include "mem/mem.hpp"
 #include "mem/pmalloc.hpp"
@@ -73,7 +74,7 @@ static void run_constructors() {
 
 constexpr usize KERNEL_SIZE_ALIGN = 1024 * 1024 * 128;
 
-extern void kernel_dtb_init(dtb::Dtb* plain_dtb);
+extern void kernel_dtb_init(void* plain_dtb);
 
 extern EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 
@@ -81,12 +82,12 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 	run_constructors();
 
 	println("arch start begin");
-	asm volatile("msr VBAR_EL1, %0" : : "r"(EXCEPTION_HANDLERS_START));
+	asm volatile("msr vbar_el1, %0" : : "r"(EXCEPTION_HANDLERS_START));
 
 	// bit0 == fiq, bit1 == irq, bit2 == SError, bit3 == Debug
-	asm volatile("msr DAIFClr, #0b1111");
+	asm volatile("msr daifclr, #0b1111");
 
-	//asm volatile("msr TTBR0_EL1, %0" : : "r"(0ULL));
+	//asm volatile("msr ttbr0_el1, %0" : : "r"(0ULL));
 	//asm volatile("tlbi vmalle1; dsb ish; isb" : : : "memory");
 
 	dtb::Dtb dtb {dtb_ptr};
@@ -220,9 +221,10 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 #endif
 	LOG.lock()->register_sink(&BOOT_SINK);
 
-	println("Total memory: ", pmalloc_get_total_mem(), " MB: ", pmalloc_get_total_mem() / 1024 / 1024);
+	println("total memory: ", pmalloc_get_total_mem(), " MB: ", pmalloc_get_total_mem() / 1024 / 1024);
 
 	kernel_dtb_init(&dtb);
+	aarch64_bsp_init();
 
 	println("dtb device discovery start");
 	dtb_discover_devices();

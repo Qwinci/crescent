@@ -23,7 +23,9 @@ struct ExceptionFrame {
 	u64 x18;
 	u64 x29;
 	u64 x30;
-	u64 elr_el1;
+	u64 sp;
 	u64 esr_el1;
 	u64 far_el1;
+	u64 elr_el1;
+	u64 spsr_el1;
 };
