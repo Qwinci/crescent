@@ -19,26 +19,41 @@ aarch64_ap_entry_asm:
 	mov sp, x0
 
 	mov x0, #0
+	// lsmaoe
 	orr x0, x0, #(1 << 29)
+	// ntlsmd
 	orr x0, x0, #(1 << 28)
+	// span
 	orr x0, x0, #(1 << 23)
+	// eis
 	orr x0, x0, #(1 << 22)
+	// tscxt
 	orr x0, x0, #(1 << 20)
+	// eos
 	orr x0, x0, #(1 << 11)
-	orr x0, x0, #(1 << 12)
-	orr x0, x0, #(1 << 2)
+
+	// qcom falkor erratum e1041
+	isb
 	msr sctlr_el1, x0
+	isb
 
 	mov x0, #0x3C5
 	msr spsr_el1, x0
 
+	adr x0, 0f
+	msr elr_el1, x0
+	eret
+
+0:
+	tlbi vmalle1
+	dsb nsh
+
 	adrp x0, aarch64_ap_entry_stage0
 	add x0, x0, :lo12:aarch64_ap_entry_stage0
-	msr elr_el1, x0
 
 	mov x29, #0
 	mov x30, #0
-	eret
+	br x0
 .popsection
 )");
 
@@ -104,7 +119,7 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	sctlr_el1 |= 1 << 2;
 	sctlr_el1 |= 1 << 12;
 	sctlr_el1 &= ~(1 << 19);
-	asm volatile("tlbi vmalle1; dsb nsh; msr sctlr_el1, %0; isb" : : "r"(sctlr_el1) : "memory");
+	asm volatile("tlbi vmalle1; msr sctlr_el1, %0; dsb nsh; isb" : : "r"(sctlr_el1) : "memory");
 
 	asm volatile(R"(
 		add sp, sp, %2
@@ -185,10 +200,13 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 	auto cpus = cpus_opt.value();
 
 	u64 self_mpidr;
-	asm volatile ("mrs %0, mpidr_el1" : "=r"(self_mpidr));
+	asm volatile("mrs %0, mpidr_el1" : "=r"(self_mpidr));
 	u64 self_aff = (self_mpidr & 0xFFFFFF) | (self_mpidr >> 32 & 0xFF) << 32;
 
 	auto cells = cpus.size_cells();
+
+	println("[kernel][aarch64]: smp init");
+
 	for (auto child : cpus.child_iter()) {
 		if (NUM_CPUS.load(kstd::memory_order::relaxed) >= CONFIG_MAX_CPUS) {
 			break;
@@ -221,6 +239,8 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 		stack += 16 * PAGE_SIZE;
 
 		auto old = NUM_CPUS.load(kstd::memory_order::relaxed);
+
+		println("[kernel][aarch64]: init cpu ", Fmt::Hex, mpidr, Fmt::Reset);
 
 		psci_cpu_on(mpidr, phys_entry, to_phys(stack));
 

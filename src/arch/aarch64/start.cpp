@@ -1,5 +1,4 @@
 #include "dev/discovery.hpp"
-#include "dev/psci.hpp"
 #include "loader/early_paging.hpp"
 #include "mem/aarch64_mem.hpp"
 #include "dtb.hpp"
