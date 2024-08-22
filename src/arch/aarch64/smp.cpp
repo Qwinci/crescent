@@ -7,6 +7,7 @@
 #include "mem/mem.hpp"
 #include "sched/process.hpp"
 #include "dev/gic.hpp"
+#include "cpu.hpp"
 
 static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
 static kstd::atomic<u32> NUM_CPUS {1};
@@ -146,6 +147,16 @@ static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 	cpacr_el1 |= 0b11 << 20;
 	asm volatile("msr cpacr_el1, %0" : : "r"(cpacr_el1));
 
+	if (CPU_FEATURES.pan) {
+		u64 sctlr_el1;
+		asm volatile("mrs %0, sctlr_el1" : "=r"(sctlr_el1));
+		sctlr_el1 &= ~(1 << 23);
+		asm volatile("msr sctlr_el1, %0; isb" : : "r"(sctlr_el1));
+
+		// msr pan, #1
+		asm volatile("msr s0_0_c4_c1_4, xzr" : : "r"(u64 {1 << 22}));
+	}
+
 	sched_init(bsp);
 
 	u64 mpidr;
@@ -183,8 +194,16 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 
 extern "C" void aarch64_ap_entry_asm();
 
+static void aarch64_cpu_features_init() {
+	u64 mmfr3;
+	asm volatile("mrs %0, id_mmfr3_el1" : "=r"(mmfr3));
+	u8 supports_pan = mmfr3 >> 16 & 0xF;
+	CPU_FEATURES.pan = supports_pan;
+}
+
 void aarch64_bsp_init() {
 	CPUS[0].initialize();
+	aarch64_cpu_features_init();
 	aarch64_common_cpu_init(&*CPUS[0], 0, true);
 }
 

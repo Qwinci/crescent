@@ -19,6 +19,7 @@ target_sources(crescent PRIVATE
 	kernel_dtb.cpp
 	dtb.cpp
 	arch_sched.cpp
+	cpu.cpp
 	smp.cpp
 	start.cpp
 )
