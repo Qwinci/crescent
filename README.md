@@ -90,14 +90,14 @@ There are also different targets that may be useful:
         - [ ] TCP v4 (mostly done)
         - [ ] TCP v6
     - [ ] USB
-        - [ ] Generic HCI interface abstraction
+        - [x] Generic HCI interface abstraction
         - [ ] HCI
             - [ ] UHCI
             - [ ] OHCI
             - [ ] EHCI
-            - [ ] XHCI
+            - [x] XHCI
         - [ ] Keyboard
-        - [ ] Mouse
+        - [x] Mouse
         - [ ] Mass storage
 - [ ] Apps
   - [ ] Desktop environment (very basic one with almost no functionality is done)
