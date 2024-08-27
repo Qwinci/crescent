@@ -250,9 +250,9 @@ typedef struct {
 } KeyEvent;
 
 typedef struct {
-	int16_t x_movement;
-	int16_t y_movement;
-	int8_t z_movement;
+	int32_t x_movement;
+	int32_t y_movement;
+	int32_t z_movement;
 	bool left_pressed;
 	bool right_pressed;
 	bool middle_pressed;
