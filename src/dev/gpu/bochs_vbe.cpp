@@ -98,9 +98,9 @@ namespace {
 	ManuallyInit<kstd::shared_ptr<GpuDevice>> VBE_GPU_DEVICE {};
 }
 
-static bool bochs_vbe_init(pci::Device& device) {
+static InitStatus bochs_vbe_init(pci::Device& device) {
 	if (vbe_read(regs::INDEX_ID) != 0xB0C5) {
-		return false;
+		return InitStatus::Error;
 	}
 
 	auto width = vbe_read(regs::INDEX_XRES);
@@ -119,7 +119,7 @@ static bool bochs_vbe_init(pci::Device& device) {
 	VBE_GPU_DEVICE.initialize(kstd::make_shared<GpuDevice>(&*VBE_GPU, "vbe gpu"));
 	dev_add(*VBE_GPU_DEVICE, CrescentDeviceType::Gpu);
 
-	return true;
+	return InitStatus::Success;
 }
 
 static PciDriver VBE_DRIVER {

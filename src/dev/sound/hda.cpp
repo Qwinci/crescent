@@ -641,7 +641,7 @@ struct Codec {
 				device = "spdif out";
 			}
 
-			println("pin nid: ", Fmt::Hex, pin->nid, " loc ", first_loc, " ", second_loc, " ", device);
+			//println("pin nid: ", Fmt::Hex, pin->nid, " loc ", first_loc, " ", second_loc, " ", device);
 
 			for (usize i = 0; i < path.nodes.size(); ++i) {
 				auto widget = path.nodes[i];
@@ -985,7 +985,7 @@ void Controller::start() {
 
 static Controller* GLOBAL_CONTROLLER;
 
-static bool hda_init(pci::Device& device) {
+static InitStatus hda_init(pci::Device& device) {
 	println("[kernel][hda]: hda driver initializing for ", Fmt::Hex,
 			device.hdr0->common.vendor_id, ":", device.hdr0->common.device_id, Fmt::Reset);
 
@@ -1068,7 +1068,7 @@ static bool hda_init(pci::Device& device) {
 	auto* ptr = controller->dma_current_pos;
 	auto* stream_pos = &ptr[controller->in_stream_count * 2];
 
-	return true;
+	return InitStatus::Success;
 }
 
 void hda_play() {
@@ -1083,7 +1083,7 @@ void hda_play() {
 	stream_space.store(regs::stream::CTL0, ctl0);
 }
 
-static bool sst_init(pci::Device& device) {
+static InitStatus sst_init(pci::Device& device) {
 	println("[kernel]: hda sst init");
 	return hda_init(device);
 }

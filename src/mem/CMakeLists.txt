@@ -5,4 +5,5 @@ target_sources(crescent PRIVATE
 	malloc.cpp
 	vspace.cpp
 	iospace.cpp
+	unique_phys.cpp
 )

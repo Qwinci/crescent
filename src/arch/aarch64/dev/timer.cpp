@@ -54,7 +54,7 @@ static bool on_irq(IrqFrame*) {
 	return true;
 }
 
-static bool arm_timer_init(DtbNode& node) {
+static InitStatus arm_timer_init(DtbNode& node) {
 	println("[kernel][aarch64]: arm timer init");
 
 	assert(node.irqs.size() >= 3);
@@ -78,7 +78,7 @@ static bool arm_timer_init(DtbNode& node) {
 	asm volatile("msr cntv_cval_el0, %0" : : "r"(0xFFFFFFFFFFFFFFFF));
 	asm volatile("msr cntv_ctl_el0, %0" : : "r"(u64 {1}));
 
-	return true;
+	return InitStatus::Success;
 }
 
 static constexpr DtDriver DRIVER {

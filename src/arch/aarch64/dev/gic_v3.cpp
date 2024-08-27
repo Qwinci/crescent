@@ -251,7 +251,7 @@ void gic_v3_init_on_cpu() {
 
 void aarch64_irq_init();
 
-static bool gic_v3_init(DtbNode& node) {
+static InitStatus gic_v3_init(DtbNode& node) {
 	println("[kernel][aarch64]: gic v3 init");
 	GIC = &*GIC_V3;
 	GIC_VERSION = 3;
@@ -300,7 +300,7 @@ static bool gic_v3_init(DtbNode& node) {
 	gic_init_on_cpu();
 	aarch64_irq_init();
 
-	return true;
+	return InitStatus::Success;
 }
 
 static DtDriver GIC_V3_DRIVER {

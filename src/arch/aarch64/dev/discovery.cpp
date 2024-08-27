@@ -17,86 +17,94 @@ static void try_find_driver(DtbNode& node) {
 	}
 
 	for (Driver* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
-		if (driver->type == Driver::Type::Dt) {
-			for (auto driver_compatible : driver->dt->compatible) {
-				if (node.is_compatible(driver_compatible)) {
-					bool can_load = true;
-					for (auto dependency : driver->dt->depends) {
-						bool dep_found = false;
-						for (auto loaded : *LOADED_DRIVERS) {
-							for (auto provide : loaded->dt->provides) {
-								if (provide == dependency) {
-									dep_found = true;
-									break;
-								}
-							}
+		if (driver->type != DriverType::Dt) {
+			continue;
+		}
 
-							if (dep_found) {
-								break;
-							}
-						}
+		bool is_compatible = false;
+		for (auto driver_compatible : driver->dt->compatible) {
+			if (node.is_compatible(driver_compatible)) {
+				is_compatible = true;
+				break;
+			}
+		}
 
-						if (!dep_found) {
-							can_load = false;
+		if (!is_compatible) {
+			continue;
+		}
+
+		bool can_load = true;
+		for (auto dependency : driver->dt->depends) {
+			bool dep_found = false;
+			for (auto loaded : *LOADED_DRIVERS) {
+				for (auto provide : loaded->dt->provides) {
+					if (provide == dependency) {
+						dep_found = true;
+						break;
+					}
+				}
+
+				if (dep_found) {
+					break;
+				}
+			}
+
+			if (!dep_found) {
+				can_load = false;
+				break;
+			}
+		}
+
+		if (!can_load) {
+			PENDING_DRIVERS->push({driver, &node});
+			break;
+		}
+
+		auto status = driver->dt->init(node);
+		if (status == InitStatus::Error) {
+			break;
+		}
+		else if (status == InitStatus::Defer) {
+			PENDING_DRIVERS->push({driver, &node});
+			break;
+		}
+
+		LOADED_DRIVERS->push(driver);
+
+		for (auto& pending : *PENDING_DRIVERS) {
+			if (!pending.first) {
+				continue;
+			}
+
+			bool can_load_pending = true;
+			for (auto dependency : pending.first->dt->depends) {
+				bool dep_found = false;
+				for (auto loaded : *LOADED_DRIVERS) {
+					for (auto provide : loaded->dt->provides) {
+						if (provide == dependency) {
+							dep_found = true;
 							break;
 						}
 					}
+				}
 
-					if (can_load) {
-						if (driver->dt->init(node)) {
-							for (auto pending : *PENDING_DRIVERS) {
-								if (!pending.first) {
-									continue;
-								}
-
-								bool can_load_pending = true;
-								for (auto dependency : pending.first->dt->depends) {
-									bool dep_found = false;
-
-									for (auto provide : driver->dt->provides) {
-										if (provide == dependency) {
-											dep_found = true;
-											break;
-										}
-									}
-
-									if (!dep_found) {
-										for (auto loaded : *LOADED_DRIVERS) {
-											for (auto provide : loaded->dt->provides) {
-												if (provide == dependency) {
-													dep_found = true;
-													break;
-												}
-											}
-										}
-									}
-
-									if (!dep_found) {
-										can_load_pending = false;
-										break;
-									}
-								}
-
-								if (can_load_pending) {
-									pending.first->dt->init(*pending.second);
-									pending.first = nullptr;
-								}
-							}
-
-							LOADED_DRIVERS->push(driver);
-						}
-					}
-					else {
-						PENDING_DRIVERS->push({driver, &node});
-					}
-
-					goto end;
+				if (!dep_found) {
+					can_load_pending = false;
+					break;
 				}
 			}
+
+			if (!can_load_pending) {
+				continue;
+			}
+
+			status = pending.first->dt->init(*pending.second);
+			if (status == InitStatus::Defer) {
+				continue;
+			}
+			pending.first = nullptr;
 		}
 	}
-
-	end:
 }
 
 void dtb_discover_devices() {
@@ -106,4 +114,16 @@ void dtb_discover_devices() {
 			try_find_driver(node);
 			return false;
 	});
+
+	for (auto& pending : *PENDING_DRIVERS) {
+		if (pending.first) {
+			println("[kernel][aarch64]: failed to load driver ", pending.first->dt->name);
+		}
+	}
+
+	LOADED_DRIVERS->clear();
+	LOADED_DRIVERS->shrink_to_fit();
+
+	PENDING_DRIVERS->clear();
+	PENDING_DRIVERS->shrink_to_fit();
 }

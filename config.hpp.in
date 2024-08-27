@@ -1,4 +1,6 @@
 #pragma once
 
 #cmakedefine CONFIG_MAX_CPUS @CONFIG_MAX_CPUS@
-#cmakedefine01 CONFIG_TRACING @CONFIG_TRACING@
+#cmakedefine01 CONFIG_TRACING
+#cmakedefine01 CONFIG_PCI
+#cmakedefine01 CONFIG_DTB

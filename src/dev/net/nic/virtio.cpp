@@ -50,7 +50,7 @@ namespace virtio {
 	static constexpr u32 NO_VECTOR = 0xFFFF;
 }
 
-static bool virtio_nic_init(pci::Device& device) {
+static InitStatus virtio_nic_init(pci::Device& device) {
 	println("[kernel][nic]: virtio nic init");
 
 	for (u32 i = 0;; ++i) {
@@ -64,7 +64,7 @@ static bool virtio_nic_init(pci::Device& device) {
 
 	}
 
-	return true;
+	return InitStatus::Success;
 }
 
 static constexpr PciDriver VIRTIO_NIC_DRIVER {

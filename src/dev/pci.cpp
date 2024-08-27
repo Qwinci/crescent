@@ -70,7 +70,7 @@ namespace pci {
 		auto* hdr0 = reinterpret_cast<Header0*>(hdr);
 		auto* dev = new Device {hdr0, ADDRESS};
 		for (const auto* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
-			if (driver->type == Driver::Type::Pci) {
+			if (driver->type == DriverType::Pci) {
 				auto& driver_pci = driver->pci;
 				if (driver_pci->match & PciMatch::Class && driver_pci->_class != hdr->class_) {
 					continue;
@@ -84,7 +84,7 @@ namespace pci {
 				else if (driver_pci->match & PciMatch::Device) {
 					for (auto& match_dev : driver_pci->devices) {
 						if (match_dev.vendor == hdr->vendor_id && match_dev.device == hdr->device_id) {
-							if (driver_pci->init(*dev)) {
+							if (driver_pci->init(*dev) == InitStatus::Success) {
 								goto end;
 							}
 							break;
@@ -94,14 +94,14 @@ namespace pci {
 				}
 				else if (driver_pci->fine_match) {
 					if (driver_pci->fine_match(*dev)) {
-						if (driver_pci->init(*dev)) {
+						if (driver_pci->init(*dev) == InitStatus::Success) {
 							goto end;
 						}
 						break;
 					}
 				}
 				else {
-					if (driver_pci->init(*dev)) {
+					if (driver_pci->init(*dev) == InitStatus::Success) {
 						goto end;
 					}
 				}

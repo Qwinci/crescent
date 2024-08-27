@@ -170,7 +170,7 @@ struct PmicArb {
 	u16 apid_count;
 };
 
-bool spmi_init(DtbNode& node) {
+InitStatus spmi_init(DtbNode& node) {
 	println("spmi init");
 
 	auto [core_phys, core_size] = node.regs[0];
@@ -331,7 +331,7 @@ bool spmi_init(DtbNode& node) {
 		}
 	}
 
-	return true;
+	return InitStatus::Success;
 }
 
 static DtDriver SPMI_DRIVER {

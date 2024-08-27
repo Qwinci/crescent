@@ -85,7 +85,7 @@ void psci_system_reset() {
 	psci_call(0x84000009);
 }
 
-static bool psci_init(DtbNode& node) {
+static InitStatus psci_init(DtbNode& node) {
 	auto method_opt = node.prop("method");
 	if (!method_opt) {
 		panic("psci node contains no method");
@@ -104,7 +104,7 @@ static bool psci_init(DtbNode& node) {
 
 	INITIALIZED = true;
 
-	return true;
+	return InitStatus::Success;
 }
 
 static constexpr DtDriver PSCI_DRIVER {

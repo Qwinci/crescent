@@ -480,7 +480,7 @@ struct Rtl : public Nic {
 	bool is_8139 {};
 };
 
-static bool rtl_init(pci::Device& device) {
+static InitStatus rtl_init(pci::Device& device) {
 	auto rtl = kstd::make_shared<Rtl>(device);
 	{
 		IrqGuard irq_guard {};
@@ -492,7 +492,7 @@ static bool rtl_init(pci::Device& device) {
 	println("[kernel][nic]: rtl init done");
 	dhcp_discover(rtl.data());
 
-	return true;
+	return InitStatus::Success;
 }
 
 static PciDriver RTL_DRIVER {
