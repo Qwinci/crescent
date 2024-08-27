@@ -216,7 +216,7 @@ void kernel_dtb_init(void* plain_dtb_void) {
 							irq.mode = TriggerMode::Level;
 						}
 						else {
-							println("[kernel][aarch64]: unsupported irq mode ", flags);
+							//println("[kernel][aarch64]: unsupported irq mode ", flags);
 						}
 
 						node.irqs.push(irq);
@@ -237,7 +237,7 @@ u64 DtbNode::translate_addr(u64 addr) const {
 		}
 
 		if (!node->is_compatible("simple-bus")) {
-			println("[kernel][aarch64]: unsupported translation on bus ", node->name);
+			//println("[kernel][aarch64]: unsupported translation on bus ", node->name);
 			return addr;
 		}
 

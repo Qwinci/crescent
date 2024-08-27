@@ -328,13 +328,15 @@ void Scheduler::unblock(Thread* thread, bool remove_sleeping) {
 		   thread->status == Thread::Status::Sleeping);
 	assert(thread->sched_lock.is_locked());
 
-	auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
 	if (remove_sleeping && thread->status == Thread::Status::Sleeping) {
-		sleeping_threads.lock()->remove(thread);
+		thread->sleep_end = SIZE_MAX;
 	}
-	assert(thread != current);
-	thread->status = Thread::Status::Waiting;
-	guard->push(thread);
+	else {
+		auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
+		assert(thread != current);
+		thread->status = Thread::Status::Waiting;
+		guard->push(thread);
+	}
 }
 
 void Scheduler::on_timer(Cpu* cpu) {
@@ -354,7 +356,7 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	usize first_sleep_end = UINTPTR_MAX;
 	auto guard = sleeping_threads.lock();
 	for (auto& thread : *guard) {
-		if (thread.sleep_end > now) {
+		if (thread.sleep_end != SIZE_MAX && thread.sleep_end > now) {
 			first_sleep_end = thread.sleep_end;
 			break;
 		}

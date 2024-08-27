@@ -1,17 +1,18 @@
 #include "smp.hpp"
 #include "arch/cpu.hpp"
 #include "config.hpp"
+#include "cpu.hpp"
+#include "dev/gic.hpp"
 #include "dev/psci.hpp"
 #include "loader/constants.hpp"
 #include "loader/early_paging.hpp"
 #include "mem/mem.hpp"
 #include "sched/process.hpp"
-#include "dev/gic.hpp"
-#include "cpu.hpp"
 
 static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
 static kstd::atomic<u32> NUM_CPUS {1};
 static Spinlock<void> SMP_LOCK {};
+static constexpr bool LOG_SMP_STARTUP = true;
 
 asm(R"(
 .pushsection .text
@@ -59,11 +60,12 @@ aarch64_ap_entry_asm:
 )");
 
 extern EarlyPageMap* AARCH64_IDENTITY_MAP;
+extern EarlyPageMap* AARCH64_EARLY_PHYS_KERNEL_MAP;
 [[gnu::visibility("hidden")]] extern char KERNEL_START[];
 
 extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	u64 ttbr0_el1 = reinterpret_cast<u64>(AARCH64_IDENTITY_MAP);
-	u64 ttbr1_el1 = to_phys(KERNEL_PROCESS->page_map.level0);
+	u64 ttbr1_el1 = reinterpret_cast<u64>(AARCH64_EARLY_PHYS_KERNEL_MAP);
 	asm volatile("msr ttbr0_el1, %0" : : "r"(ttbr0_el1));
 	asm volatile("msr ttbr1_el1, %0" : : "r"(ttbr1_el1));
 
@@ -138,6 +140,8 @@ static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 
 	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
 	thread->status = Thread::Status::Running;
+	thread->pin_level = true;
+	thread->pin_cpu = true;
 	self->scheduler.current = thread;
 	set_current_thread(thread);
 
@@ -181,7 +185,9 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 		gic_init_on_cpu();
 		cpu->arm_tick_source.init_on_cpu(cpu);
 
-		println("[kernel][smp]: cpu ", num, " online!");
+		if constexpr (LOG_SMP_STARTUP) {
+			println("[kernel][smp]: cpu ", num, " online!");
+		}
 
 		NUM_CPUS.store(num + 1, kstd::memory_order::relaxed);
 		asm volatile("sev");
@@ -259,7 +265,9 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 
 		auto old = NUM_CPUS.load(kstd::memory_order::relaxed);
 
-		println("[kernel][aarch64]: init cpu ", Fmt::Hex, mpidr, Fmt::Reset);
+		if constexpr (LOG_SMP_STARTUP) {
+			println("[kernel][aarch64]: init cpu ", Fmt::Hex, mpidr, Fmt::Reset);
+		}
 
 		psci_cpu_on(mpidr, phys_entry, to_phys(stack));
 

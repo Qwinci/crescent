@@ -22,6 +22,13 @@ namespace kstd {
 				_has_value = true;
 			}
 		}
+		constexpr optional(const optional& other) : data {.size {}}, _has_value {false} {
+			if (other._has_value) {
+				new (&data.obj) T {other.data.obj};
+				_has_value = true;
+			}
+		}
+
 		template<typename U = T>
 		constexpr optional(U&& value) requires(!is_same_v<U, optional>) // NOLINT(*-explicit-constructor)
 			: data {.obj {static_cast<U&&>(value)}}, _has_value {true} {}

@@ -19,3 +19,15 @@ static inline bool arch_enable_irqs(bool enable) {
 
 	return !(old & 1 << 7);
 }
+
+static inline void mem_barrier() {
+	asm volatile("dmb ish");
+}
+
+static inline void write_barrier() {
+	asm volatile("dmb ishst" : : : "memory");
+}
+
+static inline void read_barrier() {
+	asm volatile("dmb ishld");
+}

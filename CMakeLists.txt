@@ -23,7 +23,7 @@ target_compile_options(crescent PRIVATE
 	-Wall -Wextra -Werror=switch -Werror=return-type
 	-nostdinc++ -fno-exceptions -fno-threadsafe-statics -fno-rtti -fsized-deallocation
 	-ffreestanding -fno-strict-aliasing -Wframe-larger-than=4096 -fno-eliminate-unused-debug-types
-	-Wno-invalid-offsetof
+	-Wno-invalid-offsetof -Wno-unused-parameter -Wno-unused-const-variable
 )
 
 if(NOT ARCH STREQUAL "user")

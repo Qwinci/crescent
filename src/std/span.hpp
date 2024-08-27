@@ -3,6 +3,8 @@
 #include "initializer_list.hpp"
 
 namespace kstd {
+	inline constexpr size_t dynamic_extent = size_t(-1);
+
 	template<typename T>
 	class span {
 	public:
@@ -17,6 +19,9 @@ namespace kstd {
 
 		constexpr span(std::initializer_list<T> list)
 			: _begin {list.begin()}, _size {list.size()} {}
+
+		template<size_t N>
+		constexpr span(const T (&arr)[N]) : _begin {&arr[0]}, _size {N} {}
 
 		[[nodiscard]] constexpr const T* begin() const {
 			return _begin;

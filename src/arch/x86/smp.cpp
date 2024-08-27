@@ -126,6 +126,8 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 
 	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
 	thread->status = Thread::Status::Running;
+	thread->pin_level = true;
+	thread->pin_cpu = true;
 	self->scheduler.current = thread;
 	set_current_thread(thread);
 	init_usermode();

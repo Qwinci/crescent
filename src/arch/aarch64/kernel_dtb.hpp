@@ -66,6 +66,7 @@ struct DtbNode {
 		TriggerMode mode;
 	};
 	kstd::vector<Irq> irqs {};
+	void* data {};
 
 	inline bool is_compatible(kstd::string_view comp) {
 		for (const auto& i : compatible) {

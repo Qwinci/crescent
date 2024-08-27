@@ -19,6 +19,7 @@ constexpr usize SIZE_GB = 1024 * 1024 * 1024;
 
 EarlyPageMap* AARCH64_IDENTITY_MAP;
 EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
+EarlyPageMap* AARCH64_EARLY_PHYS_KERNEL_MAP;
 
 [[gnu::always_inline]] static inline void setup_memory(usize max_addr) {
 	auto* kernel_map = new (early_page_alloc()) EarlyPageMap;
@@ -123,6 +124,7 @@ EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 	HHDM_START = HHDM_OFFSET;
 
 	AARCH64_EARLY_KERNEL_MAP = to_virt<EarlyPageMap>(reinterpret_cast<usize>(kernel_map));
+	AARCH64_EARLY_PHYS_KERNEL_MAP = kernel_map;
 }
 
 extern "C" [[gnu::used]] void early_start(usize dtb_phys) {

@@ -5,7 +5,7 @@ execute_process(
 set(APPS "" CACHE INTERNAL "")
 
 execute_process(COMMAND
-	${CMAKE_C_COMPILER} -print-search-dirs
+	${CMAKE_CXX_COMPILER} -print-search-dirs
 	OUTPUT_VARIABLE COMPILER_DIRS
 )
 string(REPLACE "\n" ";" COMPILER_DIRS "${COMPILER_DIRS}")

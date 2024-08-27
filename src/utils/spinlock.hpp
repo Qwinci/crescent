@@ -2,14 +2,20 @@
 #include "utility.hpp"
 
 namespace __spinlock_detail { // NOLINT(*-reserved-identifier)
+#ifdef __aarch64__
+	using LockType = u32;
+#else
+	using LockType = bool;
+#endif
+
 	template<typename T>
 	struct Data {
 		T value {};
-		bool lock {};
+		LockType lock {};
 	};
 	template<>
 	struct Data<void> {
-		bool lock {};
+		LockType lock {};
 	};
 }
 
@@ -24,9 +30,6 @@ public:
 	public:
 		inline ~Guard() {
 			__atomic_store_n(&owner->data.lock, false, __ATOMIC_RELEASE);
-#ifdef __aarch64__
-			asm volatile("sev");
-#endif
 		}
 
 		operator T&() { // NOLINT(*-explicit-constructor)
@@ -49,6 +52,20 @@ public:
 	};
 
 	[[nodiscard]] Guard lock() {
+#ifdef __aarch64__
+		__spinlock_detail::LockType value;
+		__spinlock_detail::LockType one = 1;
+		asm volatile(R"(
+			sevl
+			prfm pstl1keep, %0
+			0:
+			wfe
+			ldaxr %w1, %0
+			cbnz %w1, 0b
+			stxr %w1, %w2, %0
+			cbnz %w1, 0b
+		)" : "+Q"(data.lock), "=&r"(value) : "r"(one) : "memory");
+#else
 		while (true) {
 			if (!__atomic_exchange_n(&data.lock, true, __ATOMIC_ACQUIRE)) {
 				break;
@@ -56,12 +73,15 @@ public:
 			while (__atomic_load_n(&data.lock, __ATOMIC_RELAXED)) {
 #if defined(__x86_64__)
 				__builtin_ia32_pause();
-#elif defined(__aarch64__)
-				asm volatile("wfe");
 #endif
 			}
 		}
+#endif
 		return Guard {this};
+	}
+
+	[[nodiscard]] inline bool is_locked() const {
+		return __atomic_load_n(&data.lock, __ATOMIC_RELAXED);
 	}
 
 	T& get_unsafe() {
@@ -81,9 +101,6 @@ public:
 	public:
 		inline ~Guard() {
 			__atomic_store_n(&owner->data.lock, false, __ATOMIC_RELEASE);
-#ifdef __aarch64__
-			asm volatile("sev");
-#endif
 		}
 
 	private:
@@ -94,6 +111,20 @@ public:
 	};
 
 	[[nodiscard]] Guard lock() {
+#ifdef __aarch64__
+		__spinlock_detail::LockType value;
+		__spinlock_detail::LockType one = 1;
+		asm volatile(R"(
+			sevl
+			prfm pstl1keep, %0
+			0:
+			wfe
+			ldaxr %w1, %0
+			cbnz %w1, 0b
+			stxr %w1, %w2, %0
+			cbnz %w1, 0b
+		)" : "+Q"(data.lock), "=&r"(value) : "r"(one) : "memory");
+#else
 		while (true) {
 			if (!__atomic_exchange_n(&data.lock, true, __ATOMIC_ACQUIRE)) {
 				break;
@@ -101,11 +132,10 @@ public:
 			while (__atomic_load_n(&data.lock, __ATOMIC_RELAXED)) {
 #if defined(__x86_64__)
 				__builtin_ia32_pause();
-#elif defined(__aarch64__)
-				asm volatile("wfe");
 #endif
 			}
 		}
+#endif
 		return Guard {this};
 	}
 
@@ -114,6 +144,20 @@ public:
 	}
 
 	void manual_lock() {
+#ifdef __aarch64__
+		__spinlock_detail::LockType value;
+		__spinlock_detail::LockType one = 1;
+		asm volatile(R"(
+			sevl
+			prfm pstl1keep, %0
+			0:
+			wfe
+			ldaxr %w1, %0
+			cbnz %w1, 0b
+			stxr %w1, %w2, %0
+			cbnz %w1, 0b
+		)" : "+Q"(data.lock), "=&r"(value) : "r"(one) : "memory");
+#else
 		while (true) {
 			if (!__atomic_exchange_n(&data.lock, true, __ATOMIC_ACQUIRE)) {
 				break;
@@ -121,11 +165,10 @@ public:
 			while (__atomic_load_n(&data.lock, __ATOMIC_RELAXED)) {
 #if defined(__x86_64__)
 				__builtin_ia32_pause();
-#elif defined(__aarch64__)
-				asm volatile("wfe");
 #endif
 			}
 		}
+#endif
 	}
 
 	void manual_unlock() {
