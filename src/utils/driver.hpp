@@ -78,7 +78,7 @@ struct UsbDriver {
 	bool (*init)(const usb::AssignedDevice& device) {};
 	UsbMatch match {};
 	u8 interface_class {};
-	bool (*fine_match)(const UniquePhysical& config, const usb::DeviceDescriptor& device_desc) {};
+	void* (*fine_match)(const usb::Config& config, const usb::DeviceDescriptor& device_desc) {};
 };
 
 #define USB_DRIVER(variable) [[gnu::section(".drivers"), gnu::used]] \

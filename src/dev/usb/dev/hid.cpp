@@ -361,7 +361,9 @@ static void finalize_event() {
 static bool usb_hid_init(const usb::AssignedDevice& device) {
 	HidDescriptor* hid_desc = nullptr;
 
-	for (auto& desc : device.descriptors) {
+	auto& iface = device.interfaces[device.interface_index];
+
+	for (auto& desc : iface.descs) {
 		if (desc.type == usb::setup::desc_type::HID) {
 			hid_desc = static_cast<HidDescriptor*>(desc.data);
 			break;
@@ -394,8 +396,9 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 		usb::setup::std_req::GET_DESCRIPTOR,
 		HID_REPORT_TYPE << 8 | 0,
 		device.interface_index,
+		report_buffer.base,
 		report_length
-	}, report_buffer.base);
+	});
 	assert(status == usb::Status::Success);
 
 	auto reports = parse_hid_report(to_virt<u8>(report_buffer.base), report_length);
@@ -407,8 +410,9 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 		hid_reg::SET_IDLE,
 		0,
 		device.interface_index,
+		0,
 		0
-	}, 0);
+	});
 	assert(status == usb::Status::Success);
 
 	status = device.device.control({
@@ -418,12 +422,13 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 		hid_reg::SET_PROTOCOL,
 		1,
 		device.interface_index,
+		0,
 		0
-	}, 0);
+	});
 	assert(status == usb::Status::Success);
 
-	assert(device.eps.size() == 1);
-	auto ep = device.eps[0];
+	assert(iface.eps.size() == 1);
+	auto ep = iface.eps[0];
 	auto num = ep.number();
 
 	bool has_prefix = reports.size() > 1;

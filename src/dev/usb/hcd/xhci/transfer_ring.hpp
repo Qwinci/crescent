@@ -23,8 +23,9 @@ namespace xhci {
 		u32 used_count {};
 		bool ring_c {true};
 
-		void control(usb::setup::Packet setup, usize buffer);
+		void control(const usb::setup::Packet* setup);
 		bool normal(const usb::normal::Packet* packet);
+		usize normal_large(const usb::normal::LargePacket* packet);
 
 		RbTree<usb::UsbEvent, &usb::UsbEvent::hook> events {};
 	};

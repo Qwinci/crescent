@@ -321,6 +321,9 @@ namespace {
 		if (status == 1) {
 			return usb::Status::Success;
 		}
+		else if (status == 13) {
+			return usb::Status::ShortPacket;
+		}
 		else {
 			println("[kernel][xhci]: unhandled status ", status);
 			return usb::Status::TransactionError;
@@ -332,24 +335,24 @@ struct XhciController;
 
 struct Endpoint {
 	volatile EndpointContext* ptr;
-	TransferRing* ring;
+	IrqSpinlock<TransferRing*> ring;
 };
 
 struct DeviceContext final : public usb::Device {
-	usb::Status control(usb::setup::Packet setup, usize buffer) override {
-		usb::UsbEvent event {buffer};
-		default_control_ring.events.insert(&event);
+	DeviceContext() {
+		max_normal_packets = PAGE_SIZE / sizeof(TransferTrb) / 2 - 1;
+	}
 
-		default_control_ring.control(setup, buffer);
+	void control_async(usb::setup::Packet* setup) override {
+		auto guard = default_control_ring.lock();
+		assert(!guard->events.find<usize, &usb::UsbEvent::trb_ptr>(setup->event.trb_ptr));
+		guard->events.insert(&setup->event);
+
+		guard->control(setup);
 		trigger_control_ep();
-
-		event.wait();
-		return event.status;
 	}
 
 	bool normal_one(usb::normal::Packet* packet) override {
-		IrqGuard irq_guard {};
-
 		assert(packet->ep < 15);
 		auto& full_ep = endpoint[packet->ep];
 
@@ -361,11 +364,14 @@ struct DeviceContext final : public usb::Device {
 			ep = &full_ep.in;
 		}
 
-		if (!ep->ring->normal(packet)) {
+		auto guard = ep->ring.lock();
+		assert(!(*guard)->events.find<usize, &usb::UsbEvent::trb_ptr>(packet->event.trb_ptr));
+
+		if (!(*guard)->normal(packet)) {
 			return false;
 		}
 
-		ep->ring->events.insert(&packet->event);
+		(*guard)->events.insert(&packet->event);
 
 		if (packet->dir == usb::Dir::ToDevice) {
 			trigger_out_ep(packet->ep);
@@ -383,6 +389,35 @@ struct DeviceContext final : public usb::Device {
 			if (!normal_one(packet)) {
 				return i;
 			}
+		}
+
+		return count;
+	}
+
+	usize normal_large(usb::normal::LargePacket* packet) override {
+		assert(packet->ep < 15);
+		auto& full_ep = endpoint[packet->ep];
+
+		Endpoint* ep;
+		if (packet->dir == usb::Dir::ToDevice) {
+			ep = &full_ep.out;
+		}
+		else {
+			ep = &full_ep.in;
+		}
+
+		auto guard = ep->ring.lock();
+		assert(!(*guard)->events.find<usize, &usb::UsbEvent::trb_ptr>(packet->event.trb_ptr));
+
+		auto count = (*guard)->normal_large(packet);
+
+		(*guard)->events.insert(&packet->event);
+
+		if (packet->dir == usb::Dir::ToDevice) {
+			trigger_out_ep(packet->ep);
+		}
+		else {
+			trigger_in_ep(packet->ep);
 		}
 
 		return count;
@@ -421,16 +456,18 @@ struct DeviceContext final : public usb::Device {
 		state = State::Initial;
 		port = 0;
 		speed = Speed::Low;
-		default_control_ring.reset();
+		default_control_ring.lock()->reset();
 
 		for (auto& ep : endpoint) {
-			if (ep.out.ring) {
-				delete ep.out.ring;
-				ep.out.ring = nullptr;
+			auto out_guard = ep.out.ring.lock();
+			auto in_guard = ep.in.ring.lock();
+			if (*out_guard) {
+				delete *out_guard;
+				*out_guard = nullptr;
 			}
-			if (ep.in.ring) {
-				delete ep.in.ring;
-				ep.in.ring = nullptr;
+			if (*in_guard) {
+				delete *in_guard;
+				*in_guard = nullptr;
 			}
 		}
 	}
@@ -449,7 +486,7 @@ struct DeviceContext final : public usb::Device {
 		*doorbell = doorbell::DB_TARGET(doorbell::out_enqueue_ptr_update(ep));
 	}
 
-	xhci::TransferRing default_control_ring {};
+	IrqSpinlock<xhci::TransferRing> default_control_ring {};
 	XhciController* controller {};
 };
 
@@ -662,7 +699,7 @@ struct XhciController {
 
 		auto& slot = slots[slot_index];
 
-		slot.default_control_ring.max_packet_size = max_packet_size;
+		slot.default_control_ring.get_unsafe()->max_packet_size = max_packet_size;
 		slot.port = port;
 
 		InputContext ctx {};
@@ -678,9 +715,9 @@ struct XhciController {
 		ctx.ep0->third =
 			endpoint_ctx::third::AVG_TRB_LEN(8);
 		ctx.ep0->tr_dequeue_ptr_low =
-			slot.default_control_ring.phys |
+			slot.default_control_ring.get_unsafe()->phys |
 			endpoint_ctx::tr_dequeue_ptr::DCS;
-		ctx.ep0->tr_dequeue_ptr_high = slot.default_control_ring.phys >> 32;
+		ctx.ep0->tr_dequeue_ptr_high = slot.default_control_ring.get_unsafe()->phys >> 32;
 
 		assert(slot.state == DeviceContext::State::Initial ||
 		    slot.state == DeviceContext::State::Default);
@@ -799,15 +836,19 @@ struct XhciController {
 					assert(page);
 					memset(to_virt<void>(page), 0, 8);
 
-					slot.default_control_ring.control({
+					usb::setup::Packet packet {
 						usb::Dir::FromDevice,
 						usb::setup::Type::Standard,
 						usb::setup::Rec::Device,
 						usb::setup::std_req::GET_DESCRIPTOR,
 						usb::setup::desc_type::DEVICE << 8 | 0,
 						0,
+						page,
 						8
-					}, page);
+					};
+
+					auto guard = slot.default_control_ring.lock();
+					guard->control(&packet);
 
 					slot.state = DeviceContext::State::Default;
 					slot.trigger_control_ep();
@@ -836,7 +877,7 @@ struct XhciController {
 			auto status = event.transfer.flags0 & EventTrb::Transfer::flags0::CODE;
 			auto len = event.transfer.flags0 & EventTrb::Transfer::flags0::TRANSFER_LEN;
 
-			auto ep_index = (event.transfer.flags1 & EventTrb::Transfer::flags1::ENDPOINT_ID) - 1;
+			auto ep_index = (event.transfer.flags1 & EventTrb::Transfer::flags1::ENDPOINT_ID);
 			auto slot_index = (event.transfer.flags1 & EventTrb::Transfer::flags1::SLOT_ID) - 1;
 
 			auto& slot = slots[slot_index];
@@ -865,28 +906,32 @@ struct XhciController {
 				!(event.transfer.trb_pointer & 1UL << 63)) {
 				auto trb_ptr = event.transfer.trb_pointer;
 
-				if (ep_index == 0) {
-					auto usb_event = slot.default_control_ring.events.find<usize, &usb::UsbEvent::trb_ptr>(trb_ptr);
+				if (ep_index == 1) {
+					auto guard = slot.default_control_ring.lock();
+					auto usb_event = guard->events.find<usize, &usb::UsbEvent::trb_ptr>(trb_ptr);
 					assert(usb_event);
-					slot.default_control_ring.events.remove(usb_event);
+					guard->events.remove(usb_event);
 					usb_event->len = len;
 					usb_event->status = xhci_get_status(status);
 					usb_event->signal_one();
 
-					slot.default_control_ring.used_count -= 5;
+					assert(usb_event->trb_count == 5);
+					guard->used_count -= usb_event->trb_count;
 				}
 				else {
 					auto& full_ep = slot.endpoint[ep_index / 2 - 1];
-					auto& ep = ep_index % 2 ? full_ep.out : full_ep.in;
+					auto& ep = ep_index % 2 ? full_ep.in : full_ep.out;
 
-					auto usb_event = ep.ring->events.find<usize, &usb::UsbEvent::trb_ptr>(trb_ptr);
+					auto guard = ep.ring.lock();
+
+					auto usb_event = (*guard)->events.find<usize, &usb::UsbEvent::trb_ptr>(trb_ptr);
 					assert(usb_event);
-					ep.ring->events.remove(usb_event);
+					(*guard)->events.remove(usb_event);
 					usb_event->len = len;
 					usb_event->status = xhci_get_status(status);
 					usb_event->signal_one();
 
-					ep.ring->used_count -= 2;
+					(*guard)->used_count -= usb_event->trb_count;
 				}
 			}
 		}
@@ -977,7 +1022,7 @@ struct XhciController {
 								slot.device_descriptor.max_packet_size0 = 3;
 							}
 
-							slot.default_control_ring.reset();
+							slot.default_control_ring.get_unsafe()->reset();
 
 							if (slot.speed >= DeviceContext::Speed::Super) {
 								address_device(port.slot, slot.port, 1U << slot.device_descriptor.max_packet_size0);
@@ -1565,12 +1610,12 @@ usb::Status DeviceContext::set_config(const UniquePhysical& config) {
 			}
 
 			auto& real_ep = ep->dir_in() ? endpoint[num].in : endpoint[num].out;
-			real_ep.ring = new TransferRing {};
+			*real_ep.ring.get_unsafe() = new TransferRing {};
 
 			ep_ctx->tr_dequeue_ptr_low =
-				real_ep.ring->phys |
+				(*real_ep.ring.get_unsafe())->phys |
 				endpoint_ctx::tr_dequeue_ptr::DCS;
-			ep_ctx->tr_dequeue_ptr_high = real_ep.ring->phys >> 32;
+			ep_ctx->tr_dequeue_ptr_high = (*real_ep.ring.get_unsafe())->phys >> 32;
 		}
 		else if (type == usb::setup::desc_type::SS_ENDPOINT_COMPANION) {
 			auto* desc = static_cast<usb::SsEndpointCompanionDesc*>(data);
@@ -1592,7 +1637,7 @@ usb::Status DeviceContext::set_config(const UniquePhysical& config) {
 
 	ctx.slot->first = {slot_ctx::first::CTX_ENTRIES(ctx_entries) | slot_ctx::first::SPEED(port_speed)};
 
-	usb::UsbEvent event {index};
+	usb::UsbEvent event {index, 1};
 
 	controller->cmd_events.insert(&event);
 
@@ -1636,8 +1681,9 @@ usb::Status DeviceContext::set_config(const UniquePhysical& config) {
 		usb::setup::std_req::SET_CONFIGURATION,
 		config_desc->config_value,
 		0,
+		reinterpret_cast<usize>(&event) & ~(1UL << 63),
 		0
-	}, reinterpret_cast<usize>(&event) & ~(1UL << 63));
+	});
 	return status;
 }
 

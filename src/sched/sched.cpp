@@ -134,6 +134,8 @@ namespace {
 void sched_init(bool bsp) {
 	IrqGuard irq_guard {};
 	auto cpu = get_current_thread()->cpu;
+	cpu->thread_destroyer.pin_level = true;
+	cpu->thread_destroyer.pin_cpu = true;
 	cpu->scheduler.queue(&cpu->thread_destroyer);
 
 	if (bsp) {

@@ -1,5 +1,6 @@
 #pragma once
 #include "utility.hpp"
+#include "arch/misc.hpp"
 
 namespace __spinlock_detail { // NOLINT(*-reserved-identifier)
 #ifdef __aarch64__
@@ -177,4 +178,81 @@ public:
 
 private:
 	__spinlock_detail::Data<void> data {};
+};
+
+template<typename T>
+class IrqSpinlock {
+public:
+	constexpr IrqSpinlock() = default;
+	constexpr explicit IrqSpinlock(T&& data) : inner {std::move(data)} {}
+	constexpr explicit IrqSpinlock(const T& data) : inner {data} {}
+
+	struct Guard {
+		~Guard() {
+			owner->inner.manual_unlock();
+			arch_enable_irqs(owner->old);
+		}
+
+		operator T&() { // NOLINT(*-explicit-constructor)
+			return owner->data;
+		}
+
+		T& operator*() {
+			return owner->data;
+		}
+
+		T* operator->() {
+			return &owner->data;
+		}
+
+	private:
+		constexpr explicit Guard(IrqSpinlock* owner) : owner {owner} {}
+
+		friend class IrqSpinlock;
+		IrqSpinlock* owner;
+	};
+
+	Guard lock() {
+		old = arch_enable_irqs(false);
+		inner.manual_lock();
+		return Guard {this};
+	}
+
+	T* get_unsafe() {
+		return &data;
+	}
+
+private:
+	T data {};
+	Spinlock<void> inner;
+	bool old {};
+};
+
+template<>
+class IrqSpinlock<void> {
+public:
+	constexpr IrqSpinlock() = default;
+
+	struct Guard {
+		~Guard() {
+			owner->inner.manual_unlock();
+			arch_enable_irqs(owner->old);
+		}
+
+	private:
+		constexpr explicit Guard(IrqSpinlock* owner) : owner {owner} {}
+
+		friend class IrqSpinlock;
+		IrqSpinlock* owner;
+	};
+
+	Guard lock() {
+		old = arch_enable_irqs(false);
+		inner.manual_lock();
+		return Guard {this};
+	}
+
+private:
+	Spinlock<void> inner;
+	bool old {};
 };

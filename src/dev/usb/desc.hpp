@@ -44,6 +44,17 @@ namespace usb {
 		u8 interface_index;
 	};
 
+	struct InterfaceAssocDescriptor {
+		u8 length;
+		u8 descriptor_type;
+		u8 first_interface;
+		u8 interface_count;
+		u8 function_class;
+		u8 function_subclass;
+		u8 function_protocol;
+		u8 function_index;
+	};
+
 	enum class TransferType : u8 {
 		Control = 0,
 		Isoch = 1,

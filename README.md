@@ -99,6 +99,7 @@ There are also different targets that may be useful:
         - [ ] Keyboard
         - [x] Mouse
         - [ ] Mass storage
+        - [x] RNDIS (used eg. for tethering internet from a phone)
 - [ ] Apps
   - [ ] Desktop environment (very basic one with almost no functionality is done)
   - [ ] Web browser

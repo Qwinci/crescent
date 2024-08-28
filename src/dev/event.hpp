@@ -18,6 +18,11 @@ struct Event {
 		return !waiters.lock()->is_empty();
 	}
 
+	[[nodiscard]] bool is_pending() {
+		IrqGuard irq_guard {};
+		return *signaled_count.lock() > 0;
+	}
+
 private:
 	Spinlock<DoubleList<Thread, &Thread::misc_hook>> waiters {};
 	Spinlock<usize> signaled_count {};

@@ -10,6 +10,27 @@ namespace usb {
 		FromDevice = 1 << 7
 	};
 
+	enum class Status {
+		Success,
+		TransactionError,
+		ShortPacket
+	};
+
+	struct UsbEvent : public Event {
+		constexpr UsbEvent(usize trb_ptr, usize trb_count)
+			: trb_ptr {trb_ptr}, trb_count {trb_count} {}
+
+		RbTreeHook hook {};
+		usize trb_ptr;
+		usize trb_count;
+		u32 len {};
+		Status status {};
+
+		int operator<=>(const UsbEvent& other) const {
+			return kstd::threeway(trb_ptr, other.trb_ptr);
+		}
+	};
+
 	namespace setup {
 		enum class Type : u8 {
 			Standard = 0 << 5,
@@ -62,46 +83,49 @@ namespace usb {
 				u8 request,
 				u16 value,
 				u16 index,
-				u16 length) : request {request}, value {value}, index {index}, length {length} {
+				usize buffer,
+				u16 length)
+					: event {buffer, 5}, buffer {buffer}, value {value},
+					index {index}, length {length}, request {request} {
 				request_type = static_cast<u8>(dir) |
 					static_cast<u8>(type) |
 					static_cast<u8>(recipient);
 			}
 
-			u8 request_type;
-			u8 request;
+			UsbEvent event;
+			usize buffer;
 			u16 value;
 			u16 index;
 			u16 length;
+			u8 request_type;
+			u8 request;
 		};
 	}
-
-	enum class Status {
-		Success,
-		TransactionError
-	};
-
-	struct UsbEvent : public Event {
-		constexpr explicit UsbEvent(usize trb_ptr) : trb_ptr {trb_ptr} {}
-
-		RbTreeHook hook {};
-		usize trb_ptr;
-		u32 len {};
-		Status status {};
-
-		int operator<=>(const UsbEvent& other) const {
-			return kstd::threeway(trb_ptr, other.trb_ptr);
-		}
-	};
 
 	namespace normal {
 		struct Packet {
 			constexpr Packet(Dir dir, u8 ep, usize buffer, u16 length)
-				: event {buffer}, buffer {buffer}, length {length}, ep {ep}, dir {dir} {}
+				: event {buffer, 2}, buffer {buffer}, length {length}, ep {ep}, dir {dir} {}
 
 			UsbEvent event;
 			usize buffer;
 			u16 length;
+			u8 ep;
+			Dir dir;
+		};
+
+		struct LargeTransfer {
+			usize buffer;
+			u16 size;
+		};
+
+		struct LargePacket {
+			constexpr LargePacket(Dir dir, u8 ep, const LargeTransfer* transfers, usize count)
+				: event {transfers->buffer, count + 1}, transfers {transfers}, count {count}, ep {ep}, dir {dir} {}
+
+			UsbEvent event;
+			const LargeTransfer* transfers;
+			usize count;
 			u8 ep;
 			Dir dir;
 		};

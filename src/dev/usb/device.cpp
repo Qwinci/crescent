@@ -12,14 +12,6 @@ using namespace usb;
 extern Driver DRIVERS_START[];
 extern Driver DRIVERS_END[];
 
-namespace {
-	struct Interface {
-		InterfaceDescriptor desc {};
-		kstd::vector<EndpointDescriptor> eps;
-		kstd::vector<Descriptor> descs;
-	};
-}
-
 static void device_attach_fn(void* arg) {
 	do {
 		auto* device = static_cast<usb::Device*>(arg);
@@ -37,6 +29,7 @@ static void device_attach_fn(void* arg) {
 		}
 
 		kstd::vector<Interface> interfaces {};
+		kstd::vector<Descriptor> descriptors {};
 		traverse_config(config.value(), [&](u8 type, void* data, u8 length, ConfigTraverseData& config_data) {
 			if (type == setup::desc_type::INTERFACE) {
 				interfaces.push({
@@ -56,6 +49,13 @@ static void device_attach_fn(void* arg) {
 					.data = data
 				});
 			}
+			else {
+				descriptors.push({
+					.type = type,
+					.length = length,
+					.data = data
+				});
+			}
 		});
 
 		auto status = device->set_config(config.value());
@@ -64,15 +64,25 @@ static void device_attach_fn(void* arg) {
 			break;
 		}
 
-		for (usize i = 0; i < interfaces.size(); ++i) {
-			auto& interface = interfaces[i];
+		AssignedDevice assigned_device {
+			.device = *device,
+			.interfaces {std::move(interfaces)},
+			.descs {std::move(descriptors)},
+			.data = nullptr,
+			.interface_index = 0
+		};
 
-			AssignedDevice assigned_device {
-				.device = *device,
-				.interface_index = static_cast<u8>(i),
-				.eps {std::move(interface.eps)},
-				.descriptors {std::move(interface.descs)}
-			};
+		Config parsed_config {
+			.raw = config.value(),
+			.interfaces {assigned_device.interfaces}
+		};
+
+		for (usize i = 0; i < parsed_config.interfaces.size(); ++i) {
+			auto& interface = parsed_config.interfaces[i];
+
+			assigned_device.interface_index = i;
+
+			auto assoc = assigned_device.get_iface_assoc();
 
 			for (auto* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
 				if (driver->type != DriverType::Usb) {
@@ -88,14 +98,22 @@ static void device_attach_fn(void* arg) {
 				}
 
 				if (driver->usb->fine_match) {
-					if (!driver->usb->fine_match(config.value(), dev_desc.value())) {
+					if (auto data = driver->usb->fine_match(parsed_config, dev_desc.value())) {
+						assigned_device.data = data;
+					}
+					else {
 						continue;
 					}
 				}
 
 				if (driver->usb->init(assigned_device)) {
+					if (assoc) {
+						i = assoc->first_interface + assoc->interface_count;
+					}
 					break;
 				}
+
+				assigned_device.data = nullptr;
 			}
 		}
 	} while (false);
@@ -103,6 +121,12 @@ static void device_attach_fn(void* arg) {
 	IrqGuard irq_guard {};
 	auto* cpu = get_current_thread()->cpu;
 	cpu->scheduler.exit_thread(0);
+}
+
+Status usb::Device::control(setup::Packet setup) {
+	control_async(&setup);
+	setup.event.wait();
+	return setup.event.status;
 }
 
 void usb::Device::attach() {
@@ -123,8 +147,9 @@ kstd::expected<DeviceDescriptor, Status> usb::Device::get_device_descriptor() {
 		setup::std_req::GET_DESCRIPTOR,
 		setup::desc_type::DEVICE << 8,
 		0,
+		desc_phys->base,
 		sizeof(DeviceDescriptor)
-	}, desc_phys->base);
+	});
 	if (status != Status::Success) {
 		return status;
 	}
@@ -143,8 +168,9 @@ kstd::expected<UniquePhysical, Status> usb::Device::get_config_descriptor(u8 ind
 		setup::std_req::GET_DESCRIPTOR,
 		static_cast<u16>(setup::desc_type::CONFIGURATION << 8 | index),
 		0,
+		config->base,
 		8
-	}, config->base);
+	});
 	if (status != Status::Success) {
 		return status;
 	}
@@ -163,11 +189,26 @@ kstd::expected<UniquePhysical, Status> usb::Device::get_config_descriptor(u8 ind
 		setup::std_req::GET_DESCRIPTOR,
 		setup::desc_type::CONFIGURATION << 8,
 		0,
+		config->base,
 		size
-	}, config->base);
+	});
 	if (status != Status::Success) {
 		return status;
 	}
 
 	return std::move(config).value();
+}
+
+InterfaceAssocDescriptor* AssignedDevice::get_iface_assoc() const {
+	for (auto& desc : descs) {
+		if (desc.type == setup::desc_type::INTERFACE_ASSOCIATION) {
+			auto* assoc = static_cast<InterfaceAssocDescriptor*>(desc.data);
+			if (interface_index >= assoc->first_interface &&
+				interface_index < assoc->first_interface + assoc->interface_count) {
+				return assoc;
+			}
+		}
+	}
+
+	return nullptr;
 }

@@ -10,9 +10,12 @@ namespace usb {
 	struct Device {
 		virtual ~Device() = default;
 
-		virtual Status control(setup::Packet setup, usize buffer) = 0;
+		Status control(setup::Packet setup);
+
+		virtual void control_async(setup::Packet* setup) = 0;
 		virtual bool normal_one(normal::Packet* packet) = 0;
 		virtual usize normal_multiple(normal::Packet* packets, usize count) = 0;
+		virtual usize normal_large(normal::LargePacket* packet) = 0;
 
 		virtual Status set_config(const UniquePhysical& config) = 0;
 
@@ -20,6 +23,8 @@ namespace usb {
 
 		kstd::expected<DeviceDescriptor, Status> get_device_descriptor();
 		kstd::expected<UniquePhysical, Status> get_config_descriptor(u8 index);
+
+		usize max_normal_packets {};
 	};
 
 	struct Descriptor {
@@ -28,10 +33,24 @@ namespace usb {
 		void* data;
 	};
 
+	struct Interface {
+		InterfaceDescriptor desc {};
+		kstd::vector<EndpointDescriptor> eps;
+		kstd::vector<Descriptor> descs;
+	};
+
+	struct Config {
+		const UniquePhysical& raw;
+		const kstd::vector<Interface>& interfaces;
+	};
+
 	struct AssignedDevice {
 		Device& device;
+		kstd::vector<Interface> interfaces;
+		kstd::vector<Descriptor> descs;
+		void* data;
 		u8 interface_index;
-		kstd::vector<EndpointDescriptor> eps;
-		kstd::vector<Descriptor> descriptors;
+
+		[[nodiscard]] InterfaceAssocDescriptor* get_iface_assoc() const;
 	};
 }

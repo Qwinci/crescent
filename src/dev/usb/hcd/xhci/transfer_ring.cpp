@@ -63,11 +63,11 @@ bool TransferRing::add_trb(TransferTrb trb) {
 	return true;
 }
 
-void TransferRing::control(usb::setup::Packet setup, usize buffer) {
+void TransferRing::control(const usb::setup::Packet* setup) {
 	u8 trt;
 	u8 data_dir;
 	u8 status_dir;
-	if (setup.request_type & static_cast<u8>(usb::Dir::FromDevice)) {
+	if (setup->request_type & static_cast<u8>(usb::Dir::FromDevice)) {
 		trt = TransferTrb::Setup::TRT_IN_DATA;
 		data_dir = TransferTrb::Data::DIR_IN;
 		status_dir = TransferTrb::Status::DIR_OUT;
@@ -80,11 +80,11 @@ void TransferRing::control(usb::setup::Packet setup, usize buffer) {
 
 	TransferTrb setup_trb {
 		.setup {
-			.m_request_type = setup.request_type,
-			.request = setup.request,
-			.value = setup.value,
-			.index = setup.index,
-			.length = setup.length,
+			.m_request_type = setup->request_type,
+			.request = setup->request,
+			.value = setup->value,
+			.index = setup->index,
+			.length = setup->length,
 			.flags0 {TransferTrb::Setup::flags0::TRANSFER_LEN(8)},
 			.flags3 {
 				TransferTrb::flags3::TRB_TYPE(transfer_trb_type::SETUP) |
@@ -96,9 +96,9 @@ void TransferRing::control(usb::setup::Packet setup, usize buffer) {
 
 	TransferTrb data_trb {
 		.data {
-			.data_ptr = buffer,
+			.data_ptr = setup->buffer,
 			.flags0 {
-				TransferTrb::Data::flags0::TRANSFER_LEN(setup.length)
+				TransferTrb::Data::flags0::TRANSFER_LEN(setup->length)
 			},
 			.flags3 {
 				TransferTrb::flags3::TRB_TYPE(transfer_trb_type::DATA) |
@@ -111,7 +111,7 @@ void TransferRing::control(usb::setup::Packet setup, usize buffer) {
 
 	TransferTrb data_event_trb {
 		.event_data {
-			.event_data = buffer,
+			.event_data = setup->buffer,
 			.flags0 {},
 			.flags3 {
 				TransferTrb::flags3::TRB_TYPE(transfer_trb_type::EVENT_DATA) |
@@ -151,7 +151,6 @@ void TransferRing::control(usb::setup::Packet setup, usize buffer) {
 }
 
 bool TransferRing::normal(const usb::normal::Packet* packet) {
-	IrqGuard irq_guard {};
 	if (used_count + 2 >= PAGE_SIZE / 16) {
 		return false;
 	}
@@ -181,7 +180,54 @@ bool TransferRing::normal(const usb::normal::Packet* packet) {
 		}
 	};
 
-	add_trb(data_trb);
-	add_trb(data_event_trb);
+	assert(add_trb(data_trb));
+	assert(add_trb(data_event_trb));
 	return true;
+}
+
+usize TransferRing::normal_large(const usb::normal::LargePacket* packet) {
+	usize transferred = 0;
+	for (usize i = 0; i < packet->count; ++i) {
+		if (used_count + 2 >= PAGE_SIZE / 16) {
+			break;
+		}
+
+		auto& transfer = packet->transfers[i];
+
+		TransferTrb data_trb {
+			.normal {
+				.data_ptr = transfer.buffer,
+				.flags0 {
+					TransferTrb::Normal::flags0::TRANSFER_LEN(transfer.size)
+				},
+				.flags3 {
+					TransferTrb::flags3::TRB_TYPE(transfer_trb_type::NORMAL) |
+					TransferTrb::Normal::flags3::CH(true)
+				}
+			}
+		};
+		if (used_count + 3 >= PAGE_SIZE / 16 || i + 1 == packet->count) {
+			data_trb.normal.flags3 |= TransferTrb::Normal::flags3::ENT(true);
+		}
+		else {
+			u8 td_size = kstd::min(static_cast<usize>(packet->count - i - 1), static_cast<usize>(31));
+			data_trb.normal.flags0 |= TransferTrb::Normal::flags0::TD_SIZE(td_size);
+		}
+
+		add_trb(data_trb);
+		++transferred;
+	}
+
+	TransferTrb data_event_trb {
+		.event_data {
+			.event_data = packet->transfers->buffer,
+			.flags0 {},
+			.flags3 {
+				TransferTrb::flags3::TRB_TYPE(transfer_trb_type::EVENT_DATA) |
+				TransferTrb::flags3::IOC(true)
+			}
+		}
+	};
+	add_trb(data_event_trb);
+	return transferred;
 }
