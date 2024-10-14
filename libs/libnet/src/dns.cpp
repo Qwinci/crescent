@@ -148,12 +148,16 @@ namespace {
 				.port = 53
 			};
 			res = sys_socket_send_to(socket_handle, req.data(), req.size(), addr.generic);
-			assert(res == 0);
+			if (res != 0) {
+				return res;
+			}
 
 			char resp[256];
 			size_t received;
 			res = sys_socket_receive_from(socket_handle, resp, sizeof(resp), received, addr.generic);
-			assert(res == 0);
+			if (res != 0) {
+				return res;
+			}
 
 			sys_close_handle(socket_handle);
 
