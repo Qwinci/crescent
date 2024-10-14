@@ -73,6 +73,26 @@ void Event::signal_one() {
 	}
 }
 
+void Event::signal_one_if_not_pending() {
+	IrqGuard irq_guard {};
+	auto guard = signaled_count.lock();
+	if (*guard) {
+		return;
+	}
+	++*guard;
+
+	auto waiters_guard = waiters.lock();
+	if (!waiters_guard->is_empty()) {
+		auto thread = waiters_guard->front();
+		auto thread_guard = thread->sched_lock.lock();
+		if (thread->status != Thread::Status::Waiting &&
+			thread->status != Thread::Status::Running) {
+			thread->cpu->scheduler.unblock(thread, true);
+		}
+		waiters_guard->remove(thread);
+	}
+}
+
 void Event::signal_all() {
 	IrqGuard irq_guard {};
 	auto guard = signaled_count.lock();

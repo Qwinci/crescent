@@ -1,3 +1,5 @@
 target_sources(crescent PRIVATE
-	hda.cpp
+	sound_dev.cpp
 )
+
+add_subdirectory(hda)
