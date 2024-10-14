@@ -1,4 +1,5 @@
 #include "syscalls.hpp"
+#include "user_access.hpp"
 #include "arch/cpu.hpp"
 #include "crescent/devlink.h"
 #include "crescent/syscalls.h"
@@ -15,8 +16,6 @@
 #include "dev/net/tcp.hpp"
 #include "dev/net/udp.hpp"
 
-extern void hda_play();
-
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
 #elif defined(__aarch64__)
@@ -24,36 +23,6 @@ extern void hda_play();
 #include "exe/elf_loader.hpp"
 #include "fs/vfs.hpp"
 #endif
-
-extern "C" bool mem_copy_to_user(usize user, const void* kernel, usize size);
-extern "C" bool mem_copy_to_kernel(void* kernel, usize user, usize size);
-
-struct UserAccessor {
-	constexpr explicit UserAccessor(usize addr) : addr {addr} {}
-	template<typename T>
-	inline explicit UserAccessor(T* ptr) : addr {reinterpret_cast<usize>(ptr)} {}
-
-	bool load(void* data, usize size) {
-		return mem_copy_to_kernel(data, addr, size);
-	}
-
-	template<typename T>
-	bool load(T& data) {
-		return load(static_cast<void*>(&data), sizeof(T));
-	}
-
-	bool store(const void* data, usize size) {
-		return mem_copy_to_user(addr, data, size);
-	}
-
-	template<typename T>
-	bool store(const T& data) {
-		return store(static_cast<const void*>(&data), sizeof(T));
-	}
-
-private:
-	usize addr;
-};
 
 static usize socket_address_type_to_size(SocketAddressType type) {
 	switch (type) {
@@ -363,7 +332,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
-			println(str);
+			print(str);
 
 			*frame->ret() = 0;
 			break;
