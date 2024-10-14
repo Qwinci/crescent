@@ -53,17 +53,6 @@ namespace virtio {
 static InitStatus virtio_nic_init(pci::Device& device) {
 	println("[kernel][nic]: virtio nic init");
 
-	for (u32 i = 0;; ++i) {
-		auto* cap = static_cast<virtio::PciCap*>(device.hdr0->get_cap(pci::Cap::Vendor, i));
-		if (!cap) {
-			break;
-		}
-		if (cap->bar > 5) {
-			continue;
-		}
-
-	}
-
 	return InitStatus::Success;
 }
 

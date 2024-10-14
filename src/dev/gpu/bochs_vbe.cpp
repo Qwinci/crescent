@@ -108,12 +108,7 @@ static InitStatus bochs_vbe_init(pci::Device& device) {
 	VBE_GPU->width = width;
 	VBE_GPU->height = height;
 	VBE_GPU->owns_boot_fb = true;
-	if (device.is_64bit(0)) {
-		VBE_GPU->vram_base = (device.hdr0->bars[0] & ~0xF) | static_cast<u64>(device.hdr0->bars[1]) << 32;
-	}
-	else {
-		VBE_GPU->vram_base = device.hdr0->bars[0] & ~0xF;
-	}
+	VBE_GPU->vram_base = device.get_bar(0);
 	VBE_GPU->vram_size = device.get_bar_size(0);
 
 	VBE_GPU_DEVICE.initialize(kstd::make_shared<GpuDevice>(&*VBE_GPU, "vbe gpu"));

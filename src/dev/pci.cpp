@@ -1,15 +1,17 @@
 #include "pci.hpp"
 #include "acpi/acpi.hpp"
 #include "acpi/pci.hpp"
-#include "mem/mem.hpp"
-#include "stdio.hpp"
-#include "assert.hpp"
-#include "arch/paging.hpp"
-#include "mem/vspace.hpp"
-#include "x86/irq.hpp"
-#include "arch/x86/dev/io_apic.hpp"
 #include "arch/cpu.hpp"
+#include "arch/paging.hpp"
+#include "arch/x86/dev/io_apic.hpp"
+#include "assert.hpp"
+#include "mem/mem.hpp"
+#include "mem/vspace.hpp"
+#include "mem/portspace.hpp"
+#include "stdio.hpp"
 #include "utils/driver.hpp"
+#include "x86/io.hpp"
+#include "x86/irq.hpp"
 
 extern Driver DRIVERS_START[];
 extern Driver DRIVERS_END[];
@@ -36,54 +38,44 @@ namespace pci {
 		u32 vector_ctrl;
 	};
 
-	void* Header0::get_cap(Cap cap, u32 index) {
-		auto* ptr = reinterpret_cast<u8*>(this) + (capabilities_ptr & ~0b11);
-		while (true) {
-			if (*ptr == static_cast<u8>(cap)) {
-				if (index-- == 0) {
-					return ptr;
-				}
-			}
-			if (!ptr[1]) {
-				break;
-			}
-			ptr = offset(this, u8*, ptr[1]);
-		}
-		return nullptr;
-	}
-
 	static PciAddress ADDRESS {};
 
-	static void enumerate_func(void* base, u32 func) {
-		auto* hdr = offset(base, CommonHdr*, static_cast<u64>(func) << 12);
+	static void enumerate_func(u32 func) {
+		ADDRESS.func = func;
 
-		if (hdr->vendor_id == 0xFFFF) {
+		u16 vendor_id = read(ADDRESS, common::VENDOR_ID);
+
+		if (vendor_id == 0xFFFF) {
 			return;
 		}
 
-		if ((hdr->type & ~(1 << 7)) != 0) {
+		u8 type = read(ADDRESS, common::TYPE);
+
+		if ((type & ~(1 << 7)) != 0) {
 			return;
 		}
 
-		ADDRESS.function = func;
+		u8 clazz = read(ADDRESS, common::CLASS);
+		u8 subclass = read(ADDRESS, common::SUBCLASS);
+		u8 prog_if = read(ADDRESS, common::PROG_IF);
 
-		auto* hdr0 = reinterpret_cast<Header0*>(hdr);
-		auto* dev = new Device {hdr0, ADDRESS};
+		auto* dev = new Device {ADDRESS};
+		u16 device_id = dev->device_id;
 		for (const auto* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
 			if (driver->type == DriverType::Pci) {
 				auto& driver_pci = driver->pci;
-				if (driver_pci->match & PciMatch::Class && driver_pci->_class != hdr->class_) {
+				if (driver_pci->match & PciMatch::Class && driver_pci->_class != clazz) {
 					continue;
 				}
-				else if (driver_pci->match & PciMatch::Subclass && driver_pci->subclass != hdr->subclass) {
+				else if (driver_pci->match & PciMatch::Subclass && driver_pci->subclass != subclass) {
 					continue;
 				}
-				else if (driver_pci->match & PciMatch::ProgIf && driver_pci->prog_if != hdr->prog_if) {
+				else if (driver_pci->match & PciMatch::ProgIf && driver_pci->prog_if != prog_if) {
 					continue;
 				}
 				else if (driver_pci->match & PciMatch::Device) {
 					for (auto& match_dev : driver_pci->devices) {
-						if (match_dev.vendor == hdr->vendor_id && match_dev.device == hdr->device_id) {
+						if (match_dev.vendor == vendor_id && match_dev.device == dev->device_id) {
 							if (driver_pci->init(*dev) == InitStatus::Success) {
 								goto end;
 							}
@@ -110,35 +102,35 @@ namespace pci {
 
 		delete dev;
 		end:
-		// println(Fmt::Hex, zero_pad(4), hdr->vendor_id, ":", hdr->device_id, Fmt::Reset);
+		//println(Fmt::Hex, zero_pad(4), vendor_id, ":", device_id, Fmt::Reset);
 	}
 
-	static void enumerate_dev(void* base, u32 dev) {
-		auto* hdr = offset(base, CommonHdr*, static_cast<u64>(dev) << 15);
+	static void enumerate_dev(u32 dev) {
+		ADDRESS.dev = dev;
 
-		if (hdr->vendor_id == 0xFFFF) {
+		u16 vendor_id = read(ADDRESS, common::VENDOR_ID);
+
+		if (vendor_id == 0xFFFF) {
 			return;
 		}
 
-		ADDRESS.device = dev;
+		u8 type = read(ADDRESS, common::TYPE);
 
-		if (hdr->type & 1 << 7) {
+		if (type & 1 << 7) {
 			for (u32 func = 0; func < 8; ++func) {
-				enumerate_func(hdr, func);
+				enumerate_func(func);
 			}
 		}
 		else {
-			enumerate_func(hdr, 0);
+			enumerate_func(0);
 		}
 	}
 
-	static void enumerate_bus(void* base, u32 bus) {
-		auto* hdr = offset(base, CommonHdr*, static_cast<u64>(bus) << 20);
-
+	static void enumerate_bus(u32 bus) {
 		ADDRESS.bus = bus;
 
 		for (u32 dev = 0; dev < 32; ++dev) {
-			enumerate_dev(hdr, dev);
+			enumerate_dev(dev);
 		}
 	}
 
@@ -152,7 +144,7 @@ namespace pci {
 
 	void acpi_enumerate() {
 		if (!GLOBAL_MCFG) {
-			println("[kernel][pci]: no mcfg found, not doing pci enumeration");
+			enumerate_bus(0);
 			return;
 		}
 
@@ -163,23 +155,23 @@ namespace pci {
 			ADDRESS.seg = entry.seg;
 
 			for (u8 bus_i = entry.start; bus_i < entry.end; ++bus_i) {
-				enumerate_bus(to_virt<void>(entry.base), bus_i - entry.start);
+				enumerate_bus(bus_i - entry.start);
 			}
 		}
 	}
 
-	void* get_space(u16 seg, u16 bus, u16 dev, u16 func) {
+	void* mcfg_get_space(const PciAddress& addr) {
 		assert(GLOBAL_MCFG);
 
 		u16 entries = (GLOBAL_MCFG->hdr.length - sizeof(Mcfg)) / sizeof(Mcfg::Entry);
 		for (u32 i = 0; i < entries; ++i) {
 			auto entry = GLOBAL_MCFG->entries[i];
 
-			if (entry.seg == seg) {
+			if (entry.seg == addr.seg) {
 				void* res = to_virt<void>(entry.base);
-				res = offset(res, void*, static_cast<u64>(bus - entry.start) << 20);
-				res = offset(res, void*, static_cast<u64>(dev) << 15);
-				res = offset(res, void*, static_cast<u64>(func) << 12);
+				res = offset(res, void*, static_cast<u64>(addr.bus - entry.start) << 20);
+				res = offset(res, void*, static_cast<u64>(addr.dev) << 15);
+				res = offset(res, void*, static_cast<u64>(addr.func) << 12);
 				return res;
 			}
 		}
@@ -187,13 +179,27 @@ namespace pci {
 		return nullptr;
 	}
 
-	Device::Device(Header0* hdr0, PciAddress address) : hdr0 {hdr0}, address {address} {
-		msix = static_cast<caps::MsiX*>(hdr0->get_cap(Cap::MsiX, 0));
-		msi = static_cast<caps::Msi*>(hdr0->get_cap(Cap::Msi, 0));
+	Device::Device(PciAddress address) : addr {address} {
+		vendor_id = read(common::VENDOR_ID);
+		device_id = read(common::DEVICE_ID);
+		msix_cap_offset = get_cap_offset(Cap::MsiX, 0);
+		msi_cap_offset = get_cap_offset(Cap::Msi, 0);
+		power_cap_offset = get_cap_offset(Cap::Power, 0);
 	}
 
-	void* Device::map_bar(u8 bar) const {
-		usize phys = hdr0->bars[bar];
+	usize Device::get_bar(u8 bar) const {
+		usize phys = read(hdr0::BARS[bar]);
+		assert(!(phys & 1) && "tried to get io bar address");
+		bool is_64 = (phys >> 1 & 0b11) == 2;
+		phys &= ~0xF;
+		if (is_64) {
+			phys |= static_cast<u64>(read(hdr0::BARS[bar + 1])) << 32;
+		}
+		return phys;
+	}
+
+	void* Device::map_bar(u8 bar) {
+		usize phys = read(hdr0::BARS[bar]);
 		assert(!(phys & 1) && "tried to map io space bar");
 
 		auto size = get_bar_size(bar);
@@ -209,7 +215,7 @@ namespace pci {
 		auto align = phys & 0xFFF;
 		phys &= ~0xFFF;
 		if (is_64) {
-			phys |= static_cast<u64>(hdr0->bars[bar + 1]) << 32;
+			phys |= static_cast<u64>(read(hdr0::BARS[bar + 1])) << 32;
 		}
 
 		auto& KERNEL_MAP = KERNEL_PROCESS->page_map;
@@ -226,20 +232,21 @@ namespace pci {
 		return virt;
 	}
 
-	u32 Device::get_bar_size(u8 bar) const {
-		usize phys = hdr0->bars[bar];
+	u32 Device::get_bar_size(u8 bar) {
+		u32 phys = read(hdr0::BARS[bar]);
+
 		assert(!(phys & 1) && "tried to get the size of io space bar");
 
-		auto old = hdr0->common.command;
+		auto old = read(common::COMMAND);
 
 		enable_io_space(false);
 		enable_mem_space(false);
 
-		hdr0->bars[bar] = 0xFFFFFFFF;
-		u32 size = ~(hdr0->bars[bar] & ~0xF) + 1;
-		hdr0->bars[bar] = phys;
+		write(hdr0::BARS[bar], 0xFFFFFFFF);
+		u32 size = ~(read(hdr0::BARS[bar]) & ~0xF) + 1;
+		write(hdr0::BARS[bar], phys);
 
-		hdr0->common.command = old;
+		write(common::COMMAND, old);
 
 		return size;
 	}
@@ -252,15 +259,17 @@ namespace pci {
 			max = UINT32_MAX;
 		}
 
-		auto use_msi = (flags & IrqFlags::Msi) && msi;
-		auto use_msix = (flags & IrqFlags::Msix) && msix;
+		auto use_msi = (flags & IrqFlags::Msi) && msi_cap_offset;
+		auto use_msix = (flags & IrqFlags::Msix) && msix_cap_offset;
 
 		u32 count;
 		if (use_msix) {
-			count = (msix->msg_control & 0x7FF) + 1;
+			u16 msg_control = read16(msix_cap_offset + 2);
+			count = (msg_control & 0x7FF) + 1;
 		}
 		else if (use_msi) {
-			count = 1 << (msi->msg_control >> 1 & 0b111);
+			u16 msg_control = read16(msi_cap_offset + 2);
+			count = 1 << (msg_control >> 1 & 0b111);
 		}
 		else {
 			count = 1;
@@ -275,12 +284,19 @@ namespace pci {
 		_flags = flags;
 		irqs.resize(count);
 		if (use_msix) {
-			u8 bar = msix->table_off_bir & 0b111;
+			u32 table_off_bir = read32(msix_cap_offset + 4);
+
+			u8 bar = table_off_bir & 0b111;
 			auto mapping = map_bar(bar);
 			assert(mapping);
-			auto* entries = offset(mapping, MsiXEntry*, msix->table_off_bir & ~0b111);
-			msix->mask_all(true);
-			msix->enable(true);
+			auto* entries = offset(mapping, MsiXEntry*, table_off_bir & ~0b111);
+
+			u16 msg_control = read16(msix_cap_offset + 2);
+			// enable
+			msg_control |= 1 << 15;
+			// mask
+			msg_control |= 1 << 14;
+			write16(msix_cap_offset + 2, msg_control);
 
 			for (u32 i = 0; i < count; ++i) {
 				u32 irq = x86_alloc_irq(1, flags & IrqFlags::Shared);
@@ -299,20 +315,22 @@ namespace pci {
 			u32 all_irqs = x86_alloc_irq(count, flags & IrqFlags::Shared);
 			assert(all_irqs);
 
-			msi->msg_control &= ~1;
+			u16 msg_control = read16(msi_cap_offset + 2);
+			msg_control &= ~1;
+			write16(msi_cap_offset + 2, msg_control);
 
 			auto id = get_current_thread()->cpu->lapic_id;
 			usize msg_addr = 0xFEE00000 | id << 12;
 
 			// 64-bit
-			if (msi->msg_control & 1 << 7) {
-				msi->msg_low = msg_addr;
-				msi->msg_high = msg_addr >> 32;
-				msi->msg_data = all_irqs;
+			if (msg_control & 1 << 7) {
+				write32(msi_cap_offset + 4, msg_addr);
+				write32(msi_cap_offset + 8, msg_addr >> 32);
+				write32(msi_cap_offset + 12, all_irqs);
 			}
 			else {
-				msi->msg_low = msg_addr;
-				msi->msg_high = all_irqs;
+				write32(msi_cap_offset + 4, msg_addr);
+				write32(msi_cap_offset + 8, all_irqs);
 			}
 
 			for (u32 i = 0; i < count; ++i) {
@@ -323,7 +341,9 @@ namespace pci {
 			u32 irq = x86_alloc_irq(1, flags & IrqFlags::Shared);
 			assert(irq);
 
-			auto legacy_irq = acpi::get_legacy_pci_irq(address.seg, address.bus, address.device, hdr0->irq_pin);
+			u8 irq_pin = read(hdr0::IRQ_PIN);
+
+			auto legacy_irq = acpi::get_legacy_pci_irq(addr.seg, addr.bus, addr.dev, irq_pin);
 			assert(legacy_irq);
 
 			IoApicIrqInfo info {
@@ -359,24 +379,182 @@ namespace pci {
 	}
 
 	void Device::enable_irqs(bool enable) {
-		if (msix && _flags & IrqFlags::Msix) {
+		if (msix_cap_offset && _flags & IrqFlags::Msix) {
+			u16 msg_control = read16(msix_cap_offset + 2);
 			if (enable) {
-				msix->msg_control &= ~(1 << 14);
+				msg_control &= ~(1 << 14);
 			}
 			else {
-				msix->msg_control |= 1 << 14;
+				msg_control |= 1 << 14;
 			}
+			write16(msix_cap_offset + 2, msg_control);
 		}
-		else if (msi && _flags & IrqFlags::Msi) {
+		else if (msi_cap_offset && _flags & IrqFlags::Msi) {
+			u16 msg_control = read16(msi_cap_offset + 2);
 			if (enable) {
-				msi->msg_control |= 1;
+				msg_control |= 1;
 			}
 			else {
-				msi->msg_control &= ~1;
+				msg_control &= ~1;
 			}
+			write16(msi_cap_offset + 2, msg_control);
 		}
 		else {
 			enable_legacy_irq(enable);
 		}
+	}
+
+	static constinit PortSpace IO_SPACE {0xCF8};
+	static constexpr BasicRegister<u32> CFG_ADDR {0};
+	static constexpr BasicRegister<u32> CFG_DATA {4};
+
+	u8 read8(PciAddress addr, u32 offset) {
+		u32 align = offset & 0b11;
+		offset &= ~0b11;
+
+		if (GLOBAL_MCFG) {
+			void* ptr = mcfg_get_space(addr);
+			return *offset(ptr, volatile u32*, offset) >> (align * 8) & 0xFF;
+		}
+		else {
+			assert(offset <= 0xFF);
+
+			u32 io_addr = 1 << 31;
+			io_addr |= addr.bus << 16;
+			io_addr |= addr.dev << 11;
+			io_addr |= addr.func << 8;
+			io_addr |= offset;
+
+			IO_SPACE.store(CFG_ADDR, io_addr);
+			u32 value = IO_SPACE.load(CFG_DATA);
+			return value >> (align * 8) & 0xFF;
+		}
+	}
+
+	u16 read16(PciAddress addr, u32 offset) {
+		assert(offset % 2 == 0);
+
+		u32 align = offset & 0b11;
+		offset &= ~0b11;
+
+		if (GLOBAL_MCFG) {
+			void* ptr = mcfg_get_space(addr);
+			return *offset(ptr, volatile u32*, offset) >> (align * 8) & 0xFFFF;
+		}
+		else {
+			assert(offset <= 0xFF);
+
+			u32 io_addr = 1 << 31;
+			io_addr |= addr.bus << 16;
+			io_addr |= addr.dev << 11;
+			io_addr |= addr.func << 8;
+			io_addr |= offset;
+
+			IO_SPACE.store(CFG_ADDR, io_addr);
+			u32 value = IO_SPACE.load(CFG_DATA);
+			return value >> (align * 8) & 0xFFFF;
+		}
+	}
+
+	u32 read32(PciAddress addr, u32 offset) {
+		assert(offset % 4 == 0);
+
+		if (GLOBAL_MCFG) {
+			void* ptr = mcfg_get_space(addr);
+			return *offset(ptr, volatile u32*, offset);
+		}
+		else {
+			assert(offset <= 0xFF);
+
+			u32 io_addr = 1 << 31;
+			io_addr |= addr.bus << 16;
+			io_addr |= addr.dev << 11;
+			io_addr |= addr.func << 8;
+			io_addr |= offset;
+
+			IO_SPACE.store(CFG_ADDR, io_addr);
+			u32 value = IO_SPACE.load(CFG_DATA);
+			return value;
+		}
+	}
+
+	void write8(PciAddress addr, u32 offset, u8 value) {
+		u32 align = offset & 0b11;
+		offset &= ~0b11;
+
+		auto old = read32(addr, offset);
+		old &= ~(0xFF << (align * 8));
+		old |= value << (align * 8);
+		write32(addr, offset, old);
+	}
+
+	void write16(PciAddress addr, u32 offset, u16 value) {
+		u32 align = offset & 0b11;
+		offset &= ~0b11;
+
+		auto old = read32(addr, offset);
+		old &= ~(0xFFFF << (align * 8));
+		old |= value << (align * 8);
+		write32(addr, offset, old);
+	}
+
+	void write32(PciAddress addr, u32 offset, u32 value) {
+		assert(offset % 4 == 0);
+
+		if (GLOBAL_MCFG) {
+			void* ptr = mcfg_get_space(addr);
+			*offset(ptr, volatile u32*, offset) = value;
+		}
+		else {
+			assert(offset <= 0xFF);
+
+			u32 io_addr = 1 << 31;
+			io_addr |= addr.bus << 16;
+			io_addr |= addr.dev << 11;
+			io_addr |= addr.func << 8;
+			io_addr |= offset;
+
+			IO_SPACE.store(CFG_ADDR, io_addr);
+			IO_SPACE.store(CFG_DATA, value);
+		}
+	}
+
+	namespace caps::power {
+		static constexpr BitField<u16, PowerState> STATE {0, 2};
+	}
+
+	u32 Device::get_cap_offset(Cap cap, u32 index) const {
+		u16 status = read(common::STATUS);
+		if (!(status & 1 << 4)) {
+			return 0;
+		}
+
+		u8 offset = read(hdr0::CAPABILITIES_PTR) & ~0b11;
+		while (true) {
+			u8 id = read8(offset);
+			u8 next = read8(offset + 1);
+			if (id == static_cast<u8>(cap)) {
+				if (index-- == 0) {
+					return offset;
+				}
+			}
+			if (!next) {
+				break;
+			}
+			offset = next;
+		}
+
+		return 0;
+	}
+
+	void Device::set_power_state(PowerState state) {
+		if (!power_cap_offset) {
+			return;
+		}
+
+		auto pmcsr = read16(power_cap_offset + 4);
+		pmcsr &= ~caps::power::STATE;
+		pmcsr |= caps::power::STATE(state);
+		write16(power_cap_offset + 4, pmcsr);
 	}
 }

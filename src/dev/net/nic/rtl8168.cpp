@@ -255,7 +255,7 @@ struct Rtl : public Nic {
 		cpcr &= ~cpcr::RX_CHK_SUM;
 		cpcr &= ~cpcr::RX_VLAN;
 
-		if (device.hdr0->common.device_id == 0x8139) {
+		if (device.device_id == 0x8139) {
 			is_8139 = true;
 			cpcr |= cpcr::TX(true);
 			cpcr |= cpcr::RX(true);

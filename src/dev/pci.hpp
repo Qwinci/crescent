@@ -1,4 +1,5 @@
 #pragma once
+#include "mem/register.hpp"
 #include "types.hpp"
 #include "vector.hpp"
 
@@ -33,27 +34,9 @@ namespace pci {
 		D3Hot = 0b11
 	};
 
+	struct Device;
+
 	namespace caps {
-		struct Power {
-			u8 id;
-			u8 next;
-			u16 pmc;
-			volatile u16 pmcsr;
-			u8 pmcsr_bse;
-			u8 data;
-
-			constexpr void set_state(PowerState state) {
-				auto old = pmcsr;
-				old &= ~0b11;
-				old |= static_cast<u8>(state);
-				pmcsr = old;
-			}
-
-			[[nodiscard]] constexpr bool no_soft_reset() const {
-				return pmcsr & 1 << 3;
-			}
-		};
-
 		struct Msi {
 			u8 id;
 			u8 next;
@@ -118,39 +101,40 @@ namespace pci {
 		};
 	}
 
-	struct CommonHdr {
-		u16 vendor_id;
-		u16 device_id;
-		volatile u16 command;
-		volatile u16 status;
-		u8 revision;
-		u8 prog_if;
-		u8 subclass;
-		u8 class_;
-		u8 cache_line_size;
-		u8 latency;
-		u8 type;
-		volatile u8 bist;
-	};
+	namespace common {
+		inline constexpr BasicRegister<u16> VENDOR_ID {0};
+		inline constexpr BasicRegister<u16> DEVICE_ID {2};
+		inline constexpr BasicRegister<u16> COMMAND {4};
+		inline constexpr BasicRegister<u16> STATUS {6};
+		inline constexpr BasicRegister<u8> REVISION {8};
+		inline constexpr BasicRegister<u8> PROG_IF {9};
+		inline constexpr BasicRegister<u8> SUBCLASS {10};
+		inline constexpr BasicRegister<u8> CLASS {11};
+		inline constexpr BasicRegister<u8> CACHE_LINE_SIZE {12};
+		inline constexpr BasicRegister<u8> LATENCY {13};
+		inline constexpr BasicRegister<u8> TYPE {14};
+		inline constexpr BasicRegister<u8> BIST {15};
+	}
 
-	struct Header0 {
-		CommonHdr common;
-		volatile u32 bars[6];
-		u32 cardbus_cis_ptr;
-		u16 subsystem_vendor_id;
-		u16 subsystem_id;
-		u32 expansion_rom_addr;
-		u8 capabilities_ptr;
-		u8 reserved0;
-		u16 reserved1;
-		u32 reserved2;
-		u8 irq_line;
-		u8 irq_pin;
-		u8 min_grant;
-		u8 max_latency;
-
-		void* get_cap(Cap cap, u32 index);
-	};
+	namespace hdr0 {
+		inline constexpr BasicRegister<u32> BARS[] {
+			BasicRegister<u32> {16},
+			BasicRegister<u32> {20},
+			BasicRegister<u32> {24},
+			BasicRegister<u32> {28},
+			BasicRegister<u32> {32},
+			BasicRegister<u32> {36},
+		};
+		inline constexpr BasicRegister<u32> CARDBUS_CIS_PTR {40};
+		inline constexpr BasicRegister<u16> SUBSYSTEM_VENDOR_ID {44};
+		inline constexpr BasicRegister<u16> SUBSYSTEM_ID {46};
+		inline constexpr BasicRegister<u32> EXPANSION_ROM_ADDR {48};
+		inline constexpr BasicRegister<u8> CAPABILITIES_PTR {52};
+		inline constexpr BasicRegister<u8> IRQ_LINE {60};
+		inline constexpr BasicRegister<u8> IRQ_PIN {61};
+		inline constexpr BasicRegister<u8> MIN_GRANT {62};
+		inline constexpr BasicRegister<u8> MAX_LATENCY {63};
+	}
 
 	enum class IrqFlags {
 		None = 1 << 0,
@@ -171,23 +155,103 @@ namespace pci {
 	struct PciAddress {
 		u16 seg;
 		u8 bus;
-		u8 device;
-		u8 function;
+		u8 dev;
+		u8 func;
 	};
 
+	u8 read8(PciAddress addr, u32 offset);
+	u16 read16(PciAddress addr, u32 offset);
+	u32 read32(PciAddress addr, u32 offset);
+
+	void write8(PciAddress addr, u32 offset, u8 value);
+	void write16(PciAddress addr, u32 offset, u16 value);
+	void write32(PciAddress addr, u32 offset, u32 value);
+
+	template<typename R>
+	[[nodiscard]] inline auto read(PciAddress addr, R reg) {
+		using type = typename R::type;
+
+		if constexpr (sizeof(type) == 1) {
+			return static_cast<type>(read8(addr, reg.offset));
+		}
+		else if constexpr (sizeof(type) == 2) {
+			return static_cast<type>(read16(addr, reg.offset));
+		}
+		else if constexpr (sizeof(type) == 4) {
+			return static_cast<type>(read32(addr, reg.offset));
+		}
+		else {
+			kstd::unreachable();
+		}
+	}
+
+	template<typename R>
+	inline void write(PciAddress addr, R reg, typename R::bits_type value) {
+		using type = typename R::bits_type;
+
+		if constexpr (sizeof(type) == 1) {
+			write8(addr, reg.offset, static_cast<u8>(value));
+		}
+		else if constexpr (sizeof(type) == 2) {
+			write16(addr, reg.offset, static_cast<u16>(value));
+		}
+		else if constexpr (sizeof(type) == 4) {
+			write32(addr, reg.offset, static_cast<u32>(value));
+		}
+		else {
+			kstd::unreachable();
+		}
+	}
+
 	struct Device {
-		explicit Device(Header0* hdr0, PciAddress address);
+		explicit Device(PciAddress address);
 
-		[[nodiscard]] void* map_bar(u8 bar) const;
-
-		[[nodiscard]] inline bool is_io_space(u8 bar) const {
-			return hdr0->bars[bar] & 1;
+		[[nodiscard]] inline u8 read8(u32 offset) const {
+			return pci::read8(addr, offset);
 		}
 
-		[[nodiscard]] u32 get_bar_size(u8 bar) const;
+		[[nodiscard]] inline u16 read16(u32 offset) const {
+			return pci::read16(addr, offset);
+		}
+
+		[[nodiscard]] inline u32 read32(u32 offset) const {
+			return pci::read32(addr, offset);
+		}
+
+		inline void write8(u32 offset, u8 value) const {
+			pci::write8(addr, offset, value);
+		}
+
+		void write16(u32 offset, u16 value) const {
+			pci::write16(addr, offset, value);
+		}
+
+		void write32(u32 offset, u32 value) const {
+			pci::write32(addr, offset, value);
+		}
+
+		template<typename R>
+		[[nodiscard]] inline auto read(R reg) const {
+			return pci::read(addr, reg);
+		}
+
+		template<typename R>
+		inline void write(R reg, typename R::bits_type value) const {
+			pci::write(addr, reg, value);
+		}
+
+		[[nodiscard]] usize get_bar(u8 bar) const;
+
+		[[nodiscard]] void* map_bar(u8 bar);
+
+		[[nodiscard]] bool is_io_space(u8 bar) const {
+			return read(hdr0::BARS[bar]) & 1;
+		}
+
+		[[nodiscard]] u32 get_bar_size(u8 bar);
 
 		[[nodiscard]] inline bool is_64bit(u8 bar) const {
-			return (hdr0->bars[bar] >> 1 & 0b11) == 2;
+			return (read(hdr0::BARS[bar]) >> 1 & 0b11) == 2;
 		}
 
 		u32 alloc_irqs(u32 min, u32 max, IrqFlags flags);
@@ -196,51 +260,63 @@ namespace pci {
 
 		void enable_irqs(bool enable);
 
-		inline void enable_legacy_irq(bool enable) const {
+		inline void enable_legacy_irq(bool enable) {
+			auto cmd = read(common::COMMAND);
 			if (enable) {
-				hdr0->common.command &= ~(1U << 10);
+				cmd &= ~(1U << 10);
 			}
 			else {
-				hdr0->common.command |= 1U << 10;
+				cmd |= 1U << 10;
 			}
+			write(common::COMMAND, cmd);
 		}
 
-		inline void enable_io_space(bool enable) const {
+		inline void enable_io_space(bool enable) {
+			auto cmd = read(common::COMMAND);
 			if (enable) {
-				hdr0->common.command |= 1;
+				cmd |= 1;
 			}
 			else {
-				hdr0->common.command &= ~1;
+				cmd &= ~1;
 			}
+			write(common::COMMAND, cmd);
 		}
 
-		inline void enable_mem_space(bool enable) const {
+		inline void enable_mem_space(bool enable) {
+			auto cmd = read(common::COMMAND);
 			if (enable) {
-				hdr0->common.command |= 1 << 1;
+				cmd |= 1 << 1;
 			}
 			else {
-				hdr0->common.command &= ~(1 << 1);
+				cmd &= ~(1 << 1);
 			}
+			write(common::COMMAND, cmd);
 		}
 
-		inline void enable_bus_master(bool enable) const {
+		inline void enable_bus_master(bool enable) {
+			auto cmd = read(common::COMMAND);
 			if (enable) {
-				hdr0->common.command |= 1 << 2;
+				cmd |= 1 << 2;
 			}
 			else {
-				hdr0->common.command &= ~(1 << 2);
+				cmd &= ~(1 << 2);
 			}
+			write(common::COMMAND, cmd);
 		}
 
-		Header0* hdr0;
-		PciAddress address;
+		[[nodiscard]] u32 get_cap_offset(Cap cap, u32 index) const;
+
+		void set_power_state(PowerState state);
+
+		PciAddress addr;
+		u16 vendor_id;
+		u16 device_id;
 
 	private:
-		caps::MsiX* msix;
-		caps::Msi* msi;
+		u32 msi_cap_offset;
+		u32 msix_cap_offset;
+		u32 power_cap_offset;
 		kstd::vector<u32> irqs;
 		IrqFlags _flags {};
 	};
-
-	void* get_space(u16 seg, u16 bus, u16 dev, u16 func);
 }

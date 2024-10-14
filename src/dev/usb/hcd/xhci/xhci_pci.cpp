@@ -43,7 +43,7 @@ static InitStatus xhci_pci_init(pci::Device& device) {
 }
 
 static bool xhci_match(pci::Device& device) {
-	auto prog = device.hdr0->common.prog_if;
+	auto prog = device.read(pci::common::PROG_IF);
 	return prog >= 0x30 && prog < 0x40;
 }
 
