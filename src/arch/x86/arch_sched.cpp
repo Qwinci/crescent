@@ -1,8 +1,9 @@
-#include "sched/sched.hpp"
-#include "cpu.hpp"
+#include "arch/arch_thread.hpp"
 #include "arch/cpu.hpp"
 #include "assert.hpp"
-#include "arch/arch_thread.hpp"
+#include "cpu.hpp"
+#include "mem/vspace.hpp"
+#include "sched/sched.hpp"
 #include "simd_state.hpp"
 
 asm(R"(
@@ -174,8 +175,9 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : sel
 		assert(user_stack_base);
 		process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
 		auto simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
-		simd = static_cast<u8*>(ALLOCATOR.alloc(simd_size));
+		simd = static_cast<u8*>(KERNEL_VSPACE.alloc_backed(simd_size, PageFlags::Read | PageFlags::Write));
 		assert(simd);
+		assert(reinterpret_cast<usize>(simd) % 64 == 0);
 		auto* fx_state = reinterpret_cast<FxState*>(simd);
 		memset(fx_state, 0, simd_size);
 		// IM | DM | ZM | OM | UM | PM | PC
@@ -199,6 +201,6 @@ ArchThread::~ArchThread() {
 	}
 	if (simd) {
 		auto simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
-		ALLOCATOR.free(simd, simd_size);
+		KERNEL_VSPACE.free_backed(simd, simd_size);
 	}
 }

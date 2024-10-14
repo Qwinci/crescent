@@ -161,14 +161,16 @@ extern "C" [[noreturn, gnu::used]] void early_start() {
 	auto kernel_vm_start = ALIGNUP(HHDM_START + max_addr, 1024ULL * 1024ULL * 1024ULL);
 	KERNEL_VSPACE.init(kernel_vm_start, reinterpret_cast<usize>(KERNEL_START) - kernel_vm_start);
 
-	const auto& limine_fb = FB_REQUEST.response->framebuffers[0];
-	BOOT_FB.initialize(
-		to_phys(limine_fb->address),
-		static_cast<u32>(limine_fb->width),
-		static_cast<u32>(limine_fb->height),
-		limine_fb->pitch,
-		limine_fb->bpp
-	);
+	if (FB_REQUEST.response && FB_REQUEST.response->framebuffer_count) {
+		const auto& limine_fb = FB_REQUEST.response->framebuffers[0];
+		BOOT_FB.initialize(
+			to_phys(limine_fb->address),
+			static_cast<u32>(limine_fb->width),
+			static_cast<u32>(limine_fb->height),
+			limine_fb->pitch,
+			limine_fb->bpp
+		);
+	}
 
 	BootInfo info {
 		.rsdp = RSDP_REQUEST.response->address

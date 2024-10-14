@@ -85,8 +85,6 @@ extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 		asm volatile("swapgs");
 	}
 
-	lapic_eoi();
-
 	u64 entropy_rip = frame->cs == 0x2B ? frame->rip : (frame->rip & 0xFFFFFFFF);
 	u64 entropy = num | frame->cs << 8 | entropy_rip << 16 | (frame->rsp & 0xFFFFFFFF) << 32;
 	u32 tsc_low;
@@ -110,6 +108,8 @@ extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 			}
 		}
 	}
+
+	lapic_eoi();
 
 	if (!handler_found) {
 		println("[kernel][x86]: warning: no handler found for irq ", num);

@@ -146,6 +146,7 @@ void LapicTickSource::oneshot(u64 us) {
 void LapicTickSource::reset() {
 	IrqGuard irq_guard {};
 	SPACE.store(regs::LVT_TIMER, lvt::MASK(true));
+	SPACE.store(regs::INIT_COUNT, 0);
 }
 
 bool LapicTickSource::on_irq(struct IrqFrame*) {
