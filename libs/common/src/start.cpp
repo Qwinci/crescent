@@ -11,8 +11,8 @@ extern Fn __init_array_end[];
 extern Fn __fini_array_start[];
 extern Fn __fini_array_end[];
 
+[[gnu::visibility("hidden")]] extern char __ehdr_start[];
 [[gnu::visibility("hidden")]] extern Elf64_Dyn _DYNAMIC[];
-[[gnu::visibility("hidden")]] extern uintptr_t _GLOBAL_OFFSET_TABLE_[];
 
 #ifdef __x86_64__
 #define R_RELATIVE R_X86_64_RELATIVE
@@ -23,9 +23,7 @@ extern Fn __fini_array_end[];
 #endif
 
 extern "C" void _start() {
-	auto runtime_dyn = reinterpret_cast<uintptr_t>(_DYNAMIC);
-	auto link_dyn = _GLOBAL_OFFSET_TABLE_[0];
-	uintptr_t base = runtime_dyn - link_dyn;
+	auto base = reinterpret_cast<uintptr_t>(__ehdr_start);
 
 	uintptr_t rela_addr = 0;
 	size_t rela_size = 0;
