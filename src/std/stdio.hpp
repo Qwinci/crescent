@@ -73,7 +73,7 @@ public:
 private:
 	static constexpr usize LOG_SIZE = 0x2000;
 
-	DoubleList<LogSink, &LogSink::log_hook> sinks{};
+	DoubleList<LogSink, &LogSink::log_hook> sinks {};
 	char buf[LOG_SIZE] {};
 	usize buf_ptr {};
 	Fmt fmt {};

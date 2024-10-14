@@ -99,7 +99,7 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 			flags |= PageFlags::Read | PageFlags::Write;
 		}
 		if (phdr.p_flags & PF_X) {
-			flags |= PageFlags::Execute;
+			flags |= PageFlags::Read | PageFlags::Execute;
 		}
 
 		usize aligned_addr = phdr.p_vaddr & ~(PAGE_SIZE - 1);
