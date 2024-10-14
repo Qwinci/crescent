@@ -193,7 +193,7 @@ namespace {
 			init_send();
 		}
 
-		[[noreturn]] void run() {
+		void run() {
 			kstd::vector<usb::normal::Packet> packets;
 			kstd::vector<void*> ptrs;
 			packets.reserve(128);
@@ -201,7 +201,7 @@ namespace {
 			for (usize i = 0; i < 128; ++i) {
 				auto page = pmalloc(1);
 				assert(page);
-				auto virt = KERNEL_VSPACE.alloc(PAGE_SIZE * 4);
+				auto virt = KERNEL_VSPACE.alloc(PAGE_SIZE);
 				assert(virt);
 				assert(KERNEL_PROCESS->page_map.map(
 					reinterpret_cast<u64>(virt),
@@ -224,6 +224,9 @@ namespace {
 				for (usize i = 0; i < count; ++i) {
 					auto* packet = &packets[i];
 					packet->event.wait();
+					if (packet->event.status == usb::Status::Detached) {
+						goto end;
+					}
 
 					u8* ptr = static_cast<u8*>(ptrs[i]);
 
@@ -255,6 +258,15 @@ namespace {
 
 					assert(device.normal_one(packet));
 				}
+			}
+
+			end:
+			for (auto ptr : ptrs) {
+				KERNEL_PROCESS->page_map.unmap(reinterpret_cast<u64>(ptr));
+				KERNEL_VSPACE.free(ptr, PAGE_SIZE);
+			}
+			for (auto& packet : packets) {
+				pfree(packet.buffer, 1);
 			}
 		}
 
@@ -363,7 +375,7 @@ namespace {
 	};
 }
 
-[[noreturn]] static bool rndis_init(const usb::AssignedDevice& device) {
+static bool rndis_init(const usb::AssignedDevice& device) {
 	println("[kernel][usb]: rndis init");
 
 	auto assoc = device.get_iface_assoc();
@@ -436,6 +448,7 @@ namespace {
 
 	dhcp_discover(&*state);
 	state->run();
+	return true;
 }
 
 static void* rndis_match(const usb::Config& config, const usb::DeviceDescriptor& device_desc) {
