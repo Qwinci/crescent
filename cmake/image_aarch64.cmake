@@ -1,6 +1,7 @@
 set(QEMU_FLAGS -M virt,gic-version=3 -cpu cortex-a76
-	-m 6G -smp 8 -no-reboot -no-shutdown
-	-d int -serial stdio #-trace "*gic*"
+	-m 1G -smp 4 #-no-reboot -no-shutdown
+	#-d int
+	-serial stdio
 )
 
 add_custom_command(OUTPUT crescent.bin
@@ -35,7 +36,7 @@ add_custom_command(OUTPUT boot.img
 		--dtb_offset "0x1F00000"
 		--board "\"\""
 		-o boot.img
-	DEPENDS crescent.bin
+	DEPENDS crescent.bin initramfs.tar
 )
 
 add_custom_target(generate_boot_img
