@@ -1,24 +1,91 @@
 #include "acpi.hpp"
+#include "arch/cpu.hpp"
+#include "arch/irq.hpp"
+#include "arch/x86/dev/io_apic.hpp"
 #include "dev/clock.hpp"
 #include "dev/pci.hpp"
+#include "events.hpp"
+#include "manually_destroy.hpp"
 #include "manually_init.hpp"
 #include "mem/mem.hpp"
 #include "mem/register.hpp"
+#include "qacpi/event.hpp"
 #include "qacpi/ns.hpp"
 #include "qacpi/os.hpp"
 #include "sched/mutex.hpp"
+#include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "x86/io.hpp"
+#include "x86/irq.hpp"
 
-namespace pm1_ctrl {
-	static constexpr BitField<u64, bool> SCI_EN {0, 1};
+namespace {
+	struct WorkQueue {
+		void queue(qacpi::Status (*fn)(void* arg), void* arg) {
+			auto guard = _queue.lock();
+			auto entry = new Entry {
+				.fn = fn,
+				.arg = arg
+			};
+			guard->push(entry);
+			event.signal_one();
+		}
+
+		void do_work() {
+			Entry* entry;
+			{
+				auto guard = _queue.lock();
+				assert(!guard->is_empty());
+				entry = guard->pop_front();
+			}
+			entry->fn(entry->arg);
+			delete entry;
+		}
+
+		void wait_for_work() {
+			event.wait();
+		}
+
+	private:
+		struct Entry {
+			DoubleListHook hook {};
+			qacpi::Status (*fn)(void* arg) {};
+			void* arg {};
+		};
+
+		IrqSpinlock<DoubleList<Entry, &Entry::hook>> _queue;
+		Event event;
+	};
+
+	ManuallyDestroy<WorkQueue> ACPI_WORK_QUEUE {};
+
+	[[noreturn]] void acpi_worker(void*) {
+		while (true) {
+			ACPI_WORK_QUEUE->wait_for_work();
+			ACPI_WORK_QUEUE->do_work();
+		}
+	}
 }
 
 namespace acpi {
 	ManuallyInit<qacpi::Context> GLOBAL_CTX;
+	extern ManuallyDestroy<qacpi::events::Context> EVENT_CTX;
 
 	void qacpi_init() {
+		{
+			IrqGuard irq_guard {};
+			auto cpu = get_current_thread()->cpu;
+			auto aml_worker_thread = new Thread {"acpi worker", cpu, &*KERNEL_PROCESS, acpi_worker, nullptr};
+			cpu->scheduler.queue(aml_worker_thread);
+		}
+
+		assert(EVENT_CTX->init(GLOBAL_FADT) == qacpi::Status::Success);
+		assert(EVENT_CTX->enable_acpi_mode(true) == qacpi::Status::Success);
+
 		auto* dsdt_ptr = to_virt<acpi::SdtHeader>(GLOBAL_FADT->dsdt);
+		if (GLOBAL_FADT->hdr.length >= sizeof(Fadt) && GLOBAL_FADT->x_dsdt) {
+			dsdt_ptr = to_virt<acpi::SdtHeader>(GLOBAL_FADT->x_dsdt);
+		}
+
 		auto* dsdt_aml_ptr = offset(dsdt_ptr, const u8*, sizeof(acpi::SdtHeader));
 		u32 dsdt_aml_size = dsdt_ptr->length - sizeof(acpi::SdtHeader);
 
@@ -46,10 +113,6 @@ namespace acpi {
 			}
 		}
 
-		if (auto status = GLOBAL_CTX->init_namespace(); status != qacpi::Status::Success) {
-			panic("[kernel][acpi]: namespace init failed: ", qacpi::status_to_str(status));
-		}
-
 		auto ret = qacpi::ObjectRef::empty();
 		qacpi::ObjectRef arg;
 		assert(arg);
@@ -58,12 +121,10 @@ namespace acpi {
 		auto status = GLOBAL_CTX->evaluate("_PIC", ret, &arg, 1);
 		println("[kernel][acpi]: _PIC returned ", qacpi::status_to_str(status));
 
-		BitValue<u64> pm1_ctrl {read_from_addr(GLOBAL_FADT->x_pm1a_cnt_blk) | read_from_addr(GLOBAL_FADT->x_pm1b_cnt_blk)};
-		if (!(pm1_ctrl & pm1_ctrl::SCI_EN)) {
-			qacpi_os_io_write(GLOBAL_FADT->smi_cmd, 1, GLOBAL_FADT->acpi_enable);
-			while (!(pm1_ctrl & pm1_ctrl::SCI_EN)) {
-				pm1_ctrl = {read_from_addr(GLOBAL_FADT->x_pm1a_cnt_blk) | read_from_addr(GLOBAL_FADT->x_pm1b_cnt_blk)};
-			}
+		acpi::early_events_init();
+
+		if (status = GLOBAL_CTX->init_namespace(); status != qacpi::Status::Success) {
+			panic("[kernel][acpi]: namespace init failed: ", qacpi::status_to_str(status));
 		}
 
 		println("[kernel][acpi]: init done");
@@ -244,18 +305,25 @@ qacpi::Status qacpi_os_io_write(uint32_t port, uint8_t size, uint64_t value) {
 }
 
 qacpi::Status qacpi_os_pci_read(qacpi::PciAddress address, uint64_t offset, uint8_t size, uint64_t& res) {
-	auto* space = pci::get_space(address.segment, address.bus, address.device, address.function);
+	pci::PciAddress addr {
+		.seg = address.segment,
+		.bus = address.bus,
+		.dev = static_cast<u8>(address.device),
+		.func = static_cast<u8>(address.function)
+	};
+
 	if (size == 1) {
-		res = *offset(space, volatile u8*, offset);
+		res = pci::read8(addr, offset);
 	}
 	else if (size == 2) {
-		res = *offset(space, volatile u16*, offset);
+		res = pci::read16(addr, offset);
 	}
 	else if (size == 4) {
-		res = *offset(space, volatile u32*, offset);
+		res = pci::read32(addr, offset);
 	}
 	else if (size == 8) {
-		res = *offset(space, volatile u64*, offset);
+		res = pci::read32(addr, offset);
+		res |= static_cast<u64>(pci::read32(addr, offset + 4)) << 32;
 	}
 	else {
 		return qacpi::Status::InvalidArgs;
@@ -264,18 +332,25 @@ qacpi::Status qacpi_os_pci_read(qacpi::PciAddress address, uint64_t offset, uint
 }
 
 qacpi::Status qacpi_os_pci_write(qacpi::PciAddress address, uint64_t offset, uint8_t size, uint64_t value) {
-	auto* space = pci::get_space(address.segment, address.bus, address.device, address.function);
+	pci::PciAddress addr {
+		.seg = address.segment,
+		.bus = address.bus,
+		.dev = static_cast<u8>(address.device),
+		.func = static_cast<u8>(address.function)
+	};
+
 	if (size == 1) {
-		*offset(space, volatile u8*, offset) = value;
+		pci::write8(addr, offset, value);
 	}
 	else if (size == 2) {
-		*offset(space, volatile u16*, offset) = value;
+		pci::write16(addr, offset, value);
 	}
 	else if (size == 4) {
-		*offset(space, volatile u32*, offset) = value;
+		pci::write32(addr, offset, value);
 	}
 	else if (size == 8) {
-		*offset(space, volatile u64*, offset) = value;
+		pci::write32(addr, offset, value);
+		pci::write32(addr, offset + 4, value >> 32);
 	}
 	else {
 		return qacpi::Status::InvalidArgs;
@@ -283,7 +358,40 @@ qacpi::Status qacpi_os_pci_write(qacpi::PciAddress address, uint64_t offset, uin
 	return qacpi::Status::Success;
 }
 
-void qacpi_os_notify(qacpi::NamespaceNode* node, uint64_t value) {
-	auto name = node->name();
-	println("[kernel][qacpi]: os notify ", kstd::string_view {name.ptr, name.size}, " value ", value);
+void qacpi_os_notify(void* notify_arg, qacpi::NamespaceNode* node, uint64_t value) {
+	acpi::EVENT_CTX->on_notify(node, value);
+}
+
+namespace {
+	bool (*QACPI_SCI_HANDLER)(void* arg);
+	void* QACPI_SCI_ARG;
+	ManuallyDestroy<IrqHandler> SCI_HANDLER {{
+		.fn = [](IrqFrame*) {
+			return QACPI_SCI_HANDLER(QACPI_SCI_ARG);
+		},
+		.can_be_shared = true
+	}};
+	u8 SCI_VEC;
+}
+
+qacpi::Status qacpi_os_install_sci_handler(uint32_t irq, bool (*handler)(void* arg), void* arg, void** handle) {
+	QACPI_SCI_HANDLER = handler;
+	QACPI_SCI_ARG = arg;
+
+	SCI_VEC = x86_alloc_irq(1, true);
+	assert(SCI_VEC);
+	register_irq_handler(SCI_VEC, &*SCI_HANDLER);
+	IO_APIC.register_isa_irq(irq, SCI_VEC, true, true);
+
+	return qacpi::Status::Success;
+}
+
+void qacpi_os_uninstall_sci_handler(uint32_t irq, void* handle) {
+	IO_APIC.deregister_isa_irq(irq);
+	deregister_irq_handler(SCI_VEC, &*SCI_HANDLER);
+}
+
+qacpi::Status qacpi_os_queue_work(qacpi::Status (*fn)(void* arg), void* arg) {
+	ACPI_WORK_QUEUE->queue(fn, arg);
+	return qacpi::Status::Success;
 }

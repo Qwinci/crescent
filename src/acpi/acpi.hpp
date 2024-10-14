@@ -4,18 +4,6 @@
 #include "types.hpp"
 
 namespace acpi {
-	struct [[gnu::packed]] Address {
-		u8 space_id;
-		u8 reg_bit_width;
-		u8 reg_bit_offset;
-		u8 reserved;
-		u64 address;
-
-		[[nodiscard]] constexpr bool is_memory() const {
-			return space_id == 0;
-		}
-	};
-
 	struct [[gnu::packed]] SdtHeader {
 		char signature[4];
 		u32 length;
@@ -68,22 +56,22 @@ namespace acpi {
 		u16 iapc_boot_arch;
 		u8 reserved2;
 		u32 flags;
-		acpi::Address reset_reg;
+		qacpi::Address reset_reg;
 		u8 reset_value;
 		u16 arm_boot_arch;
 		u8 fadt_minor_version;
 		u64 x_firmware_ctrl;
 		u64 x_dsdt;
-		Address x_pm1a_evt_blk;
-		Address x_pm1b_evt_blk;
-		Address x_pm1a_cnt_blk;
-		Address x_pm1b_cnt_blk;
-		Address x_pm2_cnt_blk;
-		Address x_pm_tmr_blk;
-		Address x_gpe0_blk;
-		Address x_gpe1_blk;
-		Address sleep_ctrl_reg;
-		Address sleep_sts_reg;
+		qacpi::Address x_pm1a_evt_blk;
+		qacpi::Address x_pm1b_evt_blk;
+		qacpi::Address x_pm1a_cnt_blk;
+		qacpi::Address x_pm1b_cnt_blk;
+		qacpi::Address x_pm2_cnt_blk;
+		qacpi::Address x_pm_tmr_blk;
+		qacpi::Address x_gpe0_blk;
+		qacpi::Address x_gpe1_blk;
+		qacpi::Address sleep_ctrl_reg;
+		qacpi::Address sleep_sts_reg;
 		u64 hypervisor_vendor;
 	};
 
@@ -100,9 +88,6 @@ namespace acpi {
 	void* get_table(const char (&signature)[5], u32 index = 0);
 
 	void* get_rsdp();
-
-	void write_to_addr(const Address& addr, u64 value);
-	u64 read_from_addr(const acpi::Address& addr);
 
 	extern Fadt* GLOBAL_FADT;
 	extern ManuallyInit<qacpi::Context> GLOBAL_CTX;

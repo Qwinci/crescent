@@ -1,18 +1,24 @@
-#include "acpi/acpi.hpp"
 #include "acpi/pci.hpp"
 #include "arch/cpu.hpp"
 #include "dev/fb/fb_dev.hpp"
 #include "dev/net/nic/nic.hpp"
 #include "dev/net/tcp.hpp"
-#include "dev/pci.hpp"
 #include "exe/elf_loader.hpp"
 #include "fs/tar.hpp"
 #include "fs/vfs.hpp"
-#include "qacpi/context.hpp"
-#include "qacpi/ns.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "stdio.hpp"
+
+#ifdef __x86_64__
+#include "acpi/acpi.hpp"
+#include "acpi/events.hpp"
+#include "dev/pci.hpp"
+
+#include "qacpi/context.hpp"
+#include "qacpi/ns.hpp"
+
+#endif
 
 // 9a49 == uhd
 // a0c8 == audio
@@ -60,14 +66,21 @@ struct NetworkLogSink : LogSink {
 	kstd::shared_ptr<Socket> sock;
 };
 
+void print_mem() {
+	println("[kernel]: total memory: ", pmalloc_get_total_mem() / 1024 / 1024, "MB, reserved: ", pmalloc_get_reserved_mem() / 1024 / 1024, "MB");
+	println("[kernel]: used memory: ", pmalloc_get_used_mem() / 1024 / 1024, "MB (", pmalloc_get_used_mem() / 1024, "KB)");
+}
+
 [[noreturn, gnu::used]] void kmain(const void* initrd, usize initrd_size) {
     println("[kernel]: entered kmain");
+	print_mem();
 
 #if ARCH_X86_64
 	println("[kernel]: acpi init...");
 	pci::acpi_init();
 	println("[kernel]: qacpi init");
 	acpi::qacpi_init();
+	acpi::events_init();
 	println("[kernel]: pci acpi init");
 	acpi::pci_init();
 	println("[kernel]: pci enumerate");
@@ -92,9 +105,9 @@ struct NetworkLogSink : LogSink {
 						println("failed evaluate battery, status: ", qacpi::status_to_str(status));
 					}
 					else {
-						auto state = acpi::GLOBAL_CTX->get_package_element(ret, 0)->get_unsafe<uint64_t>();
-						auto present = acpi::GLOBAL_CTX->get_package_element(ret, 1)->get_unsafe<uint64_t>();
-						auto remaining = acpi::GLOBAL_CTX->get_package_element(ret, 2)->get_unsafe<uint64_t>();
+						auto state = acpi::GLOBAL_CTX->get_pkg_element(ret, 0)->get_unsafe<uint64_t>();
+						auto present = acpi::GLOBAL_CTX->get_pkg_element(ret, 1)->get_unsafe<uint64_t>();
+						auto remaining = acpi::GLOBAL_CTX->get_pkg_element(ret, 2)->get_unsafe<uint64_t>();
 						if (!present) {
 							println("battery has no present rate");
 						}
@@ -150,6 +163,7 @@ struct NetworkLogSink : LogSink {
 	auto* user_thread = new Thread {"user thread", cpu, user_process, elf_result.value().entry, user_arg};
 
 	println("[kernel]: launching init");
+	print_mem();
 	cpu->scheduler.queue(user_thread);
 	cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
 	cpu->scheduler.block();

@@ -9,7 +9,7 @@ struct [[gnu::packed]] HpetTable {
 	u8 hw_rev_id;
 	u8 flags;
 	u16 pci_vendor_id;
-	acpi::Address address;
+	qacpi::Address address;
 	u8 hpet_num;
 	u16 min_tick;
 	u8 page_protection;
@@ -53,7 +53,7 @@ void hpet_init() {
 		return;
 	}
 
-	assert(table->address.is_memory());
+	assert(table->address.space_id == qacpi::RegionSpace::SystemMemory);
 	SPACE.set_phys(table->address.address, 0x1000);
 	assert(SPACE.map(CacheMode::Uncached));
 

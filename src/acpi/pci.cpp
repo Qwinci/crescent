@@ -61,7 +61,7 @@ namespace acpi {
 					bool found = false;
 					while (true) {
 						qacpi::Resource res;
-						status = qacpi::resource_parse(buffer->data->data, buffer->data->size, offset, res);
+						status = qacpi::resource_parse(buffer->data(), buffer->size(), offset, res);
 						if (status == qacpi::Status::EndOfResources) {
 							break;
 						}
@@ -128,7 +128,7 @@ namespace acpi {
 		}
 
 		for (u32 i = 0; i < pkg->size(); ++i) {
-			auto elem = GLOBAL_CTX->get_package_element(ret, i);
+			auto elem = GLOBAL_CTX->get_pkg_element(ret, i);
 			if (!elem) {
 				println("[kernel][qacpi]: error: failed to resolve _PRT package element");
 				continue;
@@ -139,19 +139,19 @@ namespace acpi {
 			}
 
 			u64* address;
-			if (!(address = GLOBAL_CTX->get_package_element(elem, 0)->get<uint64_t>())) {
+			if (!(address = GLOBAL_CTX->get_pkg_element(elem, 0)->get<uint64_t>())) {
 				println("[kernel][qacpi]: error: _PRT address is not a number");
 				return false;
 			}
 
 			u64* pin;
-			if (!(pin = GLOBAL_CTX->get_package_element(elem, 1)->get<uint64_t>())) {
+			if (!(pin = GLOBAL_CTX->get_pkg_element(elem, 1)->get<uint64_t>())) {
 				println("[kernel][qacpi]: error: _PRT pin is not a number");
 				return false;
 			}
 
 			qacpi::NamespaceNode* source = nullptr;
-			auto source_obj = GLOBAL_CTX->get_package_element(elem, 2);
+			auto source_obj = GLOBAL_CTX->get_pkg_element(elem, 2);
 			if (source_obj->get<qacpi::Device>()) {
 				source = source_obj->node;
 			}
@@ -161,7 +161,7 @@ namespace acpi {
 			}
 
 			uint64_t* source_index;
-			if (!(source_index = GLOBAL_CTX->get_package_element(elem, 3)->get<uint64_t>())) {
+			if (!(source_index = GLOBAL_CTX->get_pkg_element(elem, 3)->get<uint64_t>())) {
 				println("[kernel][qacpi]: error: _PRT source index is not a number");
 				return false;
 			}
@@ -196,13 +196,13 @@ namespace acpi {
 				if (status == qacpi::Status::Success) {
 					if (!seg_obj->get<uint64_t>()) {
 						println("[kernel][qacpi]: _SEG is not a number");
-						return false;
+						return qacpi::IterDecision::Continue;
 					}
 					seg = seg_obj->get_unsafe<uint64_t>();
 				}
-				else if (status != qacpi::Status::MethodNotFound) {
+				else if (status != qacpi::Status::NotFound) {
 					println("[kernel][qacpi]: failed to execute _SEG: ", qacpi::status_to_str(status));
-					return false;
+					return qacpi::IterDecision::Continue;
 				}
 
 				auto bbn_obj = qacpi::ObjectRef::empty();
@@ -211,18 +211,18 @@ namespace acpi {
 				if (status == qacpi::Status::Success) {
 					if (!bbn_obj->get<uint64_t>()) {
 						println("[kernel][qacpi]: _BBN is not a number");
-						return false;
+						return qacpi::IterDecision::Continue;
 					}
 					bbn = bbn_obj->get_unsafe<uint64_t>();
 				}
-				else if (status != qacpi::Status::MethodNotFound) {
+				else if (status != qacpi::Status::NotFound) {
 					println("[kernel][qacpi]: failed to execute _BBN: ", qacpi::status_to_str(status));
-					return false;
+					return qacpi::IterDecision::Continue;
 				}
 
 				kstd::vector<PciRouting> routings;
 				if (!get_pci_routing(node, routings)) {
-					return false;
+					return qacpi::IterDecision::Continue;
 				}
 
 				PCI_ROOT_BUSES->push({
@@ -231,7 +231,7 @@ namespace acpi {
 					.routings {std::move(routings)}
 				});
 
-				return false;
+				return qacpi::IterDecision::Continue;
 			});
 	}
 }

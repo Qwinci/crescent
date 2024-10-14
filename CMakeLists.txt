@@ -17,7 +17,6 @@ target_include_directories(crescent PRIVATE
 	src/std
 	include
 )
-target_link_libraries(crescent PRIVATE qacpi_lib)
 
 target_compile_options(crescent PRIVATE
 	-Wall -Wextra -Werror=switch -Werror=return-type
@@ -47,6 +46,8 @@ if(ARCH STREQUAL "x86_64")
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 		target_compile_options(crescent PRIVATE -fsanitize=undefined -fsanitize-minimal-runtime)
 	endif()
+
+	target_link_libraries(crescent PRIVATE qacpi::qacpi qacpi::events)
 
 	include(cmake/image_x86_64.cmake)
 elseif(ARCH STREQUAL "aarch64")

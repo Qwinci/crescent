@@ -33,7 +33,10 @@ public:
 	void register_override(u8 irq, u32 gsi, bool active_low, bool level_triggered);
 
 	void register_irq(u32 gsi, IoApicIrqInfo info);
-	void register_isa_irq(u8 irq, u8 vec);
+	void register_isa_irq(u32 irq, u8 vec, bool active_low = false, bool level_triggered = false);
+
+	void deregister_irq(u32 gsi);
+	void deregister_isa_irq(u32 irq);
 
 private:
 	struct IoApic {

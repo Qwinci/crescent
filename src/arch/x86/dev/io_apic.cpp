@@ -10,6 +10,8 @@ namespace regs {
 	static constexpr u8 IOAPICVER = 0x1;
 }
 
+static constexpr u32 MASK_IRQ_BIT = 1 << 16;
+
 u32 IoApicManager::IoApic::read(u8 reg) {
 	space.store(regs::IOREGSEL, reg);
 	return space.load(regs::IOWIN);
@@ -57,21 +59,48 @@ void IoApicManager::register_irq(u32 gsi, IoApicIrqInfo info) {
 	}
 }
 
-void IoApicManager::register_isa_irq(u8 irq, u8 vec) {
-	auto& override = overrides[irq];
+void IoApicManager::register_isa_irq(u32 irq, u8 vec, bool active_low, bool level_triggered) {
 	IoApicIrqInfo info {};
 	info.vec = vec;
+
 	u32 gsi;
-	if (override.used) {
+	if (irq < 16 && overrides[irq].used) {
+		auto& override = overrides[irq];
 		info.polarity = override.active_low ? IoApicPolarity::ActiveLow : IoApicPolarity::ActiveHigh;
 		info.trigger = override.level_triggered ? IoApicTrigger::Level : IoApicTrigger::Edge;
 		gsi = override.gsi;
 	}
 	else {
+		info.polarity = active_low ? IoApicPolarity::ActiveLow : IoApicPolarity::ActiveHigh;
+		info.trigger = level_triggered ? IoApicTrigger::Level : IoApicTrigger::Edge;
 		gsi = irq;
 	}
 
 	register_irq(gsi, info);
+}
+
+void IoApicManager::deregister_irq(u32 gsi) {
+	for (usize i = 0; i < io_apic_count; ++i) {
+		auto& apic = io_apics[i];
+		if (apic.gsi_base <= gsi && gsi - apic.gsi_base < apic.gsi_count) {
+			u8 entry = gsi - apic.gsi_base;
+			apic.write(0x10 + entry * 2, MASK_IRQ_BIT);
+			apic.write(0x10 + entry * 2 + 1, 0);
+			return;
+		}
+	}
+}
+
+void IoApicManager::deregister_isa_irq(u32 irq) {
+	u32 gsi;
+	if (irq < 16 && overrides[irq].used) {
+		gsi = overrides[irq].gsi;
+	}
+	else {
+		gsi = irq;
+	}
+
+	deregister_irq(gsi);
 }
 
 IoApicManager IO_APIC {};

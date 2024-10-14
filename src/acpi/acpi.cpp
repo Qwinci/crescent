@@ -1,8 +1,6 @@
 #include "acpi.hpp"
 #include "cstring.hpp"
 #include "mem/mem.hpp"
-#include "qacpi/op_region.hpp"
-#include "qacpi/os.hpp"
 #include "stdio.hpp"
 #include "assert.hpp"
 
@@ -83,45 +81,5 @@ namespace acpi {
 #endif
 
 		return nullptr;
-	}
-
-	void write_to_addr(const acpi::Address& addr, u64 value) {
-		if (!addr.address) {
-			return;
-		}
-
-		u8 size = addr.reg_bit_width / 8;
-
-		auto space = static_cast<qacpi::RegionSpace>(addr.space_id);
-		if (space == qacpi::RegionSpace::SystemMemory) {
-			qacpi_os_mmio_write(addr.address, size, value);
-		}
-		else if (space == qacpi::RegionSpace::SystemIo) {
-			qacpi_os_io_write(addr.address, size, value);
-		}
-		else {
-			panic("unsupported address type in write_to_addr");
-		}
-	}
-
-	u64 read_from_addr(const acpi::Address& addr) {
-		if (!addr.address) {
-			return 0;
-		}
-
-		u8 size = addr.reg_bit_width / 8;
-
-		auto space = static_cast<qacpi::RegionSpace>(addr.space_id);
-		u64 res;
-		if (space == qacpi::RegionSpace::SystemMemory) {
-			qacpi_os_mmio_read(addr.address, size, res);
-		}
-		else if (space == qacpi::RegionSpace::SystemIo) {
-			qacpi_os_io_read(addr.address, size, res);
-		}
-		else {
-			panic("unsupported address type in read_from_addr");
-		}
-		return res;
 	}
 }
