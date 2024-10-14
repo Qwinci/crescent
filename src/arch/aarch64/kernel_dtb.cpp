@@ -112,6 +112,24 @@ void kernel_dtb_init(void* plain_dtb_void) {
 					});
 				}
 			}
+			else if (name == "reg-names") {
+				kstd::string_view whole_reg_names {reinterpret_cast<const char*>(next_ptr), len - 1};
+
+				size_t pos = 0;
+				while (pos < whole_reg_names.size()) {
+					auto reg_name_end = whole_reg_names.find(0, pos);
+					kstd::string_view reg_name;
+					if (reg_name_end == kstd::string_view::npos) {
+						reg_name = whole_reg_names.substr(pos);
+						pos = whole_reg_names.size();
+					}
+					else {
+						reg_name = whole_reg_names.substr(pos, reg_name_end - pos);
+						pos = reg_name_end + 1;
+					}
+					new_node->reg_names.push(reg_name);
+				}
+			}
 
 			new_node->properties.push({
 				.name = name,

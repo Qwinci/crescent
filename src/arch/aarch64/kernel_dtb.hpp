@@ -61,6 +61,26 @@ struct DtbNode {
 	};
 	kstd::vector<Reg> regs {};
 
+	kstd::optional<Reg> reg_by_name(kstd::string_view reg_name) {
+		for (usize i = 0; i < reg_names.size(); ++i) {
+			if (reg_names[i] == reg_name) {
+				assert(i < regs.size());
+				return regs[i];
+			}
+		}
+		return {};
+	}
+
+	kstd::optional<Reg> reg_by_name_fallback(kstd::string_view reg_name, usize fallback_index) {
+		if (auto reg = reg_by_name(reg_name)) {
+			return reg;
+		}
+		else {
+			assert(fallback_index < regs.size());
+			return regs[fallback_index];
+		}
+	}
+
 	struct Irq {
 		u32 num;
 		TriggerMode mode;
@@ -101,6 +121,7 @@ private:
 	u32 interrupt_cells {};
 	u32 interrupt_parent_handle {};
 	kstd::vector<AddrTranslation> addr_translations;
+	kstd::vector<kstd::string_view> reg_names {};
 	bool interrupt_controller {};
 
 	friend void kernel_dtb_init(void* plain_dtb);
