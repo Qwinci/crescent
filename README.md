@@ -96,7 +96,7 @@ There are also different targets that may be useful:
             - [ ] OHCI
             - [ ] EHCI
             - [x] XHCI
-        - [ ] Keyboard
+        - [x] Keyboard
         - [x] Mouse
         - [ ] Mass storage
         - [x] RNDIS (used eg. for tethering internet from a phone)

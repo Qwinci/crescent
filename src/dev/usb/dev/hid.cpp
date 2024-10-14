@@ -90,6 +90,8 @@ namespace {
 	struct Field {
 		u32 usage;
 		u32 bit_size;
+		u32 min;
+		u32 max;
 		bool is_signed;
 		bool is_index;
 		bool is_relative;
@@ -185,6 +187,8 @@ static kstd::vector<Report> parse_hid_report(const u8* report, usize report_leng
 							result.fields.push(Field {
 								.usage = usage,
 								.bit_size = global.report_size,
+								.min = global.logical_min,
+								.max = global.logical_max,
 								.is_signed = is_signed,
 								.is_index = !is_variable,
 								.is_relative = is_relative,
@@ -296,12 +300,17 @@ static kstd::vector<Report> parse_hid_report(const u8* report, usize report_leng
 	return reports;
 }
 
-namespace {
-	MouseEvent MOUSE_EVENT {};
-	bool MOUSE_MODIFIED = false;
-}
+struct EventState {
+	MouseEvent mouse;
+	KeyEvent key[8];
+	u32 key_count;
+	bool mouse_modified;
+	bool modifiers[8];
+	kstd::vector<Scancode> prev;
+	kstd::vector<Scancode> new_prev;
+};
 
-static void add_event(const Field& field, u32 value) {
+static void add_event(EventState& state, const Field& field, u32 value) {
 	auto usage = field.usage;
 	u32 page = usage >> 16;
 	usage &= 0xFFFF;
@@ -309,39 +318,69 @@ static void add_event(const Field& field, u32 value) {
 	auto set_relative = [&](i32& res) {
 		assert(field.is_relative);
 		assert(field.is_signed);
-		MOUSE_MODIFIED = true;
+		state.mouse_modified = true;
 		res = sign_extent(value, field.bit_size);
 	};
 
 	if (page == 1) {
 		switch (usage) {
 			case 0x30:
-				set_relative(MOUSE_EVENT.x_movement);
+				set_relative(state.mouse.x_movement);
 				break;
 			case 0x31:
-				set_relative(MOUSE_EVENT.y_movement);
-				MOUSE_EVENT.y_movement = -MOUSE_EVENT.y_movement;
+				set_relative(state.mouse.y_movement);
+				state.mouse.y_movement = -state.mouse.y_movement;
 				break;
 			case 0x38:
-				set_relative(MOUSE_EVENT.z_movement);
+				set_relative(state.mouse.z_movement);
 				break;
 			default:
 				break;
+		}
+	}
+	else if (page == 7) {
+		if (usage >= 224 && usage <= 231) {
+			if (value) {
+				if (!state.modifiers[usage - 224]) {
+					state.modifiers[usage - 224] = true;
+					state.key[state.key_count++] = {
+						.code = static_cast<Scancode>(usage),
+						.pressed = true
+					};
+				}
+			}
+			else {
+				for (u32 i = 224; i < 231; ++i) {
+					if (state.modifiers[i - 224]) {
+						state.modifiers[i - 224] = false;
+						state.key[state.key_count++] = {
+							.code = static_cast<Scancode>(i),
+							.pressed = false
+						};
+					}
+				}
+			}
+		}
+		else {
+			assert(field.is_index);
+			if (value >= 4) {
+				state.new_prev.push(static_cast<Scancode>(value));
+			}
 		}
 	}
 	else if (page == 9) {
 		switch (usage) {
 			case 1:
-				MOUSE_MODIFIED = true;
-				MOUSE_EVENT.left_pressed = value;
+				state.mouse_modified = true;
+				state.mouse.left_pressed = value;
 				break;
 			case 2:
-				MOUSE_MODIFIED = true;
-				MOUSE_EVENT.right_pressed = value;
+				state.mouse_modified = true;
+				state.mouse.right_pressed = value;
 				break;
 			case 3:
-				MOUSE_MODIFIED = true;
-				MOUSE_EVENT.middle_pressed = value;
+				state.mouse_modified = true;
+				state.mouse.middle_pressed = value;
 				break;
 			default:
 				break;
@@ -349,16 +388,56 @@ static void add_event(const Field& field, u32 value) {
 	}
 }
 
-static void finalize_event() {
-	if (MOUSE_MODIFIED) {
+static void finalize_event(EventState& state) {
+	if (state.mouse_modified) {
 		GLOBAL_EVENT_QUEUE.push({
 			.type = EVENT_TYPE_MOUSE,
-			.mouse = MOUSE_EVENT
+			.mouse = state.mouse
 		});
 	}
+	for (u32 i = 0; i < state.key_count; ++i) {
+		GLOBAL_EVENT_QUEUE.push({
+			.type = EVENT_TYPE_KEY,
+			.key = state.key[i]
+		});
+	}
+
+	for (auto new_key : state.new_prev) {
+		GLOBAL_EVENT_QUEUE.push({
+			.type = EVENT_TYPE_KEY,
+			.key {
+				.code = new_key,
+				.pressed = true
+			}
+		});
+	}
+
+	for (auto old_key : state.prev) {
+		bool still_pressed = false;
+
+		for (auto new_key : state.new_prev) {
+			if (new_key == old_key) {
+				still_pressed = true;
+				break;
+			}
+		}
+
+		if (!still_pressed) {
+			GLOBAL_EVENT_QUEUE.push({
+				.type = EVENT_TYPE_KEY,
+				.key {
+					.code = old_key,
+					.pressed = false
+				}
+			});
+		}
+	}
+
+	state.prev = std::move(state.new_prev);
 }
 
 static bool usb_hid_init(const usb::AssignedDevice& device) {
+	println("[kernel][usb]: hid init");
 	HidDescriptor* hid_desc = nullptr;
 
 	auto& iface = device.interfaces[device.interface_index];
@@ -371,6 +450,7 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 	}
 
 	if (!hid_desc) {
+		println("no hid desc");
 		return false;
 	}
 
@@ -384,6 +464,7 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 	}
 
 	if (!report_length) {
+		println("no report length");
 		return false;
 	}
 
@@ -453,7 +534,7 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 
 	auto page = pmalloc(1);
 	assert(page);
-	auto virt = KERNEL_VSPACE.alloc(1);
+	auto virt = KERNEL_VSPACE.alloc(PAGE_SIZE);
 	assert(virt);
 	assert(KERNEL_PROCESS->page_map.map(
 		reinterpret_cast<u64>(virt),
@@ -476,10 +557,19 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 
 	count = device.device.normal_multiple(packets.data(), count);
 
+	EventState state {};
+
 	while (true) {
 		for (usize i = 0; i < count; ++i) {
 			auto* packet = &packets[i];
 			packet->event.wait();
+			if (packet->event.status == usb::Status::Detached) {
+				println("[kernel][usb]: hid driver exiting due to a device detach");
+				pfree(page, 1);
+				KERNEL_PROCESS->page_map.unmap(reinterpret_cast<u64>(virt));
+				KERNEL_VSPACE.free(virt, PAGE_SIZE);
+				return true;
+			}
 
 			auto* ptr = static_cast<u8*>(virt) + i * total_byte_size;
 			Report* report;
@@ -501,12 +591,8 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 			}
 
 			u32 report_bit_offset = 0;
-			for (auto& field : report->fields) {
-				if (field.pad) {
-					report_bit_offset += field.bit_size;
-					continue;
-				}
 
+			auto get_value = [&](const Field& field) {
 				u32 byte_offset = report_bit_offset / 8;
 
 				u32 value = 0;
@@ -525,12 +611,33 @@ static bool usb_hid_init(const usb::AssignedDevice& device) {
 					++byte_offset;
 				}
 
-				add_event(field, value);
+				return value;
+			};
+
+			state.mouse_modified = false;
+			state.key_count = 0;
+
+			for (auto& field : report->fields) {
+				if (field.pad) {
+					report_bit_offset += field.bit_size;
+					continue;
+				}
+
+				u32 value = get_value(field);
+
+				if (field.is_index) {
+					if (value >= field.min && value <= field.max) {
+						add_event(state, field, value);
+					}
+				}
+				else {
+					add_event(state, field, value);
+				}
 
 				report_bit_offset += field.bit_size;
 			}
 
-			finalize_event();
+			finalize_event(state);
 
 			assert(device.device.normal_one(packet));
 		}
