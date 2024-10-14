@@ -274,6 +274,129 @@ struct InputControlContext {
 	static constexpr BitField<u32, u32> DROP_CONTEXT {2, 30};
 };
 
+enum class CompletionCode : u8 {
+	Invalid,
+	Success,
+	DataBufferError,
+	BabbleDetected,
+	TransactionError,
+	TrbError,
+	Stall,
+	ResourceError,
+	BandwidthError,
+	NoSlotsAvailable,
+	InvalidStreamType,
+	SlotNotEnabled,
+	EndpointNotEnabled,
+	ShortPacket,
+	RingUnderrun,
+	RingOverrun,
+	VfEventRingFull,
+	ParameterError,
+	BandwidthOverrun,
+	ContextStateError,
+	NoPingResponse,
+	EventRingFull,
+	IncompatibleDevice,
+	MissedService,
+	CommandRingStopped,
+	CommandAborted,
+	Stopped,
+	StoppedLengthInvalid,
+	StoppedShortPacket,
+	MaxExitLatencyTooLarge,
+	Reserved,
+	IsochBufferOverrun,
+	EventLost,
+	UndefinedError,
+	InvalidStreamId,
+	SecondaryBandwidthError,
+	SplitTransactionError
+};
+
+namespace {
+	constexpr kstd::string_view status_to_str(CompletionCode code) {
+		switch (code) {
+			case CompletionCode::Invalid:
+				return "invalid";
+			case CompletionCode::Success:
+				return "success";
+			case CompletionCode::DataBufferError:
+				return "data buffer error";
+			case CompletionCode::BabbleDetected:
+				return "babble detected";
+			case CompletionCode::TransactionError:
+				return "transaction error";
+			case CompletionCode::TrbError:
+				return "trb error";
+			case CompletionCode::Stall:
+				return "stall";
+			case CompletionCode::ResourceError:
+				return "resource error";
+			case CompletionCode::BandwidthError:
+				return "bandwidth error";
+			case CompletionCode::NoSlotsAvailable:
+				return "no slots available";
+			case CompletionCode::InvalidStreamType:
+				return "invalid stream type";
+			case CompletionCode::SlotNotEnabled:
+				return "slot not enabled";
+			case CompletionCode::EndpointNotEnabled:
+				return "endpoint not enabled";
+			case CompletionCode::ShortPacket:
+				return "short packet";
+			case CompletionCode::RingUnderrun:
+				return "ring underrrun";
+			case CompletionCode::RingOverrun:
+				return "ring overrun";
+			case CompletionCode::VfEventRingFull:
+				return "vf event ring full";
+			case CompletionCode::ParameterError:
+				return "parameter error";
+			case CompletionCode::BandwidthOverrun:
+				return "bandwidth overrun";
+			case CompletionCode::ContextStateError:
+				return "context state error";
+			case CompletionCode::NoPingResponse:
+				return "no ping response";
+			case CompletionCode::EventRingFull:
+				return "event ring full";
+			case CompletionCode::IncompatibleDevice:
+				return "incompatible device";
+			case CompletionCode::MissedService:
+				return "missed service";
+			case CompletionCode::CommandRingStopped:
+				return "command ring stopped";
+			case CompletionCode::CommandAborted:
+				return "command aborted";
+			case CompletionCode::Stopped:
+				return "stopped";
+			case CompletionCode::StoppedLengthInvalid:
+				return "stopped - length invalid";
+			case CompletionCode::StoppedShortPacket:
+				return "stopped - short packet";
+			case CompletionCode::MaxExitLatencyTooLarge:
+				return "max exit latency too large";
+			case CompletionCode::Reserved:
+				return "reserved";
+			case CompletionCode::IsochBufferOverrun:
+				return "isoch buffer overrun";
+			case CompletionCode::EventLost:
+				return "event lost";
+			case CompletionCode::UndefinedError:
+				return "undefined error";
+			case CompletionCode::InvalidStreamId:
+				return "invalid stream id";
+			case CompletionCode::SecondaryBandwidthError:
+				return "secondary bandwidth error";
+			case CompletionCode::SplitTransactionError:
+				return "split transaction error";
+			default:
+				return "unknown error";
+		}
+	}
+}
+
 namespace {
 	struct InputContext {
 		InputControlContext* control;
@@ -317,15 +440,15 @@ namespace {
 		}
 	};
 
-	constexpr usb::Status xhci_get_status(u8 status) {
-		if (status == 1) {
+	constexpr usb::Status xhci_get_status(CompletionCode status) {
+		if (status == CompletionCode::Success) {
 			return usb::Status::Success;
 		}
-		else if (status == 13) {
+		else if (status == CompletionCode::ShortPacket) {
 			return usb::Status::ShortPacket;
 		}
 		else {
-			println("[kernel][xhci]: unhandled status ", status);
+			println("[kernel][xhci]: unhandled status ", status_to_str(status));
 			return usb::Status::TransactionError;
 		}
 	}
@@ -589,7 +712,7 @@ union EventTrb {
 
 		struct flags0 {
 			static constexpr BitField<u32, u32> TRANSFER_LEN {0, 24};
-			static constexpr BitField<u32, u8> CODE {24, 8};
+			static constexpr BitField<u32, CompletionCode> CODE {24, 8};
 		};
 
 		struct flags1 {
@@ -606,7 +729,7 @@ union EventTrb {
 
 		struct flags0 {
 			static constexpr BitField<u32, u32> PARAM {0, 24};
-			static constexpr BitField<u32, u8> CODE {24, 8};
+			static constexpr BitField<u32, CompletionCode> CODE {24, 8};
 		};
 
 		struct flags1 {
@@ -626,17 +749,15 @@ union EventTrb {
 		};
 
 		struct flags1 {
-			static constexpr BitField<u32, u8> COMPLETION_CODE {24, 8};
+			static constexpr BitField<u32, CompletionCode> COMPLETION_CODE {24, 8};
 		};
 	} port_status_change;
-
-	static constexpr u8 CODE_SUCCESS = 1;
 };
 static_assert(sizeof(EventTrb) == 16);
 
 struct SupportedSpeed {
 	u8 port_speed_id;
-	u64 port_byte_rate;
+	u64 port_bit_rate;
 };
 
 struct SupportedProtocol {
@@ -660,40 +781,51 @@ struct XhciController {
 		auto portsc = port_space.load(port_regs::PORTSC);
 		auto port_speed = portsc & portsc::PORT_SPEED;
 
-		DeviceContext::Speed slot_speed;
+		DeviceContext::Speed slot_speed = DeviceContext::Speed::Low;
 		if (!max_packet_size) {
-			switch (port_speed) {
-				case 1:
-					// full speed (12MB/s)
-					max_packet_size = 64;
-					slot_speed = DeviceContext::Speed::Full;
+			for (auto& protocol : supported_protocols) {
+				if (port < protocol.port_offset ||
+					port >= protocol.port_offset + protocol.count) {
+					continue;
+				}
+
+				bool found = false;
+				for (auto& speed : protocol.speeds) {
+					if (port_speed == speed.port_speed_id) {
+						found = true;
+
+						if (speed.port_bit_rate <= 1000 * 1000 + (1000 * 1000 / 2)) {
+							// low speed (1.5Mb/s)
+							max_packet_size = 8;
+							slot_speed = DeviceContext::Speed::Low;
+						}
+						else if (speed.port_bit_rate <= 1000 * 1000 * 12) {
+							// full speed (12MB/s)
+							max_packet_size = 64;
+							slot_speed = DeviceContext::Speed::Full;
+						}
+						else if (speed.port_bit_rate <= 1000 * 1000 * 480) {
+							// high speed (480Mb/s)
+							max_packet_size = 64;
+							slot_speed = DeviceContext::Speed::High;
+						}
+						else if (speed.port_bit_rate <= 1000UL * 1000 * 1000 * 5) {
+							// super speed (gen1 x1) (5Gb/s)
+							max_packet_size = 512;
+							slot_speed = DeviceContext::Speed::Super;
+						}
+						else {
+							max_packet_size = 512;
+							slot_speed = DeviceContext::Speed::SuperPlus;
+						}
+
+						break;
+					}
+				}
+
+				if (found) {
 					break;
-				case 2:
-					// low speed (1.5Mb/s)
-					max_packet_size = 8;
-					slot_speed = DeviceContext::Speed::Low;
-					break;
-				case 3:
-					// high speed (480Mb/s)
-					max_packet_size = 64;
-					slot_speed = DeviceContext::Speed::High;
-					break;
-				case 4:
-					// super speed (gen1 x1) (5Gb/s)
-					max_packet_size = 512;
-					slot_speed = DeviceContext::Speed::Super;
-					break;
-				case 5:
-					// super speed+ (gen2 x1) (10Gb/s)
-				case 6:
-					// super speed+ (gen1 x2) (5Gb/s)
-				case 7:
-					// super speed+ (gen2 x2) (10Gb/s)
-					max_packet_size = 512;
-					slot_speed = DeviceContext::Speed::SuperPlus;
-					break;
-				default:
-					assert(false);
+				}
 			}
 		}
 
@@ -701,6 +833,7 @@ struct XhciController {
 
 		slot.default_control_ring.get_unsafe()->max_packet_size = max_packet_size;
 		slot.port = port;
+		slot.speed = slot_speed;
 
 		InputContext ctx {};
 		ctx.init(ctx_size_flag);
@@ -801,7 +934,7 @@ struct XhciController {
 			u32 cmd_index = (event.cmd_completion.cmd_trb_ptr - cmd_ring_phys) / 16;
 			u8 trb_type = cmd_ring[cmd_index].generic.flags3 & CmdTrb::flags3::TRB_TYPE;
 			if (trb_type == CmdTrb::ENABLE_SLOT) {
-				assert(status == EventTrb::CODE_SUCCESS);
+				assert(status == CompletionCode::Success);
 
 				u32 port = UINT32_MAX;
 				for (size_t i = 0; i < slot_assign_queue.size(); ++i) {
@@ -819,19 +952,22 @@ struct XhciController {
 				address_device(slot_index, port, 0);
 			}
 			else if (trb_type == CmdTrb::DISABLE_SLOT) {
-				assert(status == EventTrb::CODE_SUCCESS);
+				assert(status == CompletionCode::Success);
 
 				println("[kernel][xhci]: disable slot ", slot_index);
 
 				slots[slot_index].reset(ctx_size_flag);
 			}
 			else if (trb_type == CmdTrb::ADDRESS_DEVICE) {
-				println("[kernel][xhci]: address device status: ", status);
+				println("[kernel][xhci]: address device status: ", status_to_str(status));
 				pfree(cmd_ring[cmd_index].address_device.input_context_ptr, 1);
 
 				auto& slot = slots[slot_index];
 
 				if (slot.state == DeviceContext::State::Initial) {
+					println("[kernel][xhci]: waiting for trstrcy (50ms)");
+					mdelay(50);
+
 					auto page = pmalloc(1);
 					assert(page);
 					memset(to_virt<void>(page), 0, 8);
@@ -844,7 +980,7 @@ struct XhciController {
 						usb::setup::desc_type::DEVICE << 8 | 0,
 						0,
 						page,
-						8
+						static_cast<u16>(slot.default_control_ring.get_unsafe()->max_packet_size)
 					};
 
 					auto guard = slot.default_control_ring.lock();
@@ -883,7 +1019,7 @@ struct XhciController {
 			auto& slot = slots[slot_index];
 
 			if (slot.state == DeviceContext::State::Default) {
-				if (status == EventTrb::CODE_SUCCESS) {
+				if (status == CompletionCode::Success || status == CompletionCode::ShortPacket) {
 					if (!(event.transfer.trb_pointer & 1UL << 63)) {
 						auto* descriptor = to_virt<usb::DeviceDescriptor>(event.transfer.trb_pointer);
 						slot.device_descriptor = *descriptor;
@@ -899,7 +1035,10 @@ struct XhciController {
 					}
 				}
 				else {
-					println("[kernel][xhci]: get descriptor failed with status ", status, ", try replugging the device");
+					println(
+						"[kernel][xhci]: get descriptor failed with status ",
+						status_to_str(status),
+						", try replugging the device");
 				}
 			}
 			else if ((event.transfer.flags1 & EventTrb::Transfer::flags1::ED) &&
@@ -1091,33 +1230,33 @@ struct XhciController {
 					if (major_revision == 2) {
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 1,
-							.port_byte_rate = 1024 * 1024 * 12
+							.port_bit_rate = 1000 * 1000 * 12
 						});
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 2,
-							.port_byte_rate = 1024 * 1024 + (1024 * 1024 / 2)
+							.port_bit_rate = 1000 * 1000 + (1000 * 1000 / 2)
 						});
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 3,
-							.port_byte_rate = 1024 * 1024 * 480
+							.port_bit_rate = 1000 * 1000 * 480
 						});
 					}
 					else if (major_revision == 3) {
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 4,
-							.port_byte_rate = 1024UL * 1024 * 1024 * 5
+							.port_bit_rate = 1000UL * 1000 * 1000 * 5
 						});
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 5,
-							.port_byte_rate = 1024UL * 1024 * 1024 * 10
+							.port_bit_rate = 1000UL * 1000 * 1000 * 10
 						});
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 6,
-							.port_byte_rate = 1024UL * 1024 * 1024 * 5
+							.port_bit_rate = 1000UL * 1000 * 1000 * 5
 						});
 						speeds.push(SupportedSpeed {
 							.port_speed_id = 7,
-							.port_byte_rate = 1024UL * 1024 * 1024 * 10
+							.port_bit_rate = 1000UL * 1000 * 1000 * 10
 						});
 					}
 					else {
@@ -1143,28 +1282,28 @@ struct XhciController {
 					if (protocol_speed_exponent == 0) {
 						protocol_speed_multiplier = 1;
 					}
-					// kb/s
+					// Kb/s
 					else if (protocol_speed_exponent == 1) {
-						protocol_speed_multiplier = 1024;
+						protocol_speed_multiplier = 1000;
 					}
-					// mb/s
+					// Mb/s
 					else if (protocol_speed_exponent == 2) {
-						protocol_speed_multiplier = 1024 * 1024;
+						protocol_speed_multiplier = 1000 * 1000;
 					}
-					// gb/s
+					// Gb/s
 					else if (protocol_speed_exponent == 3) {
-						protocol_speed_multiplier = 1024 * 1024 * 1024;
+						protocol_speed_multiplier = 1000 * 1000 * 1000;
 					}
 					else {
 						assert(false);
 					}
 
-					u64 protocol_speed = protocol_speed_mantissa * protocol_speed_multiplier / 8;
+					u64 protocol_speed = protocol_speed_mantissa * protocol_speed_multiplier;
 					//println("[kernel][xhci]: supported speed: ", protocol_speed);
 
 					speeds.push(SupportedSpeed {
 						.port_speed_id = protocol_speed_id,
-						.port_byte_rate = protocol_speed
+						.port_bit_rate = protocol_speed
 					});
 				}
 
@@ -1426,12 +1565,6 @@ struct XhciController {
 				portsc::PP(true));
 
 			ports[i].initial_reset = true;
-		}
-
-		for (u32 i = 0; i < max_ports; ++i) {
-			IoSpace port_space = op_space.subspace(0x400 + 0x10 * i);
-			auto portsc = port_space.load(port_regs::PORTSC);
-			println("portsc ", i, ": ", Fmt::Hex, portsc, Fmt::Reset);
 		}
 
 		return true;

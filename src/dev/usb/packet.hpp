@@ -13,7 +13,8 @@ namespace usb {
 	enum class Status {
 		Success,
 		TransactionError,
-		ShortPacket
+		ShortPacket,
+		Detached
 	};
 
 	struct UsbEvent : public Event {

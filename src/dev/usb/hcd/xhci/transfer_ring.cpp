@@ -30,6 +30,11 @@ TransferRing::TransferRing() {
 }
 
 TransferRing::~TransferRing() {
+	for (auto* event = events.get_first(); event; event = decltype(events)::get_successor(event)) {
+		event->status = usb::Status::Detached;
+		event->signal_count(0xFFFF);
+	}
+
 	pfree(phys, 1);
 }
 

@@ -7,4 +7,8 @@ if(CONFIG_USB_XHCI)
 	if(CONFIG_XHCI_PCI)
 		target_sources(crescent PRIVATE xhci_pci.cpp)
 	endif()
+
+	if(CONFIG_XHCI_DTB)
+		target_sources(crescent PRIVATE xhci_dwc3.cpp)
+	endif()
 endif()
