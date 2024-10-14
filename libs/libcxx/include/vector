@@ -37,12 +37,12 @@ namespace std {
 			}
 		}
 
-		constexpr void reserve(size_t __new__cap) {
-			if (__new__cap <= __cap) {
+		constexpr void reserve(size_t __new_cap) {
+			if (__new_cap <= __cap) {
 				return;
 			}
 
-			auto* __new_ptr = static_cast<__T*>(malloc(sizeof(__T) * __new__cap));
+			auto* __new_ptr = static_cast<__T*>(malloc(sizeof(__T) * __new_cap));
 			// todo
 			if (!__new_ptr) {
 				__builtin_trap();
@@ -54,7 +54,7 @@ namespace std {
 
 			free(__ptr);
 			__ptr = __new_ptr;
-			__cap = __new__cap;
+			__cap = __new_cap;
 		}
 
 		constexpr void push_back(const __T& __value) {
