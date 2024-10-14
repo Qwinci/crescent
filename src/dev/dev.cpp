@@ -1,4 +1,5 @@
 #include "dev.hpp"
+#include "format.hpp"
 
 ManuallyDestroy<Spinlock<kstd::vector<kstd::shared_ptr<Device>>>> DEVICES
 	[static_cast<int>(CrescentDeviceType::Max)] {};
@@ -6,6 +7,10 @@ ManuallyDestroy<Spinlock<kstd::vector<kstd::shared_ptr<Device>>>> DEVICES
 usize dev_add(kstd::shared_ptr<Device> device, CrescentDeviceType type) {
 	auto guard = DEVICES[static_cast<int>(type)]->lock();
 	auto index = guard->size();
+
+	kstd::formatter fmt {device->name};
+	fmt << index;
+
 	guard->push(std::move(device));
 	return index;
 }

@@ -7,7 +7,7 @@
 struct GpuFbDev : public Device {
 	explicit GpuFbDev(Framebuffer* fb, Gpu* gpu)
 		: Device {}, fb {fb}, gpu {gpu}, supports_page_flip {gpu->supports_page_flipping} {
-		name = "";
+		name = "gpu_fb";
 		if (gpu->supports_page_flipping) {
 			front_surface = gpu->create_surface();
 		}
