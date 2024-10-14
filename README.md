@@ -63,6 +63,9 @@ There are also different targets that may be useful:
     - [x] MCFG
     - [x] Reboot + shutdown
     - [ ] Power management
+    	- [x] Shutdown
+    	- [x] Reboot
+    	- [ ] Sleep
 - [ ] Filesystems
     - [x] TAR initramfs
     - [ ] FAT32
