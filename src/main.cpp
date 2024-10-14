@@ -14,6 +14,7 @@
 #include "acpi/acpi.hpp"
 #include "acpi/events.hpp"
 #include "dev/pci.hpp"
+#include "dev/qemu/fw_cfg.hpp"
 
 #include "qacpi/context.hpp"
 #include "qacpi/ns.hpp"
@@ -81,6 +82,7 @@ void print_mem() {
 	println("[kernel]: qacpi init");
 	acpi::qacpi_init();
 	acpi::events_init();
+	qemu_fw_cfg_init();
 	println("[kernel]: pci acpi init");
 	acpi::pci_init();
 	println("[kernel]: pci enumerate");

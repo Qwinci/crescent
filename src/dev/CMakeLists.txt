@@ -9,6 +9,7 @@ if(ARCH STREQUAL "x86_64")
 	target_sources(crescent PRIVATE pci.cpp)
 	add_subdirectory(sound)
 	add_subdirectory(gpu)
+	add_subdirectory(qemu)
 endif()
 
 add_subdirectory(fb)
