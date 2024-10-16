@@ -1,0 +1,40 @@
+name: It Compiles!
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install llvm
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 19
+          sudo rm -f $(which clang) $(which clang++)
+          sudo rm -f /usr/bin/clang /usr/bin/clang++
+          sudo ln -s $(which clang-19) /usr/bin/clang
+          sudo ln -s $(which clang++-19) /usr/bin/clang++
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install binutils gcc g++ cmake ninja-build xorriso acpica-tools git -y
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Build (x86_64 Clang)
+        run: |
+          LDFLAGS="-fuse-ld=lld" cmake -B build_x86_64_clang -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          ninja -C build_x86_64_clang
+
+      - name: Build (x86_64 Gcc)
+        run: |
+          cmake -B build_x86_64_gcc -G Ninja
+          ninja -C build_x86_64_gcc
+
+      - name: Build (Aarch64 Clang)
+        run: |
+          cmake -B build_aarch64_clang -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain_clang_aarch64.cmake
+          ninja -C build_aarch64_clang
+

@@ -38,6 +38,10 @@ endif()
 
 add_subdirectory(src)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+	target_compile_options(crescent PRIVATE -Wno-unused-command-line-argument)
+endif()
+
 if(ARCH STREQUAL "x86_64")
 	target_compile_options(crescent PRIVATE -fPIE)
 	target_compile_definitions(crescent PRIVATE ARCH_X86_64)
