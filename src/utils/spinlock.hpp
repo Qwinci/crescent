@@ -246,6 +246,16 @@ public:
 		IrqSpinlock* owner;
 	};
 
+	void manual_lock() {
+		old = arch_enable_irqs(false);
+		inner.manual_lock();
+	}
+
+	void manual_unlock() {
+		inner.manual_unlock();
+		arch_enable_irqs(old);
+	}
+
 	Guard lock() {
 		old = arch_enable_irqs(false);
 		inner.manual_lock();

@@ -1,15 +1,7 @@
-#include "arch/irq.hpp"
 #include "assert.hpp"
 #include "crescent/event.h"
-#include "io_apic.hpp"
-#include "manually_destroy.hpp"
 #include "ps2.hpp"
 #include "sys/event_queue.hpp"
-#include "x86/irq.hpp"
-
-namespace cmd {
-	static constexpr u8 TYPEMATIC_BYTE = 0xF3;
-}
 
 static Scancode ps2_one_byte(u8 byte) {
 	switch (byte) {
@@ -265,99 +257,134 @@ static Scancode ps2_e0(u8 byte) {
 	return SCANCODE_UNKNOWN;
 }
 
-namespace {
+static bool ps2_is_kb_id(u8 id) {
+	return id == 0x2B || id == 0x47 || id == 0x5D ||
+		   id == 0x60 || id == 0xAB || id == 0xAC;
+}
+
+struct Ps2Keyboard : Ps2Device {
+	void on_receive(u8 byte) override {
+		if (!scanning) {
+			return;
+		}
+
+		if (byte == 0xE0) {
+			state = State::E0;
+		}
+		else if (byte == 0xE1) {
+			state = State::E1;
+		}
+		else if (byte == 0xF0) {
+			pressed = false;
+		}
+		else {
+			Scancode code;
+
+			switch (state) {
+				case State::None:
+					code = ps2_one_byte(byte);
+					break;
+				case State::E0:
+					code = ps2_e0(byte);
+					state = State::None;
+					break;
+				case State::E1:
+					if (byte == 0x14) {
+						state = State::E1_14;
+						return;
+					}
+					else {
+						state = State::None;
+						pressed = true;
+						return;
+					}
+				case State::E1_14:
+					if (byte == 0x77) {
+						state = State::None;
+						code = SCANCODE_PAUSE;
+						break;
+					}
+					else {
+						state = State::None;
+						pressed = true;
+						return;
+					}
+			}
+
+			GLOBAL_EVENT_QUEUE.push({
+				.type = EVENT_TYPE_KEY,
+				.key {
+					.code = code,
+					.pressed = pressed
+				}
+			});
+
+			pressed = true;
+		}
+	}
+
+	[[nodiscard]] bool probe() const {
+		u8 param[2] {0xA5};
+
+		if (!port->send_cmd(ps2_cmd::GET_ID, param)) {
+			param[0] = 0;
+			if (!port->send_cmd(ps2_cmd::SET_LEDS, param)) {
+				return false;
+			}
+			return true;
+		}
+
+		if (!ps2_is_kb_id(param[0])) {
+			return false;
+		}
+
+		port->send_cmd(ps2_cmd::DISABLE_SCANNING, nullptr);
+
+		return true;
+	}
+
+	Ps2Port* port {};
+
 	enum class State {
 		None,
 		E0,
 		E1,
 		E1_14
-	} STATE {};
-	bool PRESSED = true;
-}
+	} state {};
 
-static bool handle_irq(IrqFrame*) {
-	if (!ps2_has_data()) {
+	bool pressed = true;
+
+	bool scanning {};
+};
+
+bool ps2_keyboard_init(Ps2Port* port) {
+	auto* kb = new Ps2Keyboard {};
+	kb->port = port;
+
+	{
+		auto guard = port->lock.lock();
+		port->device = kb;
+	}
+
+	if (!kb->probe()) {
+		auto guard = port->lock.lock();
+		port->device = nullptr;
+		delete kb;
 		return false;
 	}
 
-	u8 byte = ps2_receive_data();
-	if (byte == 0xE0) {
-		STATE = State::E0;
-	}
-	else if (byte == 0xE1) {
-		STATE = State::E1;
-	}
-	else if (byte == 0xF0) {
-		PRESSED = false;
-	}
-	else {
-		Scancode code;
-
-		switch (STATE) {
-			case State::None:
-				code = ps2_one_byte(byte);
-				break;
-			case State::E0:
-				code = ps2_e0(byte);
-				STATE = State::None;
-				break;
-			case State::E1:
-				if (byte == 0x14) {
-					STATE = State::E1_14;
-					return true;
-				}
-				else {
-					STATE = State::None;
-					PRESSED = true;
-					return true;
-				}
-			case State::E1_14:
-				if (byte == 0x77) {
-					STATE = State::None;
-					code = SCANCODE_PAUSE;
-					break;
-				}
-				else {
-					STATE = State::None;
-					PRESSED = true;
-					return true;
-				}
-		}
-
-		GLOBAL_EVENT_QUEUE.push({
-			.type = EVENT_TYPE_KEY,
-			.key {
-				.code = code,
-				.pressed = PRESSED
-			}
-		});
-
-		PRESSED = true;
-	}
-
-	return true;
-}
-
-static ManuallyDestroy<IrqHandler> IRQ_HANDLER {
-	IrqHandler {
-		.fn = handle_irq,
-		.can_be_shared = false
-	}
-};
-
-void ps2_keyboard_init(bool second) {
 	println("[kernel][x86]: ps2 keyboard init");
 
-	u32 irq = x86_alloc_irq(1, false);
-	assert(irq);
-	register_irq_handler(irq, &*IRQ_HANDLER);
+	u8 param[1] {};
+	port->send_cmd(ps2_cmd::SET_LEDS, param);
+	port->send_cmd(ps2_cmd::SET_REP, param);
 
-	if (!second) {
-		IO_APIC.register_isa_irq(1, irq);
-	}
-	else {
-		IO_APIC.register_isa_irq(12, irq);
+	{
+		auto guard = port->lock.lock();
+		kb->scanning = true;
 	}
 
-	ps2_send_data2(second, cmd::TYPEMATIC_BYTE, 0);
+	port->send_cmd(ps2_cmd::ENABLE_SCANNING, nullptr);
+
+	return true;
 }
