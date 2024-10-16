@@ -57,3 +57,9 @@ inline bool with_timeout(F f, usize us) {
 	} while (source->get_ns() < end);
 	return false;
 }
+
+inline u64 get_current_ns() {
+	IrqGuard irq_guard {};
+	auto guard = CLOCK_SOURCE.lock_read();
+	return (*guard)->get_ns();
+}

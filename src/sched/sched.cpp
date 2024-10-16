@@ -83,7 +83,12 @@
 							}
 						}
 
-						min_guard->insert_before(next_sleeping, &thread);
+						if (next_sleeping) {
+							min_guard->insert_before(next_sleeping, &thread);
+						}
+						else {
+							min_guard->push(&thread);
+						}
 
 						max_cpu->thread_count.fetch_sub(1, kstd::memory_order::seq_cst);
 						min_cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
@@ -145,6 +150,8 @@ void sched_init(bool bsp) {
 			&*KERNEL_PROCESS,
 			sched_load_balancer_fn,
 			nullptr};
+		SCHED_LOAD_BALANCE_THREAD->pin_level = true;
+		SCHED_LOAD_BALANCE_THREAD->pin_cpu = true;
 		cpu->scheduler.queue(SCHED_LOAD_BALANCE_THREAD);
 	}
 }
@@ -375,6 +382,10 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 }
 
 void Scheduler::sleep(u64 us) {
+	if (!us) {
+		return;
+	}
+
 	IrqGuard irq_guard {};
 	current->cpu->cpu_tick_source->reset();
 
@@ -397,7 +408,14 @@ void Scheduler::sleep(u64 us) {
 		}
 
 		current->sleep_end = sleep_end;
-		guard->insert_before(next_sleeping, current);
+
+		if (next_sleeping) {
+			guard->insert_before(next_sleeping, current);
+		}
+		else {
+			guard->push(current);
+		}
+
 		current->status = Thread::Status::Sleeping;
 	}
 
