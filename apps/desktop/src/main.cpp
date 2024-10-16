@@ -59,7 +59,13 @@ struct Connection {
 };
 
 static NoDestroy<std::vector<Connection>> CONNECTIONS {};
-static NoDestroy<std::vector<std::pair<Window*, CrescentHandle>>> WINDOW_TO_EVENT_PIPE {};
+
+struct WindowInfo {
+	Window* window;
+	CrescentHandle event_pipe;
+};
+
+static NoDestroy<std::vector<WindowInfo>> WINDOW_TO_INFO {};
 
 namespace protocol = windower::protocol;
 
@@ -147,9 +153,9 @@ void listener_thread(void* arg) {
 void send_event_to_window(Window* window, protocol::WindowEvent event) {
 	CrescentHandle event_pipe = INVALID_CRESCENT_HANDLE;
 
-	for (auto& [iter_window, iter_event_pipe] : *WINDOW_TO_EVENT_PIPE) {
-		if (iter_window == window) {
-			event_pipe = iter_event_pipe;
+	for (auto& info : *WINDOW_TO_INFO) {
+		if (info.window == window) {
+			event_pipe = info.event_pipe;
 			break;
 		}
 	}
@@ -162,83 +168,6 @@ void send_event_to_window(Window* window, protocol::WindowEvent event) {
 
 int main() {
 	//dumb_loop();
-
-	/*CrescentHandle sock;
-	int err = sys_socket_create(sock, SOCKET_TYPE_TCP, 0);
-	if (err != 0) {
-		puts("failed to create socket");
-		return -1;
-	}
-
-	while (true) {
-		err = sys_socket_listen(sock, 8080);
-		if (err != 0) {
-			puts("failed to listen for connection");
-			return -1;
-		}
-
-		CrescentHandle new_sock;
-		err = sys_socket_accept(sock, new_sock, 0);
-		if (err != 0) {
-			puts("failed to accept connection");
-		}
-
-		char buffer[1024 * 8];
-		size_t buffer_size = 0;
-		while (true) {
-			size_t received = 0;
-			err = sys_socket_receive(new_sock, buffer + buffer_size, 1024 * 8 - buffer_size, received);
-			if (err != 0) {
-				printf("failed to receive data: %d\n", err);
-				return -1;
-			}
-			buffer_size += received;
-
-			size_t header_end = 0;
-
-			for (size_t i = 0; i < buffer_size; ++i) {
-				if (i + 3 < buffer_size) {
-					if (buffer[i] == '\r' && buffer[i + 1] == '\n' && buffer[i + 2] == '\r' && buffer[i + 3] == '\n') {
-						header_end = i;
-						break;
-					}
-				}
-				else {
-					break;
-				}
-			}
-
-			if (header_end) {
-				buffer[header_end] = 0;
-				break;
-			}
-
-			if (buffer_size == 1024 * 8) {
-				puts("header too big");
-				return -1;
-			}
-		}
-
-		printf("Received header: %s\n", buffer);
-
-		char http_response[] =
-			"HTTP/1.1 404 Not Found\r\n"
-			"Date: Fri, 24 May 2024 21:48:20 GMT\r\n"
-			"Server: desktop (Crescent X86_64)\r\n"
-			"Content-Length: 100\r\n"
-			"Connection: Closed\r\n"
-			"Content-Type: text/html; charset=iso-8859-1\r\n"
-			"\r\n"
-			"<!DOCTYPE html><html><head><title>404 Not Found</title></head><body><h1>Not Found</h1></body></html>"
-			;
-		puts("sending response");
-		sys_socket_send(new_sock, http_response, sizeof(http_response) - 1);
-		puts("response sent");
-
-		sys_close_handle(new_sock);
-	}
-
-	dumb_loop();*/
 
 	DevLinkRequest request {
 		.type = DevLinkRequestType::GetDevices,
@@ -439,7 +368,10 @@ int main() {
 					resp.window_created.window_handle = window_ptr;
 					resp.window_created.fb_handle = fb_shareable_handle;
 
-					WINDOW_TO_EVENT_PIPE->push_back({window_ptr, connection.event});
+					WINDOW_TO_INFO->push_back({
+						.window = window_ptr,
+						.event_pipe = connection.event
+					});
 
 					// todo check status
 					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
@@ -496,11 +428,13 @@ int main() {
 						}
 					}
 
-					for (size_t i = 0; i < WINDOW_TO_EVENT_PIPE->size(); ++i) {
-						auto& iter = (*WINDOW_TO_EVENT_PIPE)[i];
-						if (iter.first == window) {
-							WINDOW_TO_EVENT_PIPE->erase(
-								WINDOW_TO_EVENT_PIPE->begin() +
+					for (size_t i = 0; i < WINDOW_TO_INFO->size(); ++i) {
+						auto& iter = (*WINDOW_TO_INFO)[i];
+						if (iter.window == window) {
+							assert(sys_unmap(window->fb, window->rect.width * window->rect.height * 4) == 0);
+
+							WINDOW_TO_INFO->erase(
+								WINDOW_TO_INFO->begin() +
 								static_cast<std::vector<std::pair<Window*, CrescentHandle>>::difference_type>(i));
 							break;
 						}
