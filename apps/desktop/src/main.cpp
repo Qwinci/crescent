@@ -58,10 +58,12 @@ struct Connection {
 	CrescentHandle event;
 };
 
-static NoDestroy<std::vector<Connection>> CONNECTIONS {};
+// todo mutex
+static NoDestroy<std::vector<std::unique_ptr<Connection>>> CONNECTIONS {};
 
 struct WindowInfo {
 	Window* window;
+	Connection* connection;
 	CrescentHandle event_pipe;
 };
 
@@ -143,10 +145,11 @@ void listener_thread(void* arg) {
 		// todo check status
 		while (sys_socket_send(connection_socket, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
-		CONNECTIONS->push_back({
+		CONNECTIONS->push_back(std::make_unique<Connection>(Connection {
 			.process = peer_addr.target,
 			.control = connection_socket,
-			.event = event_write_handle});
+			.event = event_write_handle
+		}));
 	}
 }
 
@@ -164,6 +167,66 @@ void send_event_to_window(Window* window, protocol::WindowEvent event) {
 
 	// todo check status
 	sys_write(event_pipe, &event, 0, sizeof(event));
+}
+
+static void destroy_window(Desktop& desktop, Window* window) {
+	if (window->parent->active_child == window) {
+		window->parent->active_child = nullptr;
+	}
+
+	desktop.dragging = nullptr;
+
+	if (desktop.last_mouse_over == window ||
+		desktop.last_mouse_over == window->titlebar.get()) {
+		desktop.last_mouse_over = nullptr;
+	}
+	else {
+		std::vector<Window*> stack;
+		stack.push_back(window);
+		if (!window->no_decorations) {
+			stack.push_back(window->titlebar.get());
+		}
+
+		while (!stack.empty()) {
+			auto entry = stack.back();
+			stack.pop_back();
+			if (desktop.last_mouse_over == entry) {
+				desktop.last_mouse_over = nullptr;
+			}
+
+			for (auto& child : entry->children) {
+				stack.push_back(child.get());
+			}
+		}
+	}
+
+	for (size_t i = 0; i < window->parent->children.size(); ++i) {
+		if (window->parent->children[i].get() == window) {
+			auto dirty_rect = window->get_abs_rect();
+			if (!window->no_decorations) {
+				dirty_rect.width += BORDER_WIDTH * 2;
+				dirty_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
+			}
+			desktop.ctx.dirty_rects.push_back(dirty_rect);
+
+			window->parent->children.erase(
+				window->parent->children.begin() +
+				static_cast<std::vector<std::unique_ptr<Window>>::difference_type>(i));
+			break;
+		}
+	}
+
+	for (size_t i = 0; i < WINDOW_TO_INFO->size(); ++i) {
+		auto& iter = (*WINDOW_TO_INFO)[i];
+		if (iter.window == window) {
+			assert(sys_unmap(window->fb, window->rect.width * window->rect.height * 4) == 0);
+
+			WINDOW_TO_INFO->erase(
+				WINDOW_TO_INFO->begin() +
+				static_cast<std::vector<std::pair<Window*, CrescentHandle>>::difference_type>(i));
+			break;
+		}
+	}
 }
 
 int main() {
@@ -327,8 +390,26 @@ int main() {
 		for (auto& connection : *CONNECTIONS) {
 			protocol::Request req {};
 			size_t received;
-			auto req_status = sys_socket_receive(connection.control, &req, sizeof(req), received);
+			auto req_status = sys_socket_receive(connection->control, &req, sizeof(req), received);
 			if (req_status == ERR_TRY_AGAIN) {
+				continue;
+			}
+			else if (req_status == ERR_INVALID_ARGUMENT) {
+				assert(sys_close_handle(connection->process) == 0);
+				assert(sys_close_handle(connection->control) == 0);
+				assert(sys_close_handle(connection->event) == 0);
+
+				for (size_t i = 0; i < WINDOW_TO_INFO->size();) {
+					auto& window_info = (*WINDOW_TO_INFO)[i];
+					if (window_info.connection == connection.get()) {
+						destroy_window(desktop, window_info.window);
+					}
+					else {
+						++i;
+					}
+				}
+
+				CONNECTIONS->erase(&connection);
 				continue;
 			}
 
@@ -347,7 +428,7 @@ int main() {
 					CrescentHandle fb_shared_mem_handle;
 					sys_shared_mem_alloc(fb_shared_mem_handle, window->rect.width * window->rect.height * 4);
 					CrescentHandle fb_shareable_handle;
-					sys_shared_mem_share(fb_shared_mem_handle, connection.process, fb_shareable_handle);
+					sys_shared_mem_share(fb_shared_mem_handle, connection->process, fb_shareable_handle);
 					sys_shared_mem_map(fb_shared_mem_handle, reinterpret_cast<void**>(&window->fb));
 					memset(window->fb, 0, window->rect.width * window->rect.height * 4);
 					sys_close_handle(fb_shared_mem_handle);
@@ -370,78 +451,22 @@ int main() {
 
 					WINDOW_TO_INFO->push_back({
 						.window = window_ptr,
-						.event_pipe = connection.event
+						.connection = connection.get(),
+						.event_pipe = connection->event
 					});
 
 					// todo check status
-					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					while (sys_socket_send(connection->control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
 					break;
 				}
 				case protocol::Request::CloseWindow:
 				{
 					auto* window = static_cast<Window*>(req.close_window.window_handle);
-
-					if (window->parent->active_child == window) {
-						window->parent->active_child = nullptr;
-					}
-
-					desktop.dragging = nullptr;
-
-					if (desktop.last_mouse_over == window ||
-						desktop.last_mouse_over == window->titlebar.get()) {
-						desktop.last_mouse_over = nullptr;
-					}
-					else {
-						std::vector<Window*> stack;
-						stack.push_back(window);
-						if (!window->no_decorations) {
-							stack.push_back(window->titlebar.get());
-						}
-
-						while (!stack.empty()) {
-							auto entry = stack.back();
-							stack.pop_back();
-							if (desktop.last_mouse_over == entry) {
-								desktop.last_mouse_over = nullptr;
-							}
-
-							for (auto& child : entry->children) {
-								stack.push_back(child.get());
-							}
-						}
-					}
-
-					for (size_t i = 0; i < window->parent->children.size(); ++i) {
-						if (window->parent->children[i].get() == window) {
-							auto dirty_rect = window->get_abs_rect();
-							if (!window->no_decorations) {
-								dirty_rect.width += BORDER_WIDTH * 2;
-								dirty_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
-							}
-							ctx.dirty_rects.push_back(dirty_rect);
-
-							window->parent->children.erase(
-								window->parent->children.begin() +
-								static_cast<std::vector<std::unique_ptr<Window>>::difference_type>(i));
-							break;
-						}
-					}
-
-					for (size_t i = 0; i < WINDOW_TO_INFO->size(); ++i) {
-						auto& iter = (*WINDOW_TO_INFO)[i];
-						if (iter.window == window) {
-							assert(sys_unmap(window->fb, window->rect.width * window->rect.height * 4) == 0);
-
-							WINDOW_TO_INFO->erase(
-								WINDOW_TO_INFO->begin() +
-								static_cast<std::vector<std::pair<Window*, CrescentHandle>>::difference_type>(i));
-							break;
-						}
-					}
+					destroy_window(desktop, window);
 
 					// todo check status
-					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					while (sys_socket_send(connection->control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
 					break;
 				}
@@ -452,7 +477,7 @@ int main() {
 
 					resp.ack.window_handle = window;
 					// todo check status
-					while (sys_socket_send(connection.control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					while (sys_socket_send(connection->control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
 
 					break;
 				}
