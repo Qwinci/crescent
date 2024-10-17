@@ -67,7 +67,7 @@ void Event::signal_one() {
 		auto thread_guard = thread->sched_lock.lock();
 		if (thread->status != Thread::Status::Waiting &&
 			thread->status != Thread::Status::Running) {
-			thread->cpu->scheduler.unblock(thread, true);
+			thread->cpu->scheduler.unblock(thread, true, true);
 		}
 		waiters_guard->remove(thread);
 	}
@@ -87,7 +87,7 @@ void Event::signal_one_if_not_pending() {
 		auto thread_guard = thread->sched_lock.lock();
 		if (thread->status != Thread::Status::Waiting &&
 			thread->status != Thread::Status::Running) {
-			thread->cpu->scheduler.unblock(thread, true);
+			thread->cpu->scheduler.unblock(thread, true, true);
 		}
 		waiters_guard->remove(thread);
 	}
@@ -103,7 +103,7 @@ void Event::signal_all() {
 		auto thread_guard = thread.sched_lock.lock();
 		if (thread.status != Thread::Status::Waiting &&
 			thread.status != Thread::Status::Running) {
-			thread.cpu->scheduler.unblock(&thread, true);
+			thread.cpu->scheduler.unblock(&thread, true, true);
 		}
 	}
 	waiters_guard->clear();
@@ -117,7 +117,7 @@ void Event::signal_count(usize count) {
 	auto waiters_guard = waiters.lock();
 	for (auto& thread : *waiters_guard) {
 		auto thread_guard = thread.sched_lock.lock();
-		thread.cpu->scheduler.unblock(&thread, true);
+		thread.cpu->scheduler.unblock(&thread, true, true);
 	}
 	waiters_guard->clear();
 }

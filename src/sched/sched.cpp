@@ -331,21 +331,28 @@ void Scheduler::exit_thread(int status) {
 	__builtin_trap();
 }
 
-void Scheduler::unblock(Thread* thread, bool remove_sleeping) {
+void Scheduler::unblock(Thread* thread, bool remove_sleeping, bool assert_not_sleeping) {
 	IrqGuard irq_guard {};
 	assert(thread->status == Thread::Status::Blocked ||
 		   thread->status == Thread::Status::Sleeping);
 	assert(thread->sched_lock.is_locked());
+	assert(thread != current);
 
 	if (remove_sleeping && thread->status == Thread::Status::Sleeping) {
-		thread->sleep_end = SIZE_MAX;
+		auto guard = thread->cpu->scheduler.sleeping_threads.lock();
+		guard->remove(thread);
+		thread->status = Thread::Status::Blocked;
 	}
-	else {
-		auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
-		assert(thread != current);
-		thread->status = Thread::Status::Waiting;
-		guard->push(thread);
+
+	if (assert_not_sleeping) {
+		assert(thread->status == Thread::Status::Blocked);
 	}
+
+	auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
+
+	assert(thread != current);
+	thread->status = Thread::Status::Waiting;
+	guard->push(thread);
 }
 
 void Scheduler::on_timer(Cpu* cpu) {
@@ -365,13 +372,19 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	usize first_sleep_end = UINTPTR_MAX;
 	auto guard = sleeping_threads.lock();
 	for (auto& thread : *guard) {
-		if (thread.sleep_end != SIZE_MAX && thread.sleep_end > now) {
+		if (thread.sleep_end > now) {
 			first_sleep_end = thread.sleep_end;
 			break;
 		}
 		guard->remove(&thread);
-		auto thread_guard = thread.sched_lock.lock();
-		unblock(&thread, false);
+
+		if (&thread != prev) {
+			auto thread_guard = thread.sched_lock.lock();
+			unblock(&thread, false, false);
+		}
+		else {
+			unblock(&thread, false, false);
+		}
 	}
 
 	auto time_before_sleep_end = first_sleep_end - now;

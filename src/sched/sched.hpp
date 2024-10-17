@@ -25,7 +25,7 @@ struct Scheduler {
 	void yield();
 
 	void block();
-	void unblock(Thread* thread, bool remove_sleeping);
+	void unblock(Thread* thread, bool remove_sleeping, bool assert_not_sleeping);
 
 	[[noreturn]] void exit_process(int status);
 	[[noreturn]] void exit_thread(int status);
