@@ -21,6 +21,9 @@ typedef enum {
 	SYS_KILL,
 	SYS_GET_STATUS,
 
+	SYS_YIELD,
+	SYS_GET_THREAD_ID,
+
 	SYS_SLEEP,
 	SYS_GET_TIME,
 
@@ -32,14 +35,16 @@ typedef enum {
 
 	SYS_MAP,
 	SYS_UNMAP,
+	SYS_PROTECT,
 
 	SYS_POLL_EVENT,
 
 	SYS_SHUTDOWN,
 
-	SYS_OPEN,
+	SYS_OPENAT,
 	SYS_READ,
 	SYS_WRITE,
+	SYS_SEEK,
 	SYS_STAT,
 	SYS_PIPE_CREATE,
 	SYS_REPLACE_STD_HANDLE,
@@ -59,7 +64,13 @@ typedef enum {
 
 	SYS_SHARED_MEM_ALLOC,
 	SYS_SHARED_MEM_MAP,
-	SYS_SHARED_MEM_SHARE
+	SYS_SHARED_MEM_SHARE,
+
+	SYS_FUTEX_WAIT,
+	SYS_FUTEX_WAKE,
+
+	SYS_SET_FS_BASE,
+	SYS_SET_GS_BASE
 } CrescentSyscall;
 
 typedef enum {
@@ -70,6 +81,7 @@ typedef enum {
 	ERR_NO_MEM,
 	ERR_BUFFER_TOO_SMALL,
 	ERR_TRY_AGAIN,
+	ERR_TIMED_OUT,
 	ERR_ALREADY_EXISTS,
 	ERR_NOT_EXISTS,
 	ERR_NO_ROUTE_TO_HOST,
@@ -104,7 +116,13 @@ typedef struct {
 	size_t size;
 } CrescentStat;
 
-#define OPEN_NONE 0
-#define OPEN_NONBLOCK (1 << 0)
+#define OPEN_READ 0
+#define OPEN_WRITE 1
+#define OPEN_READ_WRITE 2
+#define OPEN_NONBLOCK (1 << 2)
+
+#define SEEK_START 0
+#define SEEK_CURRENT 1
+#define SEEK_END 2
 
 #endif

@@ -3,6 +3,7 @@
 
 #include <new>
 #include <utility>
+#include <cassert>
 
 namespace std {
 	struct nullopt_t {};
@@ -118,42 +119,52 @@ namespace std {
 		}
 
 		constexpr __T* operator->() noexcept {
+			assert(__has_value);
 			return launder(reinterpret_cast<__T*>(__data));
 		}
 
 		constexpr const __T* operator->() const noexcept {
+			assert(__has_value);
 			return launder(reinterpret_cast<const __T*>(__data));
 		}
 
 		constexpr __T& operator*() & noexcept {
+			assert(__has_value);
 			return *launder(reinterpret_cast<__T*>(__data));
 		}
 
 		constexpr const __T& operator*() const& noexcept {
+			assert(__has_value);
 			return *launder(reinterpret_cast<const __T*>(__data));
 		}
 
 		constexpr __T&& operator*() && noexcept {
+			assert(__has_value);
 			return move(*launder(reinterpret_cast<__T*>(__data)));
 		}
 
 		constexpr const __T&& operator*() const&& noexcept {
+			assert(__has_value);
 			return move(*launder(reinterpret_cast<const __T*>(__data)));
 		}
 
 		constexpr __T& value() & {
+			assert(__has_value);
 			return *launder(reinterpret_cast<__T*>(__data));
 		}
 
 		constexpr const __T& value() const & {
+			assert(__has_value);
 			return *launder(reinterpret_cast<const __T*>(__data));
 		}
 
 		constexpr __T&& value() && {
+			assert(__has_value);
 			return move(*launder(reinterpret_cast<__T*>(__data)));
 		}
 
 		constexpr const __T&& value() const&& {
+			assert(__has_value);
 			return move(*launder(reinterpret_cast<const __T*>(__data)));
 		}
 

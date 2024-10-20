@@ -33,7 +33,7 @@ static u64 parse_oct(const char* ptr) {
 }
 
 struct TarFileNode : public VNode {
-	constexpr explicit TarFileNode(const TarHeader* hdr) : VNode {FileFlags::None}, hdr {hdr} {}
+	constexpr explicit TarFileNode(const TarHeader* hdr) : VNode {FileFlags::None, true}, hdr {hdr} {}
 
 	kstd::shared_ptr<VNode> lookup(kstd::string_view name) override {
 		if (hdr->type_flag != '5') {

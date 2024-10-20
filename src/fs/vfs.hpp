@@ -22,7 +22,8 @@ struct FsStat {
 };
 
 struct VNode {
-	constexpr explicit VNode(FileFlags flags) : flags {flags} {}
+	constexpr explicit VNode(FileFlags flags, bool seekable)
+		: seekable {seekable}, flags {flags} {}
 
 	virtual ~VNode() = default;
 
@@ -42,14 +43,16 @@ struct VNode {
 		return FsStatus::Unsupported;
 	}
 
+	bool seekable {};
+
 protected:
 	FileFlags flags;
 };
 
 struct Vfs {
 	virtual kstd::shared_ptr<VNode> get_root() = 0;
-
-	kstd::shared_ptr<VNode> lookup(kstd::string_view path);
 };
+
+kstd::shared_ptr<VNode> vfs_lookup(kstd::shared_ptr<VNode> start, kstd::string_view path);
 
 extern Vfs* INITRD_VFS;

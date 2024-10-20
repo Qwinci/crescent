@@ -1,6 +1,3 @@
 [submodule "qacpi"]
 	path = qacpi
 	url = https://github.com/Qwinci/qacpi.git
-[submodule "libs/libc/hzutils"]
-	path = libs/libc/hzutils
-	url = https://github.com/Qwinci/hzutils.git

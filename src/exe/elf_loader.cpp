@@ -70,8 +70,14 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 		return ElfLoadError::NoMemory;
 	}
 
+	usize phdrs_offset = 0;
+
 	for (const auto& phdr : phdrs) {
-		if (phdr.p_type != PhdrType::Load) {
+		if (phdr.p_type == PhdrType::Phdr) {
+			phdrs_offset = phdr.p_vaddr - base;
+			continue;
+		}
+		else if (phdr.p_type != PhdrType::Load) {
 			continue;
 		}
 
@@ -104,12 +110,14 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 
 		usize aligned_addr = phdr.p_vaddr & ~(PAGE_SIZE - 1);
 		usize align = phdr.p_vaddr & (PAGE_SIZE - 1);
-		for (usize i = 0; i < phdr.p_memsz + align; i += PAGE_SIZE) {
-			process->page_map.protect(user_mem + (aligned_addr - base) + i, flags, CacheMode::WriteBack);
-		}
+		process->page_map.protect_range(user_mem + (aligned_addr - base), phdr.p_memsz + align, flags, CacheMode::WriteBack);
 	}
 
 	return LoadedElf {
-		.entry = reinterpret_cast<void (*)(void*)>(user_mem + (ehdr.e_entry - base))
+		.entry = reinterpret_cast<void (*)(void*)>(user_mem + (ehdr.e_entry - base)),
+		.base = user_mem,
+		.phdrs_addr = user_mem + phdrs_offset,
+		.phdr_count = ehdr.e_phnum,
+		.phdr_size = ehdr.e_phentsize
 	};
 }

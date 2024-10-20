@@ -314,6 +314,12 @@ void PageMap::protect(u64 virt, PageFlags flags, CacheMode cache_mode) {
 	asm volatile("dsb ishst; tlbi vaae1, %0; dsb sy; isb" : : "r"(orig_virt >> 12) : "memory");
 }
 
+void PageMap::protect_range(u64 virt, u64 size, PageFlags flags, CacheMode cache_mode) {
+	for (usize i = 0; i < size; i += PAGE_SIZE) {
+		protect(virt + i, flags, cache_mode);
+	}
+}
+
 u64 PageMap::get_phys(u64 virt) {
 	auto guard = lock.lock();
 

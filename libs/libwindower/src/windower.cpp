@@ -36,7 +36,7 @@ namespace windower {
 
 	protocol::WindowEvent Window::wait_for_event() {
 		protocol::WindowEvent event {};
-		auto status = sys_read(owner->event_pipe, &event, 0, sizeof(event));
+		auto status = sys_read(owner->event_pipe, &event, sizeof(event), nullptr);
 		assert(status == 0);
 		return event;
 	}

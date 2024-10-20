@@ -1,6 +1,7 @@
 #include "window.hpp"
 #include "button.hpp"
 #include "event.hpp"
+#include "text.hpp"
 #include <cstring>
 #include <cassert>
 
@@ -16,11 +17,20 @@ struct TitlebarWindow : public Window {
 
 		close_button = close_button_unique.get();
 		add_child(std::move(close_button_unique));
+
+		auto title_unique = std::make_unique<TextWindow>();
+		title_unique->text_color = 0;
+		title_unique->bg_color = TITLEBAR_ACTIVE_COLOR;
+		title_unique->set_size(rect.width / 2, TITLEBAR_HEIGHT - BORDER_WIDTH / 2);
+
+		title = title_unique.get();
+		add_child(std::move(title_unique));
 	}
 
 	void update_titlebar(uint32_t width) override {
 		rect.width = width + BORDER_WIDTH * 2;
 		close_button->set_pos(rect.width - TITLEBAR_HEIGHT - BORDER_WIDTH, BORDER_WIDTH / 4);
+		title->set_size(rect.width / 2, TITLEBAR_HEIGHT - BORDER_WIDTH / 2);
 	}
 
 	bool handle_mouse(Context& ctx, const MouseState& old_state, const MouseState& new_state) override {
@@ -35,6 +45,7 @@ struct TitlebarWindow : public Window {
 		return false;
 	}
 
+	TextWindow* title;
 	ButtonWindow* close_button;
 };
 
@@ -328,7 +339,7 @@ void Window::draw_generic(Context& ctx, std::vector<Rect> parent_clip_rects) {
 	}
 	else {
 		draw(ctx);
-	};
+	}
 
 	for (auto& child : children) {
 		child->draw_generic(ctx, new_parent_rects);
@@ -338,4 +349,11 @@ void Window::draw_generic(Context& ctx, std::vector<Rect> parent_clip_rects) {
 void Window::add_child(std::unique_ptr<Window> child) {
 	child->parent = this;
 	children.push_back(std::move(child));
+}
+
+void Window::set_title(std::string_view title) {
+	if (no_decorations) {
+		return;
+	}
+	static_cast<TitlebarWindow*>(titlebar.get())->title->text = title;
 }

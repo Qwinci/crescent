@@ -1,11 +1,13 @@
 #pragma once
 #include "types.hpp"
+#include "sched/sysv.hpp"
 
 struct Process;
 
 struct ArchThread {
 	constexpr ArchThread() : self {this} {}
 	ArchThread(void (*fn)(void*), void* arg, Process* process);
+	ArchThread(const SysvInfo& sysv, Process* process);
 	~ArchThread();
 
 	ArchThread* self;

@@ -8,6 +8,7 @@ struct TaskbarWindow : public Window {
 	explicit TaskbarWindow(uint32_t width);
 
 	void add_icon(uint32_t color);
+	void add_entry(std::unique_ptr<Window> entry);
 
 	bool handle_mouse(Context& ctx, const MouseState& old_state, const MouseState& new_state) override {
 		return false;

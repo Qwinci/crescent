@@ -147,9 +147,38 @@ void Process::free(usize ptr, usize) {
 	delete mapping;
 }
 
+bool Process::protect(void* base, usize size, PageFlags flags) {
+	auto base_int = reinterpret_cast<usize>(base);
+
+	auto guard = mappings.lock();
+
+	using Mappings = RbTree<Process::Mapping, &Process::Mapping::hook>;
+
+	Mapping* mapping = guard->get_root();
+	while (mapping) {
+		if (base_int >= mapping->base && base_int + size <= mapping->base + mapping->size) {
+			page_map.protect_range(base_int, size, flags, CacheMode::WriteBack);
+			return true;
+		}
+		else if (base_int < mapping->base) {
+			mapping = Mappings::get_left(mapping);
+		}
+		else if (base_int > mapping->base) {
+			mapping = Mappings::get_right(mapping);
+		}
+		else {
+			return false;
+		}
+	}
+
+	return false;
+}
+
 void Process::add_thread(Thread* thread) {
 	IrqGuard irq_guard {};
-	threads.lock()->push(thread);
+	auto guard = threads.lock();
+	thread->thread_id = ++max_thread_id;
+	guard->push(thread);
 }
 
 void Process::remove_thread(Thread* thread) {

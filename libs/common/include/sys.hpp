@@ -23,8 +23,9 @@ int sys_poll_event(InputEvent& event, size_t timeout_us);
 int sys_shutdown(ShutdownType type);
 
 int sys_open(CrescentHandle& handle, const char* path, size_t path_len, int flags);
-int sys_read(CrescentHandle handle, void* data, size_t offset, size_t size);
-int sys_write(CrescentHandle handle, const void* data, size_t offset, size_t size);
+int sys_read(CrescentHandle handle, void* data, size_t size, size_t* actual);
+int sys_write(CrescentHandle handle, const void* data, size_t size, size_t* actual);
+int sys_seek(CrescentHandle handle, uint64_t offset, int whence, uint64_t* value);
 int sys_stat(CrescentHandle handle, CrescentStat& stat);
 
 int sys_pipe_create(

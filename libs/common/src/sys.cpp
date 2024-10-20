@@ -68,15 +68,19 @@ int sys_shutdown(ShutdownType type) {
 }
 
 int sys_open(CrescentHandle& handle, const char* path, size_t path_len, int flags) {
-	return static_cast<int>(syscall(SYS_OPEN, &handle, path, path_len, flags));
+	return static_cast<int>(syscall(SYS_OPENAT, &handle, INVALID_CRESCENT_HANDLE, path, path_len, flags));
 }
 
-int sys_read(CrescentHandle handle, void* data, size_t offset, size_t size) {
-	return static_cast<int>(syscall(SYS_READ, handle, data, offset, size));
+int sys_read(CrescentHandle handle, void* data, size_t size, size_t* actual) {
+	return static_cast<int>(syscall(SYS_READ, handle, data, size, actual));
 }
 
-int sys_write(CrescentHandle handle, const void* data, size_t offset, size_t size) {
-	return static_cast<int>(syscall(SYS_WRITE, handle, data, offset, size));
+int sys_write(CrescentHandle handle, const void* data, size_t size, size_t* actual) {
+	return static_cast<int>(syscall(SYS_WRITE, handle, data, size, actual));
+}
+
+int sys_seek(CrescentHandle handle, uint64_t offset, int whence, uint64_t* value) {
+	return static_cast<int>(syscall(SYS_SEEK, handle, offset, whence, value));
 }
 
 int sys_stat(CrescentHandle handle, CrescentStat& stat) {

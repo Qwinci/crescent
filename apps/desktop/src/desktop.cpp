@@ -253,15 +253,15 @@ void Desktop::handle_mouse(MouseState new_state) {
 	Rect mouse_rect {
 		.x = mouse_state.pos.x,
 		.y = mouse_state.pos.y,
-		.width = 10,
-		.height = 10
+		.width = std::min(10U, ctx.width - mouse_state.pos.x),
+		.height = std::min(10U, ctx.height - mouse_state.pos.y)
 	};
 
 	Rect new_mouse_rect {
 		.x = new_state.pos.x,
 		.y = new_state.pos.y,
-		.width = 10,
-		.height = 10
+		.width = std::min(10U, ctx.width - new_state.pos.x),
+		.height = std::min(10U, ctx.height - new_state.pos.y)
 	};
 	if (mouse_rect.intersects(new_mouse_rect)) {
 		auto [parts, count] = mouse_rect.subtract(new_mouse_rect);
