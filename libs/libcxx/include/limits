@@ -1,0 +1,177 @@
+#ifndef _LIMITS
+#define _LIMITS
+
+namespace std {
+	template<typename __T>
+	class numeric_limits;
+
+	template<>
+	class numeric_limits<bool> {
+	public:
+		static constexpr int digits = 1;
+	};
+
+	template<>
+	class numeric_limits<signed char> {
+	public:
+		static constexpr int digits = 8;
+
+		static constexpr signed char min() noexcept {
+			return -__SCHAR_MAX__ - 1;
+		}
+
+		static constexpr signed char max() noexcept {
+			return __SCHAR_MAX__;
+		}
+	};
+
+	template<>
+	class numeric_limits<unsigned char> {
+	public:
+		static constexpr int digits = 8;
+
+		static constexpr unsigned char min() noexcept {
+			return 0;
+		}
+
+		static constexpr unsigned char max() noexcept {
+			return __SCHAR_MAX__ * 2U + 1U;
+		}
+	};
+
+	template<>
+	class numeric_limits<char> {
+	public:
+		static constexpr int digits = 7;
+
+		static constexpr char min() noexcept {
+#if __CHAR_UNSIGNED__
+			return 0;
+#else
+			return numeric_limits<signed char>::min();
+#endif
+		}
+
+		static constexpr char max() noexcept {
+#if __CHAR_UNSIGNED__
+			return numeric_limits<unsigned char>::max();
+#else
+			return numeric_limits<signed char>::max();
+#endif
+		}
+	};
+
+	template<>
+	class numeric_limits<short> {
+	public:
+		static constexpr int digits = 8 * sizeof(short) - 1;
+
+		static constexpr short min() noexcept {
+			return -__SHRT_MAX__ - 1;
+		}
+
+		static constexpr short max() noexcept {
+			return __SHRT_MAX__;
+		}
+	};
+
+	template<>
+	class numeric_limits<unsigned short> {
+	public:
+		static constexpr int digits = 8 * sizeof(short);
+
+		static constexpr unsigned short min() noexcept {
+			return 0;
+		}
+
+		static constexpr unsigned short max() noexcept {
+			return __SHRT_MAX__ * 2U + 1U;
+		}
+	};
+
+	template<>
+	class numeric_limits<int> {
+	public:
+		static constexpr int digits = 8 * sizeof(int) - 1;
+
+		static constexpr int min() noexcept {
+			return -__INT_MAX__ - 1;
+		}
+
+		static constexpr int max() noexcept {
+			return __INT_MAX__;
+		}
+	};
+
+	template<>
+	class numeric_limits<unsigned int> {
+	public:
+		static constexpr int digits = 8 * sizeof(unsigned int);
+
+		static constexpr unsigned int min() noexcept {
+			return 0;
+		}
+
+		static constexpr unsigned int max() noexcept {
+			return __INT_MAX__ * 2U + 1U;
+		}
+	};
+
+	template<>
+	class numeric_limits<long> {
+	public:
+		static constexpr int digits = 8 * sizeof(long) - 1;
+
+		static constexpr long min() noexcept {
+			return -__LONG_MAX__ - 1;
+		}
+
+		static constexpr long max() noexcept {
+			return __LONG_MAX__;
+		}
+	};
+
+	template<>
+	class numeric_limits<unsigned long> {
+	public:
+		static constexpr int digits = 8 * sizeof(unsigned long);
+
+		static constexpr unsigned long min() noexcept {
+			return 0;
+		}
+
+		static constexpr unsigned long max() noexcept {
+			return __LONG_MAX__ * 2UL + 1UL;
+		}
+	};
+
+	template<>
+	class numeric_limits<long long> {
+	public:
+		static constexpr int digits = 8 * sizeof(long long) - 1;
+
+		static constexpr long long min() noexcept {
+			return -__LONG_LONG_MAX__ - 1;
+		}
+
+		static constexpr long long max() noexcept {
+			return __LONG_LONG_MAX__;
+		}
+	};
+
+	template<>
+	class numeric_limits<unsigned long long> {
+	public:
+		static constexpr int digits = 8 * sizeof(unsigned long long);
+
+		static constexpr unsigned long long min() noexcept {
+			return 0;
+		}
+
+		static constexpr unsigned long long max() noexcept {
+			return __LONG_LONG_MAX__ * 2ULL + 1ULL;
+		}
+	};
+}
+
+#endif

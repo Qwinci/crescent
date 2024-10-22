@@ -48,7 +48,7 @@ namespace std {
 			for (size_type __i = 0; __i < __size; ++__i) {
 				__data[__i] = __other.__data[__i];
 			}
-			__data[0] = 0;
+			__data[__size] = 0;
 		}
 
 		constexpr basic_string(basic_string_view<__T> __other) {
@@ -62,7 +62,7 @@ namespace std {
 			for (size_type __i = 0; __i < __size; ++__i) {
 				__data[__i] = __other[__i];
 			}
-			__data[0] = 0;
+			__data[__size] = 0;
 		}
 
 		~basic_string() {
@@ -103,7 +103,7 @@ namespace std {
 			for (size_type __i = 0; __i < __size; ++__i) {
 				__data[__i] = __other.__data[__i];
 			}
-			__data[0] = 0;
+			__data[__size] = 0;
 			return *this;
 		}
 
@@ -122,7 +122,7 @@ namespace std {
 			for (size_type __i = 0; __i < __size; ++__i) {
 				__data[__i] = __other[__i];
 			}
-			__data[0] = 0;
+			__data[__size] = 0;
 			return *this;
 		}
 

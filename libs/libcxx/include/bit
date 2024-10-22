@@ -1,6 +1,8 @@
 #ifndef _BIT_H
 #define _BIT_H
 
+#include <limits>
+
 namespace std {
 	enum class endian {
 		little = __ORDER_LITTLE_ENDIAN__,
@@ -24,6 +26,43 @@ namespace std {
 		}
 		else {
 			__builtin_unreachable();
+		}
+	}
+
+	template<typename __To, typename __From>
+	constexpr __To bit_cast(const __From& __from) {
+		return __builtin_bit_cast(__To, __from);
+	}
+
+	template<typename __T>
+	constexpr __T rotl(__T __x, int __s) {
+		constexpr auto __N = numeric_limits<__T>::digits;
+		int __r = __s % __N;
+		if (__r == 0) {
+			return __x;
+		}
+		else if (__r > 0) {
+			return __x << __r | (__x >> (__N - __r));
+		}
+		else {
+			__r = -__r;
+			return __x >> __r | __x << (__N - __r);
+		}
+	}
+
+	template<typename __T>
+	constexpr __T rotr(__T __x, int __s) {
+		constexpr auto __N = numeric_limits<__T>::digits;
+		int __r = __s % __N;
+		if (__r == 0) {
+			return __x;
+		}
+		else if (__r > 0) {
+			return __x >> __r | __x << (__N - __r);
+		}
+		else {
+			__r = -__r;
+			return __x << __r | (__x >> (__N - __r));
 		}
 	}
 }
