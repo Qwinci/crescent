@@ -336,23 +336,28 @@ void Scheduler::unblock(Thread* thread, bool remove_sleeping, bool assert_not_sl
 	assert(thread->status == Thread::Status::Blocked ||
 		   thread->status == Thread::Status::Sleeping);
 	assert(thread->sched_lock.is_locked());
-	assert(thread != current);
+	assert(thread != thread->cpu->scheduler.current);
 
 	if (remove_sleeping && thread->status == Thread::Status::Sleeping) {
+		/*
 		auto guard = thread->cpu->scheduler.sleeping_threads.lock();
 		guard->remove(thread);
 		thread->status = Thread::Status::Blocked;
+		thread->sleep_interrupted = true;
+		*/
+		thread->sleep_end = SIZE_MAX;
 	}
+	else {
+		if (assert_not_sleeping) {
+			assert(thread->status == Thread::Status::Blocked);
+		}
 
-	if (assert_not_sleeping) {
-		assert(thread->status == Thread::Status::Blocked);
+		auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
+
+		assert(thread != thread->cpu->scheduler.current);
+		thread->status = Thread::Status::Waiting;
+		guard->push(thread);
 	}
-
-	auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
-
-	assert(thread != current);
-	thread->status = Thread::Status::Waiting;
-	guard->push(thread);
 }
 
 void Scheduler::on_timer(Cpu* cpu) {
@@ -371,6 +376,8 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 
 	usize first_sleep_end = UINTPTR_MAX;
 	auto guard = sleeping_threads.lock();
+
+	/*
 	for (auto& thread : *guard) {
 		if (thread.sleep_end > now) {
 			first_sleep_end = thread.sleep_end;
@@ -384,6 +391,30 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 		}
 		else {
 			unblock(&thread, false, false);
+		}
+	}
+	*/
+
+	// todo this needs a better solution, sleeping threads can't
+	// be removed from the sleep list in unblock because it could create a deadlock
+	// with the thread lock being acquired before the sleeping threads lock.
+	// Looping through all threads here and setting the sleep end to SIZE_MAX works but is not ideal.
+	for (auto& thread : *guard) {
+		if (thread.sleep_end <= now || thread.sleep_end == SIZE_MAX) {
+			guard->remove(&thread);
+			if (&thread != prev) {
+				auto thread_guard = thread.sched_lock.lock();
+				unblock(&thread, false, false);
+			}
+			else {
+				unblock(&thread, false, false);
+			}
+
+			continue;
+		}
+
+		if (first_sleep_end == UINTPTR_MAX) {
+			first_sleep_end = thread.sleep_end;
 		}
 	}
 
