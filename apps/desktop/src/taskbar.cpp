@@ -23,3 +23,18 @@ void TaskbarWindow::add_icon(uint32_t color) {
 
 	add_child(std::move(window));
 }
+
+void TaskbarWindow::add_entry(std::unique_ptr<Window> entry) {
+	entry->rect.width = rect.height;
+	entry->rect.height = rect.height;
+
+	if (!children.empty()) {
+		auto& last = children.back();
+		entry->rect.x = last->rect.x + last->rect.width;
+	}
+	else {
+		entry->rect.x = 0;
+	}
+
+	add_child(std::move(entry));
+}

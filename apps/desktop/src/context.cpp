@@ -1,11 +1,13 @@
 #include "context.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 
 void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 	auto rect_x = rect.x + x_off;
 	auto rect_y = rect.y + y_off;
 
+#ifndef NDEBUG
 	for (auto& clip_rect : clip_rects) {
 		for (auto& other : clip_rects) {
 			if (&clip_rect == &other) {
@@ -14,6 +16,7 @@ void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 			assert(!clip_rect.intersects(other));
 		}
 	}
+#endif
 
 	for (auto& clip_rect : clip_rects) {
 		if (rect_x + rect.width <= clip_rect.x || rect_y >= clip_rect.y + clip_rect.height) {
@@ -30,6 +33,34 @@ void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 				//assert(fb[y * pitch_32 + x] == 0xCFCFCFCF);
 				fb[y * pitch_32 + x] = color;
 			}
+		}
+	}
+}
+
+void Context::draw_bitmap(const uint32_t* pixels, uint32_t x, uint32_t y, uint32_t bitmap_width, uint32_t bitmap_height) const {
+	Rect content_rect {
+		.x = x_off + x,
+		.y = y_off + y,
+		.width = bitmap_width,
+		.height = bitmap_height
+	};
+
+	for (auto& clip_rect : clip_rects) {
+		if (!clip_rect.intersects(content_rect)) {
+			continue;
+		}
+
+		auto clipped = content_rect.intersect(clip_rect);
+
+		uint32_t rel_x = clipped.x - content_rect.x;
+
+		for (uint32_t actual_y = clipped.y; actual_y < clipped.y + clipped.height; ++actual_y) {
+			uint32_t rel_y = actual_y - content_rect.y;
+			size_t to_copy = clipped.width * 4;
+
+			auto dest_ptr = &fb[actual_y * pitch_32 + clipped.x];
+			auto src_ptr = &pixels[rel_y * bitmap_width + rel_x];
+			memcpy(dest_ptr, src_ptr, to_copy);
 		}
 	}
 }

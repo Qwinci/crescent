@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <cassert>
 #include "primitive.hpp"
 
 struct Context {
@@ -16,6 +17,12 @@ struct Context {
 	void clear_clip_rects();
 
 	void draw_filled_rect(const Rect& rect, uint32_t color) const;
+	void draw_bitmap(
+		const uint32_t* pixels,
+		uint32_t x,
+		uint32_t y,
+		uint32_t width,
+		uint32_t height) const;
 	void draw_rect_outline(const Rect& rect, uint32_t color, uint32_t thickness) const;
 
 	std::vector<Rect> clip_rects {};
