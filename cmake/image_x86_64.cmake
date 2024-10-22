@@ -1,7 +1,6 @@
 set(FILES
 	${PROJECT_SOURCE_DIR}/fonts/Tamsyn8x16r.psf
 	${PROJECT_SOURCE_DIR}/limine.cfg
-	${PROJECT_SOURCE_DIR}/output.raw
 	bin/crescent
 	initramfs.tar
 )
