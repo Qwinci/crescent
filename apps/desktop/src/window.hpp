@@ -1,7 +1,6 @@
 #pragma once
 #include <vector>
 #include <memory>
-#include <string_view>
 #include "context.hpp"
 #include "mouse.hpp"
 #include "keyboard.hpp"
@@ -42,8 +41,6 @@ struct Window {
 	}
 
 	virtual void update_titlebar(uint32_t width) {}
-
-	void set_title(std::string_view title);
 
 	[[nodiscard]] constexpr Point get_abs_pos_offset() const {
 		Point pos {};

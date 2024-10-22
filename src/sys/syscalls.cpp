@@ -18,7 +18,6 @@
 
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
-#include "arch/x86/cpu.hpp"
 #elif defined(__aarch64__)
 #include "arch/aarch64/dev/psci.hpp"
 #include "exe/elf_loader.hpp"
@@ -145,7 +144,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 			auto name = path_view.substr(name_start);
 
-			auto node = vfs_lookup(INITRD_VFS->get_root(), path_view);
+			auto node = INITRD_VFS->lookup(path_view);
 			if (!node) {
 				*frame->ret() = ERR_NOT_EXISTS;
 				break;
@@ -154,17 +153,17 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			Process* process;
 			if (process_info.flags & PROCESS_STD_HANDLES) {
 				auto stdin = thread->process->handles.get(process_info.stdin_handle);
-				if (!stdin || !stdin->get<kstd::shared_ptr<OpenFile>>()) {
+				if (!stdin || !stdin->get<kstd::shared_ptr<VNode>>()) {
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
 				}
 				auto stdout = thread->process->handles.get(process_info.stdout_handle);
-				if (!stdout || !stdout->get<kstd::shared_ptr<OpenFile>>()) {
+				if (!stdout || !stdout->get<kstd::shared_ptr<VNode>>()) {
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
 				}
 				auto stderr = thread->process->handles.get(process_info.stderr_handle);
-				if (!stderr || !stderr->get<kstd::shared_ptr<OpenFile>>()) {
+				if (!stderr || !stderr->get<kstd::shared_ptr<VNode>>()) {
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
 				}
@@ -192,21 +191,6 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			auto ld_file = vfs_lookup(INITRD_VFS->get_root(), "/usr/lib/libc.so");
-			assert(ld_file);
-
-			auto ld_elf_result = elf_load(process, ld_file.data());
-			assert(ld_elf_result);
-
-			SysvInfo sysv_info {
-				.ld_entry = reinterpret_cast<usize>(ld_elf_result.value().entry),
-				.exe_entry = reinterpret_cast<usize>(elf_result.value().entry),
-				.ld_base = ld_elf_result.value().base,
-				.exe_phdrs_addr = elf_result.value().phdrs_addr,
-				.exe_phdr_count = elf_result.value().phdr_count,
-				.exe_phdr_size = elf_result.value().phdr_size
-			};
-
 			auto descriptor = kstd::make_shared<ProcessDescriptor>(process, 0);
 			CrescentHandle handle = thread->process->handles.insert(descriptor);
 			process->add_descriptor(descriptor.data());
@@ -224,7 +208,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				name,
 				cpu,
 				process,
-				sysv_info
+				elf_result.value().entry,
+				nullptr
 			};
 			cpu->scheduler.queue(new_thread);
 			cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
@@ -306,16 +291,6 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			break;
-		}
-		case SYS_YIELD:
-		{
-			thread->yield();
-			break;
-		}
-		case SYS_GET_THREAD_ID:
-		{
-			*frame->ret() = thread->thread_id;
 			break;
 		}
 		case SYS_SLEEP:
@@ -403,30 +378,6 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto size = *frame->arg1();
 
 			thread->process->free(ptr, size);
-			*frame->ret() = 0;
-			break;
-		}
-		case SYS_PROTECT:
-		{
-			auto start = reinterpret_cast<void*>(*frame->arg0());
-			auto size = *frame->arg1();
-			auto prot = static_cast<int>(*frame->arg2());
-
-			PageFlags flags = PageFlags::User;
-			if (prot & CRESCENT_PROT_READ) {
-				flags |= PageFlags::Read;
-			}
-			if (prot & CRESCENT_PROT_WRITE) {
-				flags |= PageFlags::Read | PageFlags::Write;
-			}
-			if (prot & CRESCENT_PROT_EXEC) {
-				flags |= PageFlags::Read | PageFlags::Execute;
-			}
-
-			if (!thread->process->protect(start, size, flags)) {
-				*frame->ret() = ERR_INVALID_ARGUMENT;
-				break;
-			}
 			*frame->ret() = 0;
 			break;
 		}
@@ -1332,42 +1283,24 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
-		case SYS_OPENAT:
+		case SYS_OPEN:
 		{
 			kstd::string path;
-			path.resize_without_null(*frame->arg3());
-			if (!UserAccessor(*frame->arg2()).load(path.data(), *frame->arg3())) {
+			path.resize_without_null(*frame->arg2());
+			if (!UserAccessor(*frame->arg1()).load(path.data(), *frame->arg2())) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
 
-			CrescentHandle dir_handle = *frame->arg1();
-			int flags = static_cast<int>(*frame->arg4());
+			int flags = static_cast<int>(*frame->arg3());
 
-			kstd::shared_ptr<VNode> start;
-			if (dir_handle != INVALID_CRESCENT_HANDLE) {
-				auto dir_entry = thread->process->handles.get(dir_handle);
-				kstd::shared_ptr<OpenFile>* ptr;
-				if (!dir_entry || !(ptr = dir_entry->get<kstd::shared_ptr<OpenFile>>())) {
-					*frame->ret() = ERR_INVALID_ARGUMENT;
-					break;
-				}
-
-				start = (*ptr)->node;
-			}
-			else {
-				start = INITRD_VFS->get_root();
-			}
-
-			auto node = vfs_lookup(std::move(start), path);
+			auto node = INITRD_VFS->lookup(path);
 			if (!node) {
 				*frame->ret() = ERR_NOT_EXISTS;
 				break;
 			}
 
-			auto new_file = kstd::make_shared<OpenFile>(std::move(node));
-
-			auto handle = thread->process->handles.insert(std::move(new_file));
+			auto handle = thread->process->handles.insert(std::move(node));
 			if (!UserAccessor(*frame->arg0()).store(handle)) {
 				thread->process->handles.remove(handle);
 				*frame->ret() = ERR_FAULT;
@@ -1381,37 +1314,27 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_READ:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
-			auto size = static_cast<size_t>(*frame->arg2());
+			auto offset = static_cast<size_t>(*frame->arg2());
+			auto size = static_cast<size_t>(*frame->arg3());
 
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<OpenFile>* file_ptr;
-			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
-			auto& file = *file_ptr;
 
 			kstd::vector<u8> buffer;
 			buffer.resize(size);
 
-			auto status = file->node->read(buffer.data(), size, file->cursor);
+			auto status = (*vnode)->read(buffer.data(), size, offset);
 			switch (status) {
 				case FsStatus::Success:
-					if (file->node->seekable) {
-						file->cursor += size;
-					}
-
 					if (!UserAccessor(*frame->arg1()).store(buffer.data(), buffer.size())) {
 						*frame->ret() = ERR_FAULT;
 					}
 					else {
 						*frame->ret() = 0;
-					}
-
-					if (*frame->arg3()) {
-						if (!UserAccessor(*frame->arg3()).store(size)) {
-							*frame->ret() = ERR_FAULT;
-						}
 					}
 
 					break;
@@ -1431,15 +1354,15 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_WRITE:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
-			auto size = static_cast<size_t>(*frame->arg2());
+			auto offset = static_cast<size_t>(*frame->arg2());
+			auto size = static_cast<size_t>(*frame->arg3());
 
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<OpenFile>* file_ptr;
-			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
-			auto& file = *file_ptr;
 
 			kstd::vector<u8> buffer;
 			buffer.resize(size);
@@ -1448,20 +1371,10 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			auto status = file->node->write(buffer.data(), size, file->cursor);
+			auto status = (*vnode)->write(buffer.data(), size, offset);
 			switch (status) {
 				case FsStatus::Success:
-					if (file->node->seekable) {
-						file->cursor += size;
-					}
 					*frame->ret() = 0;
-
-					if (*frame->arg3()) {
-						if (!UserAccessor(*frame->arg3()).store(size)) {
-							*frame->ret() = ERR_FAULT;
-						}
-					}
-
 					break;
 				case FsStatus::Unsupported:
 					*frame->ret() = ERR_UNSUPPORTED;
@@ -1476,64 +1389,19 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
-		case SYS_SEEK:
-		{
-			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
-			auto offset = static_cast<uint64_t>(*frame->arg1());
-			int whence = static_cast<int>(*frame->arg2());
-
-			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<OpenFile>* file_ptr;
-			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
-				*frame->ret() = ERR_INVALID_ARGUMENT;
-				break;
-			}
-			auto& file = *file_ptr;
-
-			if (!file->node->seekable) {
-				*frame->ret() = ERR_UNSUPPORTED;
-				break;
-			}
-
-			if (whence == SEEK_START) {
-				file->cursor = offset;
-			}
-			else if (whence == SEEK_CURRENT) {
-				file->cursor += offset;
-			}
-			else if (whence == SEEK_END) {
-				*frame->ret() = ERR_UNSUPPORTED;
-				break;
-			}
-			else {
-				*frame->ret() = ERR_INVALID_ARGUMENT;
-				break;
-			}
-
-			if (*frame->arg3()) {
-				if (!UserAccessor(*frame->arg3()).store(file->cursor)) {
-					*frame->ret() = ERR_FAULT;
-					break;
-				}
-			}
-
-			*frame->ret() = 0;
-			break;
-		}
 		case SYS_STAT:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
 
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<OpenFile>* file_ptr;
-			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
-			auto& file = *file_ptr;
 
 			FsStat stat {};
-			auto status = file->node->stat(stat);
+			auto status = (*vnode)->stat(stat);
 			switch (status) {
 				case FsStatus::Success:
 				{
@@ -1576,14 +1444,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			auto [reading, writing] = std::move(opt).value();
-			auto reading_ptr {kstd::make_shared<PipeVNode>(std::move(reading))};
-			auto writing_ptr {kstd::make_shared<PipeVNode>(std::move(writing))};
+			kstd::shared_ptr<VNode> reading_ptr {kstd::make_shared<PipeVNode>(std::move(reading))};
+			kstd::shared_ptr<VNode> writing_ptr {kstd::make_shared<PipeVNode>(std::move(writing))};
 
-			auto reading_file = kstd::make_shared<OpenFile>(std::move(reading_ptr));
-			auto writing_file = kstd::make_shared<OpenFile>(std::move(writing_ptr));
-
-			auto reading_handle = thread->process->handles.insert(std::move(reading_file));
-			auto writing_handle = thread->process->handles.insert(std::move(writing_file));
+			auto reading_handle = thread->process->handles.insert(std::move(reading_ptr));
+			auto writing_handle = thread->process->handles.insert(std::move(writing_ptr));
 
 			if (!UserAccessor(*frame->arg0()).store(reading_handle)) {
 				thread->process->handles.remove(reading_handle);
@@ -1613,120 +1478,16 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
+			kstd::shared_ptr<VNode>* vnode;
 			auto handle = thread->process->handles.get(new_handle);
-			kstd::shared_ptr<OpenFile>* file_ptr;
-			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
 
-			thread->process->handles.replace(user_std_handle, std::move(*file_ptr));
+			thread->process->handles.replace(user_std_handle, std::move(*vnode));
 
 			*frame->ret() = 0;
-
-			break;
-		}
-		case SYS_FUTEX_WAIT:
-		{
-			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
-			auto value = static_cast<int>(*frame->arg1());
-			auto timeout_ns = *frame->arg2();
-
-			{
-				auto guard = thread->process->futexes.lock();
-
-				// todo if this faults the process is killed
-				auto current_value = ptr->load(kstd::memory_order::seq_cst);
-				if (current_value != value) {
-					*frame->ret() = ERR_TRY_AGAIN;
-					break;
-				}
-
-				auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
-				if (!entry) {
-					auto* new_entry = new Process::Futex {
-						.ptr = ptr
-					};
-					guard->insert(new_entry);
-					entry = new_entry;
-				}
-
-				entry->waiters.push(thread);
-				thread->sleep_interrupted = false;
-			}
-
-			IrqGuard irq_guard {};
-			if (timeout_ns == UINT64_MAX) {
-				thread->cpu->scheduler.block();
-			}
-			else {
-				auto timeout_us = timeout_ns / NS_IN_US;
-				if (timeout_us > SCHED_MAX_SLEEP_US) {
-					timeout_us = SCHED_MAX_SLEEP_US;
-				}
-
-				thread->cpu->scheduler.sleep(timeout_us);
-
-				if (thread->sleep_interrupted) {
-					*frame->ret() = ERR_TIMED_OUT;
-				}
-				else {
-					*frame->ret() = 0;
-				}
-			}
-
-			break;
-		}
-		case SYS_FUTEX_WAKE:
-		{
-			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
-			auto count = static_cast<int>(*frame->arg1());
-
-			IrqGuard irq_guard {};
-			auto guard = thread->process->futexes.lock();
-
-			auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
-			if (!entry) {
-				*frame->ret() = 0;
-				break;
-			}
-
-			assert(!entry->waiters.is_empty());
-			for (; !entry->waiters.is_empty() && count > 0; --count) {
-				auto waiter = entry->waiters.pop_front();
-				auto thread_guard = waiter->sched_lock.lock();
-				assert(thread->status == Thread::Status::Sleeping);
-				thread->cpu->scheduler.unblock(thread, true, true);
-			}
-
-			if (entry->waiters.is_empty()) {
-				guard->remove(entry);
-				delete entry;
-			}
-
-			break;
-		}
-		case SYS_SET_FS_BASE:
-		{
-#ifdef __x86_64__
-			thread->fs_base = *frame->arg0();
-			msrs::IA32_FSBASE.write(thread->fs_base);
-			*frame->ret() = 0;
-#else
-			*frame->ret() = ERR_UNSUPPORTED;
-#endif
-
-			break;
-		}
-		case SYS_SET_GS_BASE:
-		{
-#ifdef __x86_64__
-			thread->gs_base = *frame->arg0();
-			msrs::IA32_KERNEL_GSBASE.write(thread->gs_base);
-			*frame->ret() = 0;
-#else
-			*frame->ret() = ERR_UNSUPPORTED;
-#endif
 
 			break;
 		}

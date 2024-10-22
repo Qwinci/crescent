@@ -342,7 +342,6 @@ void Scheduler::unblock(Thread* thread, bool remove_sleeping, bool assert_not_sl
 		auto guard = thread->cpu->scheduler.sleeping_threads.lock();
 		guard->remove(thread);
 		thread->status = Thread::Status::Blocked;
-		thread->sleep_interrupted = true;
 	}
 
 	if (assert_not_sleeping) {

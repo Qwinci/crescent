@@ -1,7 +1,7 @@
 #include "pipe.hpp"
 
 PipeVNode::PipeVNode(kstd::shared_ptr<RingBuffer<u8>> buffer, FileFlags flags, bool reading)
-	: VNode {flags, false}, buffer {std::move(buffer)}, reading {reading} {}
+	: VNode {flags}, buffer {std::move(buffer)}, reading {reading} {}
 
 kstd::optional<kstd::pair<PipeVNode, PipeVNode>> PipeVNode::create(usize max_size, FileFlags read_flags, FileFlags write_flags) {
 	auto buffer = kstd::make_shared<RingBuffer<u8>>(max_size);

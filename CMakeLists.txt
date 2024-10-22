@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(crescent C CXX ASM)
+project(crescent CXX ASM)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,13 +78,7 @@ include(CMakeOptions.cmake)
 add_subdirectory(libs)
 add_subdirectory(apps)
 
-add_custom_command(OUTPUT sysroot/fonts/Tamsyn8x16r.psf
-	COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/sysroot/fonts"
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/fonts/Tamsyn8x16r.psf" "${CMAKE_BINARY_DIR}/sysroot/fonts"
-	DEPENDS fonts/Tamsyn8x16r.psf
-)
-
 add_custom_command(OUTPUT initramfs.tar
 	COMMAND tar -cf initramfs.tar -C ${CMAKE_BINARY_DIR}/sysroot/ .
-	DEPENDS ${APPS} ${LIBS} sysroot/fonts/Tamsyn8x16r.psf
+	DEPENDS ${APPS} ${LIBS}
 )

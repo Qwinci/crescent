@@ -4,5 +4,4 @@ target_sources(desktop PRIVATE
 	window.cpp
 	button.cpp
 	taskbar.cpp
-	text.cpp
 )

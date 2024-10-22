@@ -15,13 +15,6 @@ struct ThreadDescriptor;
 
 struct EmptyHandle {};
 
-struct OpenFile {
-	constexpr explicit OpenFile(kstd::shared_ptr<VNode> node) : node {std::move(node)} {}
-
-	kstd::shared_ptr<VNode> node;
-	uint64_t cursor {};
-};
-
 using Handle = kstd::variant<
 	kstd::monostate,
 	EmptyHandle,
@@ -30,7 +23,7 @@ using Handle = kstd::variant<
 	kstd::shared_ptr<ThreadDescriptor>,
 	kstd::shared_ptr<Socket>,
 	kstd::shared_ptr<SharedMemory>,
-	kstd::shared_ptr<OpenFile>
+	kstd::shared_ptr<VNode>
 	>;
 
 class HandleTable {

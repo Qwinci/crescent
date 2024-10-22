@@ -26,10 +26,8 @@ void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 		auto res_height = std::min(rect_y + rect.height, clip_rect.y + clip_rect.height) - start_y;
 
 		for (uint32_t y = start_y; y < start_y + res_height; ++y) {
-			assert(y < height);
 			for (uint32_t x = start_x; x < start_x + res_width; ++x) {
 				//assert(fb[y * pitch_32 + x] == 0xCFCFCFCF);
-				assert(x < width);
 				fb[y * pitch_32 + x] = color;
 			}
 		}

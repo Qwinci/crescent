@@ -346,12 +346,6 @@ void PageMap::protect(u64 virt, PageFlags flags, CacheMode cache_mode) {
 	asm volatile("invlpg (%0)" : : "r"(orig_virt) : "memory");
 }
 
-void PageMap::protect_range(u64 virt, u64 size, PageFlags flags, CacheMode cache_mode) {
-	for (usize i = 0; i < size; i += PAGE_SIZE) {
-		protect(virt + i, flags, cache_mode);
-	}
-}
-
 void PageMap::use() {
 	auto phys = to_phys(level0);
 	asm volatile("mov %0, %%cr3" : : "r"(phys) : "memory");

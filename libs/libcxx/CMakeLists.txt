@@ -3,4 +3,4 @@ LIB(libcxx
 )
 
 target_include_directories(libcxx SYSTEM PUBLIC include)
-target_link_libraries(libcxx PUBLIC hzlibc)
+target_link_libraries(libcxx PUBLIC libc)

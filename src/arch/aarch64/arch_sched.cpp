@@ -10,7 +10,7 @@ asm(R"(
 
 // void sched_switch_thread(ArchThread* prev, ArchThread* next)
 sched_switch_thread:
-	sub sp, sp, #128
+	sub sp, sp, #112
 	stp x0,  x1,  [sp, #0]
 	stp x19, x20, [sp, #16]
 	stp x21, x22, [sp, #32]
@@ -18,8 +18,6 @@ sched_switch_thread:
 	stp x25, x26, [sp, #64]
 	stp x27, x28, [sp, #80]
 	stp x29, x30, [sp, #96]
-	mrs x3, daif
-	str x3, [sp, #112]
 
 	mov x2, sp
 	str x2, [x0]
@@ -37,9 +35,7 @@ sched_switch_thread:
 	ldp x25, x26, [sp, #64]
 	ldp x27, x28, [sp, #80]
 	ldp x29, x30, [sp, #96]
-	ldr x3, [sp, #112]
-	msr daif, x3
-	add sp, sp, #128
+	add sp, sp, #112
 	ret
 .popsection
 )");
@@ -143,8 +139,6 @@ constexpr usize USER_STACK_SIZE = 1024 * 1024;
 
 struct InitFrame {
 	u64 x[14];
-	u64 irq_state;
-	u64 unused;
 };
 
 extern "C" void arch_on_first_switch();
@@ -220,78 +214,6 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
 	else {
 		frame->x[13] = reinterpret_cast<u64>(arch_on_first_switch);
 	}
-}
-
-#define AT_PHDR 3
-#define AT_PHENT 4
-#define AT_PHNUM 5
-#define AT_BASE 7
-#define AT_ENTRY 9
-
-ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
-	assert(process->user);
-
-	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - sizeof(InitFrame);
-	auto* frame = reinterpret_cast<InitFrame*>(sp);
-	memset(frame, 0, sizeof(InitFrame));
-	frame->x[1] = sysv.ld_entry;
-
-	UniqueKernelMapping user_stack_mapping;
-
-	user_stack_base = reinterpret_cast<u8*>(process->allocate(
-		nullptr,
-		USER_STACK_SIZE + PAGE_SIZE,
-		MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, &user_stack_mapping));
-	assert(user_stack_base);
-	process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
-
-	simd = static_cast<u8*>(ALLOCATOR.alloc(sizeof(SimdRegisters)));
-	assert(simd);
-	memset(simd, 0, sizeof(SimdRegisters));
-	frame->x[13] = reinterpret_cast<u64>(arch_on_first_switch_user);
-
-	u64 user_rsp = offset(user_stack_base, u64, USER_STACK_SIZE + PAGE_SIZE);
-	u64* kernel_user_rsp = offset(user_stack_mapping.data(), u64*, USER_STACK_SIZE + PAGE_SIZE);
-
-	auto push = [&](u64 value) {
-		*--kernel_user_rsp = value;
-		user_rsp -= 8;
-	};
-
-	// align to 16 bytes
-	push(0);
-
-	// aux end
-	push(0);
-	push(0);
-
-	push(sysv.exe_entry);
-	push(AT_ENTRY);
-
-	push(sysv.ld_base);
-	push(AT_BASE);
-
-	push(sysv.exe_phdr_count);
-	push(AT_PHNUM);
-
-	push(sysv.exe_phdr_size);
-	push(AT_PHENT);
-
-	push(sysv.exe_phdrs_addr);
-	push(AT_PHDR);
-
-	// env end
-	push(0);
-	// env (nothing)
-	// argv end
-	push(0);
-	// argv (nothing)
-	// argc
-	push(0);
-
-	frame->x[2] = user_rsp;
 }
 
 ArchThread::~ArchThread() {

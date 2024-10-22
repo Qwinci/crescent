@@ -122,7 +122,7 @@ namespace std {
 			for (size_type __i = 0; __i < __size; ++__i) {
 				__data[__i] = __other[__i];
 			}
-			__data[__size] = 0;
+			__data[0] = 0;
 			return *this;
 		}
 

@@ -2,12 +2,10 @@
 #include "context.hpp"
 #include "desktop.hpp"
 #include "sys.hpp"
-#include "text.hpp"
 #include "windower/protocol.hpp"
 #include <cassert>
 #include <stdio.h>
 #include <string.h>
-#include <threads.h>
 
 static constexpr size_t US_IN_MS = 1000;
 static constexpr size_t US_IN_S = US_IN_MS * 1000;
@@ -73,7 +71,7 @@ static NoDestroy<std::vector<WindowInfo>> WINDOW_TO_INFO {};
 
 namespace protocol = windower::protocol;
 
-int listener_thread(void* arg) {
+void listener_thread(void* arg) {
 	auto* desktop = static_cast<Desktop*>(arg);
 
 	CrescentStringView features[] {
@@ -82,7 +80,7 @@ int listener_thread(void* arg) {
 	auto res = sys_service_create(features, sizeof(features) / sizeof(*features));
 	if (res != 0) {
 		puts("failed to create desktop service");
-		return 1;
+		sys_thread_exit(1);
 	}
 
 	ProcessCreateInfo console_process_info {
@@ -98,27 +96,27 @@ int listener_thread(void* arg) {
 	res = sys_process_create(console_handle, "/bin/console", sizeof("/bin/console") - 1, console_process_info);
 	if (res != 0) {
 		puts("failed to create console process");
-		return 1;
+		sys_thread_exit(1);
 	}
 	CrescentHandle ipc_listen_socket;
 	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC, SOCK_NONE);
 	if (res != 0) {
 		puts("failed to create ipc socket");
-		return 1;
+		sys_thread_exit(1);
 	}
 
 	while (true) {
 		res = sys_socket_listen(ipc_listen_socket, 0);
 		if (res != 0) {
 			puts("failed to listen for connections");
-			return 1;
+			sys_thread_exit(1);
 		}
 		puts("[desktop]: got a connection");
 		CrescentHandle connection_socket;
 		res = sys_socket_accept(ipc_listen_socket, connection_socket, SOCK_NONBLOCK);
 		if (res != 0) {
 			puts("failed to accept connection");
-			return 1;
+			sys_thread_exit(1);
 		}
 		puts("[desktop]: connection accepted");
 
@@ -126,7 +124,7 @@ int listener_thread(void* arg) {
 		res = sys_socket_get_peer_name(connection_socket, peer_addr.generic);
 		if (res != 0) {
 			puts("failed to get peer address");
-			return 1;
+			sys_thread_exit(1);
 		}
 
 		CrescentHandle event_read_handle;
@@ -168,7 +166,7 @@ void send_event_to_window(Window* window, protocol::WindowEvent event) {
 	assert(event_pipe != INVALID_CRESCENT_HANDLE);
 
 	// todo check status
-	sys_write(event_pipe, &event, sizeof(event), nullptr);
+	sys_write(event_pipe, &event, 0, sizeof(event));
 }
 
 static void destroy_window(Desktop& desktop, Window* window) {
@@ -221,8 +219,7 @@ static void destroy_window(Desktop& desktop, Window* window) {
 	for (size_t i = 0; i < WINDOW_TO_INFO->size(); ++i) {
 		auto& iter = (*WINDOW_TO_INFO)[i];
 		if (iter.window == window) {
-			auto status = sys_unmap(window->fb, window->rect.width * window->rect.height * 4);
-			assert(status == 0);
+			assert(sys_unmap(window->fb, window->rect.width * window->rect.height * 4) == 0);
 
 			WINDOW_TO_INFO->erase(
 				WINDOW_TO_INFO->begin() +
@@ -324,9 +321,9 @@ int main() {
 	ctx.height = info.height;
 	Desktop desktop {ctx};
 
-	thrd_t listener_thread_handle {};
-	auto thread_status = thrd_create(&listener_thread_handle, listener_thread, &desktop);
-	if (thread_status != thrd_success) {
+	CrescentHandle listener_thread_handle;
+	status = sys_thread_create(listener_thread_handle, "listener", sizeof("listener") - 1, listener_thread, &desktop);
+	if (status != 0) {
 		puts("[desktop]: failed to create listener thread");
 		return 1;
 	}
@@ -368,38 +365,6 @@ int main() {
 
 	desktop.root_window->add_child(std::move(window4));
 
-	auto start_menu_text = std::make_unique<TextWindow>();
-	start_menu_text->set_size(desktop.taskbar->rect.height, desktop.taskbar->rect.height);
-	start_menu_text->text = "Start";
-
-	auto start_menu_button = std::make_unique<ButtonWindow>();
-	start_menu_button->bg_color = 0x333333;
-	start_menu_button->callback = [](void* arg) {
-		auto* desktop = static_cast<Desktop*>(arg);
-		puts("click");
-
-		auto menu_window = std::make_unique<Window>(false);
-		menu_window->internal = true;
-		menu_window->set_size(desktop->ctx.width / 4, desktop->ctx.height / 2);
-		menu_window->set_pos(
-			0,
-			desktop->ctx.height - menu_window->rect.height - desktop->taskbar->rect.height - BORDER_WIDTH - TITLEBAR_HEIGHT);
-		menu_window->set_title("Start Menu");
-
-		desktop->ctx.dirty_rects.push_back({
-			.x = menu_window->rect.x,
-			.y = menu_window->rect.y,
-			.width = menu_window->rect.width + BORDER_WIDTH * 2,
-			.height = menu_window->rect.height + TITLEBAR_HEIGHT + BORDER_WIDTH
-		});
-
-		desktop->root_window->add_child(std::move(menu_window));
-	};
-	start_menu_button->arg = &desktop;
-
-	start_menu_button->add_child(std::move(start_menu_text));
-
-	desktop.taskbar->add_entry(std::move(start_menu_button));
 	desktop.taskbar->add_icon(0xE81416);
 	desktop.taskbar->add_icon(0xFFA500);
 	desktop.taskbar->add_icon(0xFAEB36);
@@ -430,12 +395,9 @@ int main() {
 				continue;
 			}
 			else if (req_status == ERR_INVALID_ARGUMENT) {
-				status = sys_close_handle(connection->process);
-				assert(status == 0);
-				status = sys_close_handle(connection->control);
-				assert(status == 0);
-				status = sys_close_handle(connection->event);
-				assert(status == 0);
+				assert(sys_close_handle(connection->process) == 0);
+				assert(sys_close_handle(connection->control) == 0);
+				assert(sys_close_handle(connection->event) == 0);
 
 				for (size_t i = 0; i < WINDOW_TO_INFO->size();) {
 					auto& window_info = (*WINDOW_TO_INFO)[i];

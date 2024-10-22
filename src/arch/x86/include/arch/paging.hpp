@@ -38,9 +38,7 @@ public:
 
 	[[nodiscard]] bool map_2mb(u64 virt, u64 phys, PageFlags flags, CacheMode cache_mode);
 	[[nodiscard]] bool map(u64 virt, u64 phys, PageFlags flags, CacheMode cache_mode);
-
 	void protect(u64 virt, PageFlags flags, CacheMode cache_mode);
-	void protect_range(u64 virt, u64 size, PageFlags flags, CacheMode cache_mode);
 
 	[[nodiscard]] u64 get_phys(u64 virt) const;
 

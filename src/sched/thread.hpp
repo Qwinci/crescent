@@ -2,7 +2,6 @@
 #include "arch/arch_thread.hpp"
 #include "double_list.hpp"
 #include "string.hpp"
-#include "sysv.hpp"
 
 struct Cpu;
 struct Process;
@@ -22,7 +21,6 @@ struct ThreadDescriptor {
 
 struct Thread : public ArchThread {
 	Thread(kstd::string_view name, Cpu* cpu, Process* process, void (*fn)(void*), void* arg);
-	Thread(kstd::string_view name, Cpu* cpu, Process* process, const SysvInfo& sysv);
 	Thread(kstd::string_view name, Cpu* cpu, Process* process);
 
 	void sleep_for(u64 us) const;
@@ -54,8 +52,6 @@ struct Thread : public ArchThread {
 	bool pin_level {};
 	bool pin_cpu {};
 	Spinlock<void> sched_lock {};
-	uint32_t thread_id {};
-	bool sleep_interrupted {};
 };
 
 #ifdef __x86_64__

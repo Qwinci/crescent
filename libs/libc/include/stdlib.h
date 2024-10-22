@@ -1,0 +1,18 @@
+#ifndef _STDLIB_H
+#define _STDLIB_H
+
+#include "bits/utils.h"
+#include <stddef.h>
+
+__begin
+
+void* malloc(size_t __size);
+void* realloc(void* __old, size_t __new_size);
+void free(void* __ptr);
+
+__attribute__((noreturn)) void exit(int status);
+__attribute__((noreturn)) void abort();
+
+__end
+
+#endif

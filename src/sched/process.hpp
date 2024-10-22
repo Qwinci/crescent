@@ -3,11 +3,10 @@
 #include "mem/vmem.hpp"
 #include "rb_tree.hpp"
 #include "compare.hpp"
-#include "sched.hpp"
+#include "sched/sched.hpp"
 #include "manually_init.hpp"
 #include "handle_table.hpp"
-#include "cpu_set.hpp"
-#include "mutex.hpp"
+#include "sched/cpu_set.hpp"
 
 struct IpcSocket;
 
@@ -84,28 +83,6 @@ struct Process {
 
 	usize allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKernelMapping* mapping, CacheMode cache_mode = CacheMode::WriteBack);
 	void free(usize ptr, usize size);
-	bool protect(void* base, usize size, PageFlags flags);
-
-	struct Mapping {
-		RbTreeHook hook {};
-		usize base {};
-		usize size {};
-		MemoryAllocFlags flags {};
-
-		constexpr int operator<=>(const Mapping& other) const {
-			return kstd::threeway(base, other.base);
-		}
-	};
-
-	struct Futex {
-		RbTreeHook hook {};
-		kstd::atomic<int>* ptr {};
-		DoubleList<Thread, &Thread::misc_hook> waiters {};
-
-		constexpr int operator<=>(const Futex& other) const {
-			return kstd::threeway(ptr, other.ptr);
-		}
-	};
 
 	void add_thread(Thread* thread);
 	void remove_thread(Thread* thread);
@@ -130,12 +107,21 @@ struct Process {
 	bool killed {};
 	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
 	Spinlock<CpuSet> cpu_set {};
-	Mutex<RbTree<Futex, &Futex::hook>> futexes {};
 private:
+	struct Mapping {
+		RbTreeHook hook {};
+		usize base {};
+		usize size {};
+		MemoryAllocFlags flags {};
+
+		constexpr int operator<=>(const Mapping& other) const {
+			return kstd::threeway(base, other.base);
+		}
+	};
+
 	VMem vmem {};
-	IrqSpinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
+	Spinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
 	Spinlock<DoubleList<ProcessDescriptor, &ProcessDescriptor::hook>> descriptors {};
-	uint32_t max_thread_id {};
 };
 
 extern ManuallyInit<Process> KERNEL_PROCESS;
