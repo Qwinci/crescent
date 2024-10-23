@@ -99,6 +99,8 @@ void listener_thread(void* arg) {
 		puts("failed to create console process");
 		sys_thread_exit(1);
 	}
+	sys_close_handle(console_handle);
+
 	CrescentHandle ipc_listen_socket;
 	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC, SOCK_NONE);
 	if (res != 0) {
@@ -375,15 +377,130 @@ int main() {
 	start_menu_button->bg_color = 0x333333;
 	start_menu_button->callback = [](void* arg) {
 		auto* desktop = static_cast<Desktop*>(arg);
-		puts("click");
+		if (desktop->start_menu) {
+			destroy_window(*desktop, desktop->start_menu);
+			desktop->start_menu = nullptr;
+			return;
+		}
 
 		auto menu_window = std::make_unique<Window>(false);
 		menu_window->internal = true;
+		menu_window->on_close = [](Window* window, void* arg) {
+			auto* desktop = static_cast<Desktop*>(arg);
+			destroy_window(*desktop, window);
+		};
+		menu_window->on_close_arg = desktop;
 		menu_window->set_size(desktop->ctx.width / 4, desktop->ctx.height / 2);
 		menu_window->set_pos(
 			0,
 			desktop->ctx.height - menu_window->rect.height - desktop->taskbar->rect.height - BORDER_WIDTH - TITLEBAR_HEIGHT);
 		menu_window->set_title("Start Menu");
+
+		desktop->start_menu = menu_window.get();
+
+		CrescentHandle bin_dir_handle;
+		auto status = sys_open(bin_dir_handle, "/bin", sizeof("/bin") - 1, 0);
+		assert(status == 0);
+
+		size_t file_count = 0;
+		size_t file_offset = 0;
+		status = sys_list_dir(bin_dir_handle, nullptr, &file_count, &file_offset);
+		assert(status == 0);
+
+		std::vector<CrescentDirEntry> entries;
+		entries.resize(file_count);
+		status = sys_list_dir(bin_dir_handle, entries.data(), &file_count, &file_offset);
+		assert(status == 0);
+
+		uint32_t y_offset = 0;
+		size_t entry_index = 0;
+
+		constexpr uint32_t COLORS[] {
+			0xFFA500,
+			0xFAEB36,
+			0x79C314,
+			0x487DE7,
+			0x4B369D,
+			0x70369D
+		};
+
+		for (auto& entry : entries) {
+			auto entry_button = std::make_unique<ButtonWindow>();
+			entry_button->set_pos(0, y_offset);
+			entry_button->set_size(menu_window->rect.width, (menu_window->rect.height - TaskbarWindow::HEIGHT) / 10);
+			y_offset += entry_button->rect.height;
+
+			auto entry_text = std::make_unique<TextWindow>();
+			entry_text->set_size(entry_button->rect.width, entry_button->rect.height);
+			entry_text->text = entry.name;
+			entry_text->bg_color = COLORS[entry_index % (sizeof(COLORS) / sizeof(*COLORS))];
+			entry_text->text_color = 0;
+
+			entry_button->arg = entry_text.get();
+
+			entry_button->add_child(std::move(entry_text));
+
+			entry_button->callback = [](void* arg) {
+				auto* text = static_cast<TextWindow*>(arg);
+
+				ProcessCreateInfo proc_info {
+					.args = nullptr,
+					.arg_count = 0,
+					.stdin_handle = INVALID_CRESCENT_HANDLE,
+					.stdout_handle = INVALID_CRESCENT_HANDLE,
+					.stderr_handle = INVALID_CRESCENT_HANDLE,
+					.flags = 0
+				};
+
+				CrescentHandle proc_handle;
+				auto res = sys_process_create(proc_handle, text->text.data(), text->text.size(), proc_info);
+				if (res != 0) {
+					printf("desktop: failed to create process %s\n", text->text.c_str());
+					return;
+				}
+				sys_close_handle(proc_handle);
+			};
+			++entry_index;
+
+			menu_window->add_child(std::move(entry_button));
+		}
+
+		status = sys_close_handle(bin_dir_handle);
+		assert(status == 0);
+
+		auto shutdown_button = std::make_unique<ButtonWindow>();
+		shutdown_button->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
+		shutdown_button->set_pos(8, menu_window->rect.height - TaskbarWindow::HEIGHT - 4);
+
+		auto shutdown_text = std::make_unique<TextWindow>();
+		shutdown_text->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
+		shutdown_text->bg_color = 0xFFA500;
+		shutdown_text->text_color = 0;
+		shutdown_text->text = "Shutdown";
+
+		shutdown_button->add_child(std::move(shutdown_text));
+
+		auto reboot_button = std::make_unique<ButtonWindow>();
+		reboot_button->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
+		reboot_button->set_pos(8 + TaskbarWindow::HEIGHT * 3 + 8, menu_window->rect.height - TaskbarWindow::HEIGHT - 4);
+
+		auto reboot_text = std::make_unique<TextWindow>();
+		reboot_text->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
+		reboot_text->bg_color = 0xFFA500;
+		reboot_text->text_color = 0;
+		reboot_text->text = "Reboot";
+
+		reboot_button->add_child(std::move(reboot_text));
+
+		shutdown_button->callback = [](void*) {
+			sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
+		};
+		reboot_button->callback = [](void*) {
+			sys_shutdown(SHUTDOWN_TYPE_REBOOT);
+		};
+
+		menu_window->add_child(std::move(shutdown_button));
+		menu_window->add_child(std::move(reboot_button));
 
 		desktop->ctx.dirty_rects.push_back({
 			.x = menu_window->rect.x,
@@ -421,25 +538,31 @@ int main() {
 	auto mouse_y = static_cast<int32_t>(info.height / 2);
 
 	while (true) {
-		for (auto& connection : *CONNECTIONS) {
+		for (size_t i = 0; i < CONNECTIONS->size();) {
+			auto& connection = (*CONNECTIONS)[i];
+
 			protocol::Request req {};
 			size_t received;
 			auto req_status = sys_socket_receive(connection->control, &req, sizeof(req), received);
 			if (req_status == ERR_TRY_AGAIN) {
+				++i;
 				continue;
 			}
 			else if (req_status == ERR_INVALID_ARGUMENT) {
-				assert(sys_close_handle(connection->process) == 0);
-				assert(sys_close_handle(connection->control) == 0);
-				assert(sys_close_handle(connection->event) == 0);
+				status = sys_close_handle(connection->process);
+				assert(status == 0);
+				status = sys_close_handle(connection->control);
+				assert(status == 0);
+				status = sys_close_handle(connection->event);
+				assert(status == 0);
 
-				for (size_t i = 0; i < WINDOW_TO_INFO->size();) {
-					auto& window_info = (*WINDOW_TO_INFO)[i];
+				for (size_t j = 0; j < WINDOW_TO_INFO->size();) {
+					auto& window_info = (*WINDOW_TO_INFO)[j];
 					if (window_info.connection == connection.get()) {
 						destroy_window(desktop, window_info.window);
 					}
 					else {
-						++i;
+						++j;
 					}
 				}
 
@@ -516,6 +639,8 @@ int main() {
 					break;
 				}
 			}
+
+			++i;
 		}
 
 		InputEvent event;

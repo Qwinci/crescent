@@ -46,16 +46,7 @@ int main() {
 		auto event = window.wait_for_event();
 		if (event.type == protocol::WindowEvent::CloseRequested) {
 			window.close();
-			if (auto status = windower.create_window(window, 0, 0, 400, 300); status != 0) {
-				puts("[console]: failed to create window");
-				return 1;
-			}
-			if (window.map_fb() != 0) {
-				puts("[console]: failed to map fb");
-				return 1;
-			}
-			fb = static_cast<uint32_t*>(window.get_fb_mapping());
-			assert(fb);
+			break;
 		}
 		else if (event.type == protocol::WindowEvent::Key) {
 			printf("[console]: received scan %u pressed %u -> %u\n", event.key.code, event.key.prev_pressed, event.key.pressed);
@@ -80,4 +71,6 @@ int main() {
 			}
 		}
 	}
+
+	return 0;
 }

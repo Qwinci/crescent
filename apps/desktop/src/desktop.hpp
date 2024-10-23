@@ -20,4 +20,5 @@ struct Desktop {
 	Window* dragging {};
 	Window* last_mouse_over {};
 	bool key_states[SCANCODE_MAX] {};
+	Window* start_menu {};
 };

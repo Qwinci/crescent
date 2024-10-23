@@ -81,6 +81,8 @@ struct Window {
 	std::vector<std::unique_ptr<Window>> children;
 	std::unique_ptr<Window> titlebar;
 	uint32_t* fb {};
+	void (*on_close)(Window* window, void* arg) {};
+	void* on_close_arg {};
 	Rect rect {};
 	uint32_t bg_color {};
 	bool no_decorations {};

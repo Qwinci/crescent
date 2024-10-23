@@ -56,6 +56,9 @@ Window::Window(bool no_decorations) : no_decorations {no_decorations} {
 		close_button->callback = [](void* arg) {
 			auto* window = static_cast<Window*>(arg);
 			if (window->internal) {
+				if (window->on_close) {
+					window->on_close(window, window->on_close_arg);
+				}
 				return;
 			}
 
