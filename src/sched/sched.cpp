@@ -61,7 +61,10 @@
 			if (diff) {
 				auto guard = max_cpu->scheduler.sleeping_threads.lock();
 				for (auto& thread : *guard) {
-					auto thread_guard = thread.sched_lock.lock();
+					if (!thread.sched_lock.try_lock()) {
+						continue;
+					}
+
 					if (!thread.pin_cpu) {
 						println(
 							"[kernel][sched]: moving sleeping thread ",
@@ -95,9 +98,12 @@
 						--diff;
 
 						if (!diff) {
+							thread.sched_lock.manual_unlock();
 							break;
 						}
 					}
+
+					thread.sched_lock.manual_unlock();
 				}
 			}
 		}

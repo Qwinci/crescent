@@ -81,6 +81,33 @@ public:
 		return Guard {this};
 	}
 
+	[[nodiscard]] bool try_lock() {
+#ifdef __aarch64__
+		__spinlock_detail::LockType value;
+		__spinlock_detail::LockType one = 1;
+		bool result;
+		asm volatile(R"(
+			sevl
+			prfm pstl1keep, %0
+			wfe
+			ldaxr %w1, %0
+			cbnz %w1, 0f
+			stxr %w1, %w3, %0
+			cbnz %w1, 0f
+
+			mov %w2, #1
+			b 1f
+
+			0:
+			mov %w2, #0
+			1:
+		)" : "+Q"(data.lock), "=&r"(value), "=r"(result) : "r"(one) : "memory");
+		return result;
+#else
+		return !__atomic_exchange_n(&data.lock, true, __ATOMIC_ACQUIRE);
+#endif
+	}
+
 	[[nodiscard]] inline bool is_locked() const {
 		return __atomic_load_n(&data.lock, __ATOMIC_RELAXED);
 	}
@@ -138,6 +165,33 @@ public:
 		}
 #endif
 		return Guard {this};
+	}
+
+	[[nodiscard]] bool try_lock() {
+#ifdef __aarch64__
+		__spinlock_detail::LockType value;
+		__spinlock_detail::LockType one = 1;
+		bool result;
+		asm volatile(R"(
+			sevl
+			prfm pstl1keep, %0
+			wfe
+			ldaxr %w1, %0
+			cbnz %w1, 0f
+			stxr %w1, %w3, %0
+			cbnz %w1, 0f
+
+			mov %w2, #1
+			b 1f
+
+			0:
+			mov %w2, #0
+			1:
+		)" : "+Q"(data.lock), "=&r"(value), "=r"(result) : "r"(one) : "memory");
+		return result;
+#else
+		return !__atomic_exchange_n(&data.lock, true, __ATOMIC_ACQUIRE);
+#endif
 	}
 
 	[[nodiscard]] inline bool is_locked() const {
