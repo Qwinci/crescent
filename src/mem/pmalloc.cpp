@@ -203,10 +203,14 @@ void pmalloc_add_mem(usize phys, usize size) {
 	}
 }
 
+static IrqSpinlock<void> GIANT_LOCK {};
+
 usize pmalloc(usize count) {
 	if (!count) {
 		return 0;
 	}
+
+	auto guard = GIANT_LOCK.lock();
 
 	auto page = freelist_get(size_to_index(count));
 	if (page) {
@@ -221,6 +225,8 @@ usize pmalloc(usize count) {
 }
 
 void pfree(usize addr, usize count) {
+	auto guard = GIANT_LOCK.lock();
+
 	auto page = Page::from_phys(addr);
 	assert(page->phys() == addr);
 	assert(page->used);
