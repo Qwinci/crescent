@@ -478,7 +478,13 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					auto guard = DEVICES[static_cast<int>(req.data.open_device.type)]->lock();
 					for (auto& device : *guard) {
 						if (device->name == name) {
-							auto handle = thread->process->handles.insert(device);
+							if (device->exclusive && device->open_count.load(kstd::memory_order::relaxed) != 0) {
+								*frame->ret() = ERR_TRY_AGAIN;
+								success = true;
+								break;
+							}
+
+							auto handle = thread->process->handles.insert(DeviceHandle {device});
 							DevLinkResponse resp {
 								.size = sizeof(DevLinkResponse),
 								.open_device {
@@ -512,8 +518,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					}
 
 					auto handle = thread->process->handles.get(req.handle);
-					kstd::shared_ptr<Device>* device;
-					if (!handle || !(device = handle->get<kstd::shared_ptr<Device>>())) {
+					DeviceHandle* device;
+					if (!handle || !(device = handle->get<DeviceHandle>())) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;
 						break;
 					}
@@ -531,7 +537,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					}
 
 					kstd::vector<u8> resp_data;
-					auto status = (*device)->handle_request(req_data, resp_data, link.response_buf_size - sizeof(DevLinkResponse));
+					auto status = (*device).device->handle_request(req_data, resp_data, link.response_buf_size - sizeof(DevLinkResponse));
 					*frame->ret() = status;
 
 					DevLinkResponse resp {

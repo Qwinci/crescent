@@ -18,7 +18,7 @@ struct EmptyHandle {};
 using Handle = kstd::variant<
 	kstd::monostate,
 	EmptyHandle,
-	kstd::shared_ptr<Device>,
+	DeviceHandle,
 	kstd::shared_ptr<ProcessDescriptor>,
 	kstd::shared_ptr<ThreadDescriptor>,
 	kstd::shared_ptr<Socket>,
