@@ -6,6 +6,8 @@ and a desktop environment.
 
 This repository hosts the Crescent kernel and apps.
 
+![desktop](./images/desktop_23_10_2024.png)
+
 ### Features
 - Multithreaded pre-emptive custom kernel
 - A set of custom userspace applications including a terminal,
