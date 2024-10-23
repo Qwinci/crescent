@@ -1431,6 +1431,74 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
+		case SYS_LIST_DIR:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<VNode>* vnode;
+			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			usize max_count;
+			if (!UserAccessor(*frame->arg2()).load(max_count)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			// todo don't expose this to userspace
+			usize offset;
+			if (!UserAccessor(*frame->arg3()).load(offset)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			if (max_count > 1000) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			kstd::vector<DirEntry> entries;
+			entries.resize(max_count);
+			auto status = (*vnode)->list_dir(entries.data(), max_count, offset);
+			switch (status) {
+				case FsStatus::Success:
+				{
+					if (!UserAccessor(*frame->arg2()).store(max_count)) {
+						*frame->ret() = ERR_FAULT;
+						break;
+					}
+
+					if (*frame->arg1()) {
+						if (!UserAccessor(*frame->arg1()).store(entries.data(), max_count * sizeof(DirEntry))) {
+							*frame->ret() = ERR_FAULT;
+							break;
+						}
+
+						if (!UserAccessor(*frame->arg3()).store(offset)) {
+							*frame->ret() = ERR_FAULT;
+							break;
+						}
+					}
+
+					*frame->ret() = 0;
+
+					break;
+				}
+				case FsStatus::Unsupported:
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				case FsStatus::OutOfBounds:
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				case FsStatus::TryAgain:
+					*frame->ret() = ERR_TRY_AGAIN;
+					break;
+			}
+
+			break;
+		}
 		case SYS_PIPE_CREATE:
 		{
 			auto max_size = static_cast<size_t>(*frame->arg2());

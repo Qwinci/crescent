@@ -21,6 +21,17 @@ struct FsStat {
 	usize size;
 };
 
+struct DirEntry {
+	char name[128];
+	usize name_len;
+
+	enum class Type {
+		File,
+		Directory
+	};
+	Type type;
+};
+
 struct VNode {
 	constexpr explicit VNode(FileFlags flags) : flags {flags} {}
 
@@ -31,6 +42,10 @@ struct VNode {
 	}
 
 	virtual FsStatus stat(FsStat& data) {
+		return FsStatus::Unsupported;
+	}
+
+	virtual FsStatus list_dir(DirEntry* entries, usize& count, usize& offset) {
 		return FsStatus::Unsupported;
 	}
 

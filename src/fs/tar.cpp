@@ -88,6 +88,58 @@ struct TarFileNode : public VNode {
 		return FsStatus::Success;
 	}
 
+	FsStatus list_dir(DirEntry* entries, usize& count, usize& offset) override {
+		if (hdr->type_flag != '5') {
+			return FsStatus::Unsupported;
+		}
+
+		kstd::string_view dir_name {hdr->name};
+
+		usize actual_offset = 512 + ALIGNUP(parse_oct(hdr->size), 512);
+		actual_offset += offset;
+		usize actual_count = 0;
+
+		while (true) {
+			auto* next = offset(hdr, const TarHeader*, actual_offset);
+			if (!*next->name) {
+				break;
+			}
+
+			kstd::string_view next_name {next->name};
+			auto orig_next_name = next_name;
+			if (!next_name.remove_prefix(dir_name)) {
+				break;
+			}
+			next_name.remove_suffix("/");
+
+			if (actual_count < count) {
+				orig_next_name.remove_prefix(".");
+				orig_next_name.remove_suffix("/");
+
+				auto& entry = entries[actual_count++];
+				auto to_copy = kstd::min(orig_next_name.size(), sizeof(entry.name) - 1);
+				memcpy(entry.name, orig_next_name.data(), to_copy);
+				entry.name[to_copy] = 0;
+				entry.name_len = orig_next_name.size();
+				entry.type = next->type_flag == '0' ? DirEntry::Type::File : DirEntry::Type::Directory;
+
+				if (actual_count == count) {
+					break;
+				}
+			}
+			else {
+				++actual_count;
+			}
+
+			actual_offset += 512 + ALIGNUP(parse_oct(next->size), 512);
+		}
+
+		count = actual_count;
+		offset = actual_offset;
+
+		return FsStatus::Success;
+	}
+
 	const TarHeader* hdr;
 };
 

@@ -83,6 +83,10 @@ int sys_stat(CrescentHandle handle, CrescentStat& stat) {
 	return static_cast<int>(syscall(SYS_STAT, handle, &stat));
 }
 
+int sys_list_dir(CrescentHandle handle, CrescentDirEntry* entries, size_t* count, size_t* offset) {
+	return static_cast<int>(syscall(SYS_LIST_DIR, handle, entries, count, offset));
+}
+
 int sys_pipe_create(
 	CrescentHandle& read_handle,
 	CrescentHandle& write_handle,

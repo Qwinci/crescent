@@ -41,6 +41,7 @@ typedef enum {
 	SYS_READ,
 	SYS_WRITE,
 	SYS_STAT,
+	SYS_LIST_DIR,
 	SYS_PIPE_CREATE,
 	SYS_REPLACE_STD_HANDLE,
 
@@ -103,6 +104,17 @@ typedef struct {
 typedef struct {
 	size_t size;
 } CrescentStat;
+
+typedef enum {
+	CRESCENT_FILE_TYPE_FILE,
+	CRESCENT_FILE_TYPE_DIRECTORY
+} CrescentFileType;
+
+typedef struct {
+	char name[128];
+	size_t name_len;
+	CrescentFileType type;
+} CrescentDirEntry;
 
 #define OPEN_NONE 0
 #define OPEN_NONBLOCK (1 << 0)
