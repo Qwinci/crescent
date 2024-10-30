@@ -10,7 +10,7 @@ asm(R"(
 
 // void sched_switch_thread(ArchThread* prev, ArchThread* next)
 sched_switch_thread:
-	sub sp, sp, #112
+	sub sp, sp, #128
 	stp x0,  x1,  [sp, #0]
 	stp x19, x20, [sp, #16]
 	stp x21, x22, [sp, #32]
@@ -18,6 +18,8 @@ sched_switch_thread:
 	stp x25, x26, [sp, #64]
 	stp x27, x28, [sp, #80]
 	stp x29, x30, [sp, #96]
+	mrs x2, daif
+	str x2, [sp, #112]
 
 	mov x2, sp
 	str x2, [x0]
@@ -35,7 +37,9 @@ sched_switch_thread:
 	ldp x25, x26, [sp, #64]
 	ldp x27, x28, [sp, #80]
 	ldp x29, x30, [sp, #96]
-	add sp, sp, #112
+	ldr x2, [sp, #112]
+	msr daif, x2
+	add sp, sp, #128
 	ret
 .popsection
 )");
@@ -139,6 +143,8 @@ constexpr usize USER_STACK_SIZE = 1024 * 1024;
 
 struct InitFrame {
 	u64 x[14];
+	u64 daif;
+	u64 pad;
 };
 
 extern "C" void arch_on_first_switch();

@@ -13,6 +13,7 @@ asm(R"(
 
 // void sched_switch_thread(ArchThread* prev, ArchThread* next)
 sched_switch_thread:
+	pushfq
 	push %rdi
 	push %rbx
 	push %rbp
@@ -35,6 +36,7 @@ sched_switch_thread:
 	pop %rbp
 	pop %rbx
 	pop %rdi
+	popfq
 	ret
 .popsection
 )");
@@ -103,6 +105,7 @@ struct InitFrame {
 	u64 rbp;
 	u64 rbx;
 	u64 rdi;
+	u64 rflags;
 	u64 on_first_switch;
 	u64 rip;
 };
@@ -115,6 +118,7 @@ struct UserInitFrame {
 	u64 rbp;
 	u64 rbx;
 	u64 rdi;
+	u64 kernel_rflags;
 	u64 on_first_switch;
 	u64 rip;
 	u64 rflags;
@@ -167,6 +171,8 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : sel
 	KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base), PageFlags::Read, CacheMode::WriteBack);
 
 	frame->rip = reinterpret_cast<u64>(fn);
+	frame->rflags = 2;
+
 	if (process->user) {
 		user_stack_base = reinterpret_cast<u8*>(process->allocate(
 			nullptr,
