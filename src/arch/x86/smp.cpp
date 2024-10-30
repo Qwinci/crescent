@@ -1,15 +1,21 @@
 #include "smp.hpp"
+#include "acpi/acpi.hpp"
 #include "arch/cpu.hpp"
+#include "arch/irq.hpp"
 #include "arch/paging.hpp"
+#include "arch/sleep.hpp"
+#include "arch/x86/dev/hpet.hpp"
 #include "arch/x86/interrupts/idt.hpp"
 #include "config.hpp"
 #include "cpu.hpp"
 #include "cpuid.hpp"
+#include "dev/dev.hpp"
 #include "interrupts/gdt.hpp"
 #include "loader/limine.h"
+#include "mem/mem.hpp"
+#include "qacpi/event.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
-#include "sys/syscalls.hpp"
 
 static volatile limine_smp_request SMP_REQUEST {
 	.id = LIMINE_SMP_REQUEST,
@@ -114,25 +120,15 @@ static void x86_init_simd() {
 	}
 }
 
-static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
-	self->number = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
-	self->lapic_id = lapic_id;
-	x86_load_gdt(&self->tss);
-	x86_load_idt();
+static void x86_cpu_resume(Cpu* self, Thread* current_thread) {
 	lapic_init(self);
-
-	self->tss.iopb = sizeof(Tss);
 	asm volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
 
-	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
-	thread->status = Thread::Status::Running;
-	thread->pin_level = true;
-	thread->pin_cpu = true;
-	self->scheduler.current = thread;
-	set_current_thread(thread);
+	self->scheduler.current = current_thread;
+	set_current_thread(current_thread);
+	msrs::IA32_KERNEL_GSBASE.write(current_thread->gs_base);
+	msrs::IA32_FSBASE.write(current_thread->fs_base);
 	init_usermode();
-	sched_init(bsp);
-
 	x86_init_simd();
 
 	u64 cr4;
@@ -147,6 +143,25 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 		cr4 |= 1U << 21;
 	}
 	asm volatile("mov %0, %%cr4" : : "r"(cr4));
+}
+
+static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
+	self->number = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
+	self->lapic_id = lapic_id;
+
+	x86_load_gdt(&self->tss);
+	x86_load_idt();
+
+	auto* thread = new Thread {"kernel main", self, &*KERNEL_PROCESS};
+	thread->status = Thread::Status::Running;
+	thread->pin_level = true;
+	thread->pin_cpu = true;
+
+	self->kernel_main = thread;
+
+	self->tss.iopb = sizeof(Tss);
+	x86_cpu_resume(self, thread);
+	sched_init(bsp);
 }
 
 [[noreturn]] static void smp_ap_entry(limine_smp_info* info) {
@@ -189,6 +204,11 @@ void x86_smp_init() {
 			continue;
 		}
 		CPUS[i].initialize();
+
+		auto ap_stack_phys = pmalloc(8);
+		assert(ap_stack_phys);
+		CPUS[i]->kernel_stack_base = reinterpret_cast<u64>(to_virt<void>(ap_stack_phys));
+
 		cpu->extra_argument = reinterpret_cast<uint64_t>(&*CPUS[i]);
 		cpu->goto_address = smp_ap_entry;
 
@@ -200,7 +220,6 @@ void x86_smp_init() {
 
 	{
 		auto guard = SMP_LOCK.lock();
-		lapic_init_finalize();
 
 		// result is ignored because it doesn't need to be unregistered
 		(void) CPUS[0]->cpu_tick_source->callback_producer.add_callback([]() {
@@ -220,3 +239,148 @@ Cpu* arch_get_cpu(usize index) {
 }
 
 CpuFeatures CPU_FEATURES {};
+
+struct [[gnu::packed]] BootInfo {
+	u64 stack_ptr;
+	u64 entry;
+	u64 arg;
+	u32 page_map;
+};
+
+extern char smp_trampoline_start[];
+extern char smp_trampoline_end[];
+
+void arch_sleep_init() {
+	assert(acpi::SMP_TRAMPOLINE_PHYS_ADDR);
+	auto virt = to_virt<void>(acpi::SMP_TRAMPOLINE_PHYS_ADDR);
+	memcpy(virt, smp_trampoline_start, smp_trampoline_end - smp_trampoline_start);
+}
+
+namespace acpi {
+	extern ManuallyDestroy<qacpi::events::Context> EVENT_CTX;
+}
+
+static void ap_wake_entry(void* arg);
+
+static void start_ap(Cpu* cpu) {
+	auto* info = to_virt<BootInfo>(
+		acpi::SMP_TRAMPOLINE_PHYS_ADDR +
+		(smp_trampoline_end - smp_trampoline_start) -
+		sizeof(BootInfo));
+	info->stack_ptr = cpu->kernel_stack_base + 0x8000 - 8;
+	info->entry = reinterpret_cast<u64>(ap_wake_entry);
+	info->arg = reinterpret_cast<u64>(cpu);
+	info->page_map = KERNEL_PROCESS->page_map.get_top_level_phys();
+
+	asm volatile("" : : : "memory");
+
+	lapic_boot_ap(cpu->lapic_id, acpi::SMP_TRAMPOLINE_PHYS_ADDR);
+}
+
+static void ap_wake_entry(void* arg) {
+	auto* cpu = static_cast<Cpu*>(arg);
+
+	{
+		auto guard = SMP_LOCK.lock();
+		x86_load_gdt(&cpu->tss);
+		x86_load_idt();
+
+		println("[kernel][smp]: resuming ap ", cpu->number, " after wake from sleep");
+
+		if (cpu->saved_halt_rip) {
+			x86_cpu_resume(cpu, cpu->scheduler.current);
+		}
+		else {
+			x86_cpu_resume(cpu, cpu->kernel_main);
+		}
+	}
+
+	println("[kernel][smp]: ap resume done");
+
+	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
+	if (cpu->saved_halt_rip) {
+		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(cpu->saved_halt_rsp), "r"(cpu->saved_halt_rip));
+	}
+	else {
+		cpu->scheduler.block();
+	}
+	panic("resumed in ap wake entry");
+}
+
+static void bsp_wake_entry(void*) {
+	x86_load_gdt(&CPUS[0]->tss);
+	x86_load_idt();
+
+	auto status = acpi::EVENT_CTX->prepare_for_wake();
+	assert(status == qacpi::Status::Success);
+	status = acpi::EVENT_CTX->wake_from_state(*acpi::GLOBAL_CTX, qacpi::events::SleepState::S3);
+	assert(status == qacpi::Status::Success);
+
+	println("[kernel][smp]: resuming after wake from sleep");
+
+	hpet_resume();
+
+	if (CPUS[0]->saved_halt_rip) {
+		x86_cpu_resume(&*CPUS[0], CPUS[0]->scheduler.current);
+	}
+	else {
+		x86_cpu_resume(&*CPUS[0], CPUS[0]->kernel_main);
+	}
+
+	for (usize i = 1; i < NUM_CPUS.load(kstd::memory_order::relaxed); ++i) {
+		auto cpu = &*CPUS[i];
+		start_ap(cpu);
+	}
+
+	dev_resume_all();
+
+	println("[kernel][smp]: bsp resume done");
+
+	IrqGuard irq_guard {};
+	CPUS[0]->cpu_tick_source->oneshot(50 * US_IN_MS);
+	if (CPUS[0]->saved_halt_rip) {
+		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(CPUS[0]->saved_halt_rsp), "r"(CPUS[0]->saved_halt_rip));
+	}
+	else {
+		CPUS[0]->scheduler.block();
+	}
+	panic("resumed in bsp wake entry");
+}
+
+namespace {
+	u32 WBINVD = 1 << 0;
+	u32 WBINVD_FLUSH = 1 << 1;
+}
+
+extern char BSP_STACK[];
+
+void arch_prepare_for_sleep() {
+	auto* info = to_virt<BootInfo>(
+		acpi::SMP_TRAMPOLINE_PHYS_ADDR +
+		(smp_trampoline_end - smp_trampoline_start) -
+		sizeof(BootInfo));
+
+	info->stack_ptr = reinterpret_cast<u64>(BSP_STACK) + 0x8000 - 8;
+	info->entry = reinterpret_cast<u64>(bsp_wake_entry);
+	info->page_map = KERNEL_PROCESS->page_map.get_top_level_phys();
+	assert(info->page_map <= 0xFFFFFFFF);
+
+	IrqGuard irq_guard {};
+	auto cpu = get_current_thread()->cpu;
+
+	for (usize i = 0; i < arch_get_cpu_count(); ++i) {
+		if (i == cpu->number) {
+			continue;
+		}
+
+		auto* other = arch_get_cpu(i);
+		arch_send_ipi(Ipi::Halt, other);
+		other->ipi_ack.store(false, kstd::memory_order::seq_cst);
+		while (!other->ipi_ack.load(kstd::memory_order::seq_cst));
+	}
+
+	if ((acpi::GLOBAL_FADT->flags & WBINVD_FLUSH) ||
+		(acpi::GLOBAL_FADT->flags & WBINVD)) {
+		asm volatile("wbinvd");
+	}
+}

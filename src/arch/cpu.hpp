@@ -12,12 +12,14 @@ struct Cpu : public ArchCpu {
 	Scheduler scheduler;
 	Thread idle_thread {"idle", this, &*KERNEL_PROCESS, arch_idle_fn, nullptr};
 	Thread thread_destroyer {"thread destroyer", this, &*KERNEL_PROCESS, sched_thread_destroyer_fn, nullptr};
+	Thread* kernel_main {};
 	Spinlock<DoubleList<Thread, &Thread::hook>> sched_destroy_list {};
 	Event sched_destroy_event {};
 	TickSource* cpu_tick_source {};
 	DoubleList<DeferredIrqWork, &DeferredIrqWork::hook> deferred_work {};
 	u32 number {};
 	kstd::atomic<u32> thread_count {};
+	kstd::atomic<bool> ipi_ack {};
 };
 
 usize arch_get_cpu_count();

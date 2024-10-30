@@ -80,7 +80,8 @@ typedef enum {
 
 typedef enum {
 	SHUTDOWN_TYPE_POWER_OFF,
-	SHUTDOWN_TYPE_REBOOT
+	SHUTDOWN_TYPE_REBOOT,
+	SHUTDOWN_TYPE_SLEEP
 } ShutdownType;
 
 #define CRESCENT_PROT_READ (1U << 0)

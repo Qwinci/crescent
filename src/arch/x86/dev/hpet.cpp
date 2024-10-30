@@ -2,6 +2,7 @@
 #include "acpi/acpi.hpp"
 #include "mem/iospace.hpp"
 #include "dev/clock.hpp"
+#include "dev/dev.hpp"
 #include "manually_init.hpp"
 
 struct [[gnu::packed]] HpetTable {
@@ -33,8 +34,22 @@ namespace {
 	IoSpace SPACE;
 }
 
-struct Hpet final : ClockSource {
+struct Hpet final : Device, ClockSource {
 	constexpr explicit Hpet(usize frequency) : ClockSource {"hpet", frequency} {}
+
+	u64 saved_ticks;
+
+	int suspend() override {
+		SPACE.store(regs::GCR, gcr::ENABLE_CNF(false));
+		saved_ticks = SPACE.load(regs::MCVR);
+		return 0;
+	}
+
+	int resume() override {
+		SPACE.store(regs::MCVR, saved_ticks);
+		SPACE.store(regs::GCR, gcr::ENABLE_CNF(true));
+		return 0;
+	}
 
 	u64 get_ns() override {
 		return SPACE.load(regs::MCVR) * ns_in_tick;
@@ -65,4 +80,12 @@ void hpet_init() {
 	HPET.initialize(ticks_in_s);
 	HPET->ns_in_tick = ns_in_tick;
 	clock_source_register(&*HPET);
+}
+
+void hpet_suspend() {
+	HPET->suspend();
+}
+
+void hpet_resume() {
+	HPET->resume();
 }

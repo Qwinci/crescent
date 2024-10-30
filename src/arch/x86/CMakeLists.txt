@@ -10,6 +10,7 @@ target_sources(crescent PRIVATE
 	smp.cpp
 	arch_sched.cpp
 	mod.cpp
+	smp_bringup.cpp
 
 	acpi/madt.cpp
 )

@@ -100,7 +100,6 @@ extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 
 	bool handler_found = false;
 	{
-		auto guard = IRQ_HANDLERS_LOCK.lock();
 		for (auto& handler : IRQ_HANDLERS[num]) {
 			if (handler.fn(frame)) {
 				handler_found = true;
@@ -124,4 +123,10 @@ extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 	if (frame->cs == 0x2B) {
 		asm volatile("swapgs");
 	}
+}
+
+extern u8 LAPIC_IPI_START;
+
+void arch_send_ipi(Ipi ipi, Cpu* cpu) {
+	lapic_ipi(LAPIC_IPI_START + static_cast<int>(ipi), cpu->lapic_id);
 }

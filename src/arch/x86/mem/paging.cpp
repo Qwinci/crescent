@@ -380,4 +380,8 @@ void PageMap::fill_high_half() {
 	}
 }
 
+u64 PageMap::get_top_level_phys() const {
+	return to_phys(level0);
+}
+
 ManuallyInit<PageMap> KERNEL_MAP;

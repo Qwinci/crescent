@@ -11,3 +11,12 @@ struct IrqHandler {
 
 void register_irq_handler(u32 num, IrqHandler* handler);
 void deregister_irq_handler(u32 num, IrqHandler* handler);
+
+enum class Ipi {
+	Halt,
+	Max
+};
+
+struct Cpu;
+
+void arch_send_ipi(Ipi ipi, Cpu* cpu);

@@ -1,10 +1,11 @@
 #include "lapic.hpp"
+#include "acpi/acpi.hpp"
+#include "arch/cpu.hpp"
+#include "arch/irq.hpp"
 #include "arch/x86/cpu.hpp"
+#include "dev/clock.hpp"
 #include "mem/iospace.hpp"
 #include "x86/irq.hpp"
-#include "arch/irq.hpp"
-#include "dev/clock.hpp"
-#include "arch/cpu.hpp"
 
 namespace regs {
 	constexpr BasicRegister<u32> EOI {0xB0};
@@ -20,12 +21,16 @@ namespace regs {
 
 namespace icr {
 	constexpr BitField<u32, u8> VECTOR {0, 8};
+	constexpr BitField<u32, u8> DELIVERY_MODE {8, 3};
 	constexpr BitField<u32, bool> PENDING {12, 1};
 	constexpr BitField<u32, bool> LEVEL {14, 1};
 	constexpr BitField<u32, u8> DEST_SHORTHAND {18, 2};
 	constexpr BitField<u32, u8> DEST {24, 8};
 
 	constexpr u8 DEST_ALL_EXCL_SELF = 0b11;
+
+	constexpr u8 DELIVERY_INIT = 0b101;
+	constexpr u8 DELIVERY_SIPI = 0b110;
 }
 
 namespace divide_config {
@@ -93,6 +98,68 @@ static void lapic_timer_calibrate(Cpu* cpu) {
 	deregister_irq_handler(TMP_IRQ, &tmp_handler);
 }
 
+u8 LAPIC_IPI_START;
+
+namespace {
+	u32 WBINVD = 1 << 0;
+	u32 WBINVD_FLUSH = 1 << 1;
+}
+
+static ManuallyDestroy<IrqHandler> LAPIC_HALT_HANDLER {{ // NOLINT
+	.fn = [](IrqFrame*) {
+		auto* cpu = get_current_thread()->cpu;
+
+		if ((acpi::GLOBAL_FADT->flags & WBINVD_FLUSH) ||
+			(acpi::GLOBAL_FADT->flags & WBINVD)) {
+			asm volatile("wbinvd");
+		}
+
+		asm volatile(
+			"push %%rax;"
+			"push %%rbx;"
+			"push %%rcx;"
+			"push %%rdx;"
+			"push %%rdi;"
+			"push %%rsi;"
+			"push %%rbp;"
+			"push %%r8;"
+			"push %%r9;"
+			"push %%r10;"
+			"push %%r11;"
+			"push %%r12;"
+			"push %%r13;"
+			"push %%r14;"
+			"push %%r15;"
+			"mov %%rsp, (%0);"
+			"leaq 1f(%%rip), %%rax;"
+			"mov %%rax, (%1);"
+			"movb $1, %2;"
+			"0:"
+			"hlt;"
+			"jmp 0b;"
+			"1:"
+			"pop %%r15;"
+			"pop %%r14;"
+			"pop %%r13;"
+			"pop %%r12;"
+			"pop %%r11;"
+			"pop %%r10;"
+			"pop %%r9;"
+			"pop %%r8;"
+			"pop %%rbp;"
+			"pop %%rsi;"
+			"pop %%rdi;"
+			"pop %%rdx;"
+			"pop %%rcx;"
+			"pop %%rbx;"
+			"pop %%rax;"
+			: : "r"(&cpu->saved_halt_rsp), "r"(&cpu->saved_halt_rip), "m"(cpu->ipi_ack) : "rax");
+
+		return true;
+	},
+	.can_be_shared = false
+}};
+
 void lapic_first_init() {
 	SPACE.set_phys(msrs::IA32_APIC_BASE.read() & ~0xFFF, 0x1000);
 	assert(SPACE.map(CacheMode::Uncached));
@@ -106,10 +173,11 @@ void lapic_first_init() {
 		.can_be_shared = false
 	});
 	register_irq_handler(TIMER_IRQ, &*LAPIC_IRQ_HANDLER);
-}
 
-void lapic_init_finalize() {
-	x86_dealloc_irq(TMP_IRQ, 1, false);
+	LAPIC_IPI_START = x86_alloc_irq(static_cast<int>(Ipi::Max), false);
+	assert(LAPIC_IPI_START);
+
+	register_irq_handler(LAPIC_IPI_START + static_cast<int>(Ipi::Halt), &*LAPIC_HALT_HANDLER);
 }
 
 void lapic_ipi(u8 vec, u8 dest) {
@@ -122,6 +190,31 @@ void lapic_ipi_all(u8 vec) {
 	SPACE.store(regs::ICR0, icr::VECTOR(vec) | icr::LEVEL(true) |
 		icr::DEST_SHORTHAND(icr::DEST_ALL_EXCL_SELF));
 	while (SPACE.load(regs::ICR0) & icr::PENDING);
+}
+
+static inline u64 get_rdtsc() {
+	u32 edx;
+	u32 eax;
+	asm volatile("rdtsc" : "=a"(eax), "=d"(edx));
+	return static_cast<u64>(edx) << 32 | eax;
+}
+
+void lapic_boot_ap(u8 lapic_id, u32 boot_addr) {
+	SPACE.store(regs::ICR1, icr::DEST(lapic_id));
+	SPACE.store(
+		regs::ICR0,
+		icr::DELIVERY_MODE(icr::DELIVERY_INIT) |
+		icr::LEVEL(true));
+
+	u64 end = get_rdtsc() + 10000000;
+	while (get_rdtsc() < end);
+
+	SPACE.store(regs::ICR1, icr::DEST(lapic_id));
+	SPACE.store(
+		regs::ICR0,
+		(boot_addr / 0x1000) |
+		icr::DELIVERY_MODE(icr::DELIVERY_SIPI) |
+		icr::LEVEL(true));
 }
 
 void lapic_init(Cpu* cpu) {

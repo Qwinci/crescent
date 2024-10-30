@@ -6,5 +6,8 @@
 struct ArchCpu {
 	Tss tss;
 	ManuallyInit<LapicTickSource> lapic_timer;
+	usize kernel_stack_base;
+	usize saved_halt_rsp;
+	usize saved_halt_rip;
 	u32 lapic_id;
 };

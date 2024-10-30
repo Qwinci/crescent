@@ -84,6 +84,7 @@ namespace acpi {
 	};
 
 	void init(void* rsdp);
+	void sleep_init();
 	void qacpi_init();
 	void* get_table(const char (&signature)[5], u32 index = 0);
 

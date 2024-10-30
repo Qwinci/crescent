@@ -704,6 +704,10 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					acpi::reboot();
 					*frame->ret() = ERR_UNSUPPORTED;
 					break;
+				case SHUTDOWN_TYPE_SLEEP:
+					acpi::enter_sleep_state(acpi::SleepState::S3);
+					*frame->ret() = 0;
+					break;
 				default:
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
@@ -718,6 +722,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				}
 				case SHUTDOWN_TYPE_REBOOT:
 					psci_system_reset();
+					*frame->ret() = ERR_UNSUPPORTED;
+					break;
+				case SHUTDOWN_TYPE_SLEEP:
 					*frame->ret() = ERR_UNSUPPORTED;
 					break;
 			}

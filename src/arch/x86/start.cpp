@@ -15,6 +15,7 @@ extern void x86_madt_parse();
 
 extern "C" [[noreturn, gnu::used]] void arch_start(BootInfo info) {
 	acpi::init(info.rsdp);
+	acpi::sleep_init();
 	hpet_init();
 	random_initialize();
 	x86_smp_init();

@@ -2,6 +2,7 @@
 
 namespace acpi {
 	enum class SleepState {
+		S3,
 		S5
 	};
 

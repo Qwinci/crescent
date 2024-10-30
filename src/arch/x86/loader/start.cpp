@@ -145,18 +145,42 @@ struct SerialLog : LogSink {
 };
 ManuallyDestroy<SerialLog> SERIAL_LOG {};
 
+namespace acpi {
+	extern usize SMP_TRAMPOLINE_PHYS_ADDR;
+}
+
 extern "C" [[noreturn, gnu::used]] void early_start() {
 	run_constructors();
 
 	LOG.lock()->register_sink(&*SERIAL_LOG);
 
+	usize smp_trampoline_addr = 0;
+
 	usize max_addr = 0;
 	for (usize i = 0; i < MMAP_REQUEST.response->entry_count; ++i) {
 		const auto entry = MMAP_REQUEST.response->entries[i];
+		if (entry->type == LIMINE_MEMMAP_USABLE) {
+			if (!smp_trampoline_addr && entry->base <= 1024 * 1024 && entry->length >= 0x1000) {
+				println("[kernel][x86]: reserving 0x", Fmt::Hex, entry->base, Fmt::Reset, " for acpi wake");
+				smp_trampoline_addr = entry->base;
+				entry->base += 0x1000;
+				entry->length -= 0x1000;
+			}
+		}
+
 		max_addr = kstd::max(max_addr, entry->base + entry->length);
 	}
 
+	assert(smp_trampoline_addr);
+	acpi::SMP_TRAMPOLINE_PHYS_ADDR = smp_trampoline_addr;
+
 	setup_memory(max_addr);
+
+	assert(KERNEL_PROCESS->page_map.map(
+		smp_trampoline_addr,
+		smp_trampoline_addr,
+		PageFlags::Read | PageFlags::Write | PageFlags::Execute,
+		CacheMode::WriteBack));
 
 	auto kernel_vm_start = ALIGNUP(HHDM_START + max_addr, 1024ULL * 1024ULL * 1024ULL);
 	KERNEL_VSPACE.init(kernel_vm_start, reinterpret_cast<usize>(KERNEL_START) - kernel_vm_start);

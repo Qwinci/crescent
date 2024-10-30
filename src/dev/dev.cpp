@@ -1,21 +1,25 @@
 #include "dev.hpp"
-#include "format.hpp"
 
-ManuallyDestroy<Spinlock<kstd::vector<kstd::shared_ptr<Device>>>> DEVICES
-	[static_cast<int>(CrescentDeviceType::Max)] {};
-
-usize dev_add(kstd::shared_ptr<Device> device, CrescentDeviceType type) {
-	auto guard = DEVICES[static_cast<int>(type)]->lock();
-	auto index = guard->size();
-
-	kstd::formatter fmt {device->name};
-	fmt << index;
-
-	guard->push(std::move(device));
-	return index;
+void dev_add(Device* device) {
+	ALL_DEVICES.lock()->push(device);
 }
 
-void dev_remove(usize index, CrescentDeviceType type) {
-	auto guard = DEVICES[static_cast<int>(type)]->lock();
-	guard->remove(index);
+void dev_remove(Device* device) {
+	ALL_DEVICES.lock()->remove(device);
 }
+
+void dev_suspend_all() {
+	auto guard = ALL_DEVICES.lock();
+	for (auto& device : *guard) {
+		device.suspend();
+	}
+}
+
+void dev_resume_all() {
+	auto guard = ALL_DEVICES.lock();
+	for (auto& device : *guard) {
+		device.resume();
+	}
+}
+
+constinit IrqSpinlock<DoubleList<Device, &Device::hook>> ALL_DEVICES;

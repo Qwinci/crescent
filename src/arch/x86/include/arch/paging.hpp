@@ -51,6 +51,8 @@ public:
 
 	void fill_high_half();
 
+	[[nodiscard]] u64 get_top_level_phys() const;
+
 private:
 	u64* level0;
 	DoubleList<Page, &Page::hook> used_pages {};
