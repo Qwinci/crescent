@@ -23,6 +23,7 @@ typedef enum {
 
 	SYS_SLEEP,
 	SYS_GET_TIME,
+	SYS_GET_DATE_TIME,
 
 	SYS_SYSLOG,
 	SYS_DEVLINK,

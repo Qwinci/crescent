@@ -1,6 +1,7 @@
 #include "acpi/acpi.hpp"
 #include "arch/x86/dev/hpet.hpp"
 #include "arch/x86/dev/ps2.hpp"
+#include "arch/x86/dev/rtc.hpp"
 #include "assert.hpp"
 #include "cpu.hpp"
 #include "dev/random.hpp"
@@ -19,6 +20,7 @@ extern "C" [[noreturn, gnu::used]] void arch_start(BootInfo info) {
 	x86_smp_init();
 	x86_madt_parse();
 	x86_ps2_init();
+	x86_rtc_init();
 
 	Module initrd {};
 	assert(x86_get_module(initrd, "initramfs.tar"));

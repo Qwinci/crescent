@@ -2,6 +2,7 @@
 #include "crescent/devlink.h"
 #include "crescent/event.h"
 #include "crescent/socket.h"
+#include "crescent/time.h"
 
 int sys_thread_create(CrescentHandle& handle, const char* name, size_t name_len, void (*fn)(void* arg), void* arg);
 [[noreturn]] void sys_thread_exit(int status);
@@ -11,6 +12,7 @@ int sys_kill(CrescentHandle handle);
 int sys_get_status(CrescentHandle handle);
 int sys_sleep(uint64_t us);
 int sys_get_time(uint64_t* us);
+int sys_get_date_time(CrescentDateTime& time);
 int sys_syslog(const char* str, size_t size);
 int sys_map(void** addr, size_t size, int protection);
 int sys_unmap(void* ptr, size_t size);

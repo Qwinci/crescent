@@ -15,6 +15,7 @@
 #include "sched/ipc.hpp"
 #include "dev/net/tcp.hpp"
 #include "dev/net/udp.hpp"
+#include "dev/date_time_provider.hpp"
 
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
@@ -320,6 +321,28 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			*frame->ret() = 0;
+
+			break;
+		}
+		case SYS_GET_DATE_TIME:
+		{
+			IrqGuard irq_guard {};
+			auto guard = DATE_TIME_PROVIDER.lock();
+			if (!*guard) {
+				*frame->ret() = ERR_UNSUPPORTED;
+				break;
+			}
+
+			CrescentDateTime res {};
+			auto status = (*guard)->get_date(res);
+			if (status == 0) {
+				if (!UserAccessor(*frame->arg0()).store(res)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+
+			*frame->ret() = status;
 
 			break;
 		}
