@@ -468,12 +468,20 @@ int main() {
 		status = sys_close_handle(bin_dir_handle);
 		assert(status == 0);
 
+		constexpr uint32_t button_count = 3;
+		constexpr uint32_t padding = 8;
+		constexpr uint32_t total_padding = (button_count + 1) * padding;
+
+		uint32_t button_width = (menu_window->rect.width - total_padding) / button_count;
+		uint32_t button_height = TaskbarWindow::HEIGHT - 8;
+		uint32_t button_y = menu_window->rect.height - TaskbarWindow::HEIGHT - 4;
+
 		auto shutdown_button = std::make_unique<ButtonWindow>();
-		shutdown_button->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
-		shutdown_button->set_pos(8, menu_window->rect.height - TaskbarWindow::HEIGHT - 4);
+		shutdown_button->set_size(button_width, button_height);
+		shutdown_button->set_pos(padding, button_y);
 
 		auto shutdown_text = std::make_unique<TextWindow>();
-		shutdown_text->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
+		shutdown_text->set_size(shutdown_button->rect.width, shutdown_button->rect.height);
 		shutdown_text->bg_color = 0xFFA500;
 		shutdown_text->text_color = 0;
 		shutdown_text->text = "Shutdown";
@@ -481,16 +489,28 @@ int main() {
 		shutdown_button->add_child(std::move(shutdown_text));
 
 		auto reboot_button = std::make_unique<ButtonWindow>();
-		reboot_button->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
-		reboot_button->set_pos(8 + TaskbarWindow::HEIGHT * 3 + 8, menu_window->rect.height - TaskbarWindow::HEIGHT - 4);
+		reboot_button->set_size(button_width, button_height);
+		reboot_button->set_pos(shutdown_button->rect.width + padding * 2, button_y);
 
 		auto reboot_text = std::make_unique<TextWindow>();
-		reboot_text->set_size(TaskbarWindow::HEIGHT * 3, TaskbarWindow::HEIGHT - 8);
+		reboot_text->set_size(reboot_button->rect.width, reboot_button->rect.height);
 		reboot_text->bg_color = 0xFFA500;
 		reboot_text->text_color = 0;
 		reboot_text->text = "Reboot";
 
 		reboot_button->add_child(std::move(reboot_text));
+
+		auto sleep_button = std::make_unique<ButtonWindow>();
+		sleep_button->set_size(button_width, button_height);
+		sleep_button->set_pos(shutdown_button->rect.width * 2 + padding * 3, button_y);
+
+		auto sleep_text = std::make_unique<TextWindow>();
+		sleep_text->set_size(sleep_button->rect.width, sleep_button->rect.height);
+		sleep_text->bg_color = 0xFFA500;
+		sleep_text->text_color = 0;
+		sleep_text->text = "Sleep";
+
+		sleep_button->add_child(std::move(sleep_text));
 
 		shutdown_button->callback = [](void*) {
 			sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
@@ -498,9 +518,13 @@ int main() {
 		reboot_button->callback = [](void*) {
 			sys_shutdown(SHUTDOWN_TYPE_REBOOT);
 		};
+		sleep_button->callback = [](void*) {
+			sys_shutdown(SHUTDOWN_TYPE_SLEEP);
+		};
 
 		menu_window->add_child(std::move(shutdown_button));
 		menu_window->add_child(std::move(reboot_button));
+		menu_window->add_child(std::move(sleep_button));
 
 		desktop->ctx.dirty_rects.push_back({
 			.x = menu_window->rect.x,
