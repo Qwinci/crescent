@@ -1,8 +1,9 @@
 target_sources(crescent PRIVATE
 	clock.cpp
-	event.cpp
 	date_time_provider.cpp
 	dev.cpp
+	event.cpp
+	user_dev.cpp
 	random.cpp
 )
 

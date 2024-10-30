@@ -33,9 +33,14 @@ void* VirtualSpace::alloc(usize size) {
 void VirtualSpace::free(void* ptr, usize size) {
 	IrqGuard irq_guard {};
 	vmem.xfree(reinterpret_cast<usize>(ptr), size);
-	auto guard = regions.lock();
-	auto reg = guard->find<usize, &Region::base>(reinterpret_cast<usize>(ptr));
-	guard->remove(reg);
+
+	Region* reg;
+	{
+		auto guard = regions.lock();
+		reg = guard->find<usize, &Region::base>(reinterpret_cast<usize>(ptr));
+		guard->remove(reg);
+	}
+
 	assert(reg->size == size);
 	delete reg;
 }

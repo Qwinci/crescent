@@ -60,7 +60,6 @@ namespace pci {
 		u8 prog_if = read(ADDRESS, common::PROG_IF);
 
 		auto* dev = new Device {ADDRESS};
-		u16 device_id = dev->device_id;
 		for (const auto* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
 			if (driver->type == DriverType::Pci) {
 				auto& driver_pci = driver->pci;
@@ -107,6 +106,7 @@ namespace pci {
 
 	static void enumerate_dev(u32 dev) {
 		ADDRESS.dev = dev;
+		ADDRESS.func = 0;
 
 		u16 vendor_id = read(ADDRESS, common::VENDOR_ID);
 
@@ -155,7 +155,7 @@ namespace pci {
 			ADDRESS.seg = entry.seg;
 
 			for (u8 bus_i = entry.start; bus_i < entry.end; ++bus_i) {
-				enumerate_bus(bus_i - entry.start);
+				enumerate_bus(bus_i);
 			}
 		}
 	}
@@ -169,7 +169,7 @@ namespace pci {
 
 			if (entry.seg == addr.seg) {
 				void* res = to_virt<void>(entry.base);
-				res = offset(res, void*, static_cast<u64>(addr.bus - entry.start) << 20);
+				res = offset(res, void*, static_cast<u64>(addr.bus) << 20);
 				res = offset(res, void*, static_cast<u64>(addr.dev) << 15);
 				res = offset(res, void*, static_cast<u64>(addr.func) << 12);
 				return res;

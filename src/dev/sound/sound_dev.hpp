@@ -1,13 +1,13 @@
 #pragma once
-#include "types.hpp"
 #include "crescent/devlink.h"
-#include "dev/dev.hpp"
+#include "dev/user_dev.hpp"
+#include "types.hpp"
 
 struct SoundDeviceInfo {
 	usize output_count;
 };
 
-struct SoundDevice : public Device {
+struct SoundDevice : public UserDevice {
 	SoundDevice() {
 		name = "sound";
 	}

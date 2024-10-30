@@ -112,7 +112,7 @@ static InitStatus bochs_vbe_init(pci::Device& device) {
 	VBE_GPU->vram_size = device.get_bar_size(0);
 
 	VBE_GPU_DEVICE.initialize(kstd::make_shared<GpuDevice>(&*VBE_GPU, "vbe gpu"));
-	dev_add(*VBE_GPU_DEVICE, CrescentDeviceType::Gpu);
+	user_dev_add(*VBE_GPU_DEVICE, CrescentDeviceType::Gpu);
 
 	return InitStatus::Success;
 }

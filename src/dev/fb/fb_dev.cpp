@@ -1,12 +1,12 @@
-#include "dev/dev.hpp"
-#include "fb.hpp"
-#include "sched/sched.hpp"
-#include "sched/process.hpp"
 #include "dev/gpu/gpu_dev.hpp"
+#include "dev/user_dev.hpp"
+#include "fb.hpp"
+#include "sched/process.hpp"
+#include "sched/sched.hpp"
 
-struct GpuFbDev : public Device {
+struct GpuFbDev : public UserDevice {
 	explicit GpuFbDev(Framebuffer* fb, Gpu* gpu)
-		: Device {}, fb {fb}, gpu {gpu}, supports_page_flip {gpu->supports_page_flipping} {
+		: UserDevice {}, fb {fb}, gpu {gpu}, supports_page_flip {gpu->supports_page_flipping} {
 		name = "gpu_fb";
 		exclusive = true;
 		if (gpu->supports_page_flipping) {
@@ -133,7 +133,7 @@ void fb_dev_register_boot_fb() {
 
 	Gpu* gpu = nullptr;
 	IrqGuard irq_guard {};
-	auto guard = DEVICES[static_cast<int>(CrescentDeviceType::Gpu)]->lock();
+	auto guard = USER_DEVICES[static_cast<int>(CrescentDeviceType::Gpu)]->lock();
 	for (auto& device : *guard) {
 		if (static_cast<GpuDevice*>(device.data())->gpu->owns_boot_fb) {
 			gpu = static_cast<GpuDevice*>(device.data())->gpu;
@@ -148,5 +148,5 @@ void fb_dev_register_boot_fb() {
 	}
 
 	BOOT_FB_DEV.initialize(kstd::make_shared<GpuFbDev>(&*BOOT_FB, gpu));
-	dev_add(*BOOT_FB_DEV, CrescentDeviceType::Fb);
+	user_dev_add(*BOOT_FB_DEV, CrescentDeviceType::Fb);
 }

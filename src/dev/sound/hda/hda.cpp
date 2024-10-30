@@ -1556,7 +1556,7 @@ void HdaController::start() {
 			auto codec = new HdaCodec {this, static_cast<u8>(i)};
 
 			auto codec_dev = kstd::make_shared<HdaCodecDev>(codec);
-			dev_add(std::move(codec_dev), CrescentDeviceType::Sound);
+			user_dev_add(std::move(codec_dev), CrescentDeviceType::Sound);
 		}
 	}
 }

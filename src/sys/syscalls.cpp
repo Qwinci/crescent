@@ -425,7 +425,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 						break;
 					}
 
-					auto guard = DEVICES[static_cast<int>(type)]->lock();
+					auto guard = USER_DEVICES[static_cast<int>(type)]->lock();
 					usize needed_hdr = sizeof(DevLinkResponse) +
 									   sizeof(const char*) * guard->size() +
 									   sizeof(size_t*) * guard->size();
@@ -498,7 +498,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 					bool success = false;
 
-					auto guard = DEVICES[static_cast<int>(req.data.open_device.type)]->lock();
+					auto guard = USER_DEVICES[static_cast<int>(req.data.open_device.type)]->lock();
 					for (auto& device : *guard) {
 						if (device->name == name) {
 							if (device->exclusive && device->open_count.load(kstd::memory_order::relaxed) != 0) {

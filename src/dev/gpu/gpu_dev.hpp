@@ -1,8 +1,8 @@
 #pragma once
-#include "dev/dev.hpp"
+#include "dev/user_dev.hpp"
 #include "gpu.hpp"
 
-class GpuDevice : public Device {
+class GpuDevice : public UserDevice {
 public:
 	explicit GpuDevice(Gpu* gpu, kstd::string_view name) : gpu {gpu} {
 		this->name = name;
