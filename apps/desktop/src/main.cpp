@@ -537,6 +537,12 @@ int main() {
 	auto mouse_x = static_cast<int32_t>(info.width / 2);
 	auto mouse_y = static_cast<int32_t>(info.height / 2);
 
+	desktop.taskbar->update_time(desktop.ctx);
+
+	uint64_t last_time_update_us;
+	status = sys_get_time(&last_time_update_us);
+	assert(status == 0);
+
 	while (true) {
 		for (size_t i = 0; i < CONNECTIONS->size();) {
 			auto& connection = (*CONNECTIONS)[i];
@@ -690,6 +696,13 @@ int main() {
 					.pressed = event.key.pressed
 				});
 			}
+		}
+
+		uint64_t time_now_us;
+		sys_get_time(&time_now_us);
+		if (time_now_us - last_time_update_us >= US_IN_S * 60) {
+			desktop.taskbar->update_time(desktop.ctx);
+			last_time_update_us = time_now_us;
 		}
 
 		if (double_buffer) {
