@@ -14,7 +14,7 @@
 #include "acpi/acpi.hpp"
 #include "acpi/events.hpp"
 #include "dev/pci.hpp"
-#include "dev/qemu/fw_cfg.hpp"
+#include "dev/qemu/fw_cfg_x86.hpp"
 
 #include "qacpi/context.hpp"
 #include "qacpi/ns.hpp"

@@ -2,6 +2,7 @@ set(QEMU_FLAGS -M virt,gic-version=3 -cpu cortex-a76
 	-m 1G -smp 4 #-no-reboot -no-shutdown
 	#-d int
 	-serial stdio
+	-device ramfb
 )
 
 add_custom_command(OUTPUT crescent.bin

@@ -11,6 +11,8 @@
 
 #if BOARD_MSM
 #include "dev/fb/fb.hpp"
+#elif BOARD_QEMU_VIRT
+#include "dev/ramfb.hpp"
 #endif
 
 #ifdef BOARD_QEMU_VIRT
@@ -210,13 +212,12 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 	KERNEL_PROCESS->page_map.fill_high_half();
 
 #ifdef BOARD_MSM
-	BOOT_FB.initialize(Framebuffer {
+	BOOT_FB.initialize(
 		0xA0000000,
-		1080,
-		2400 - 48,
-		1080 * 4,
-		32
-	});
+		1080U,
+		2400U - 48,
+		1080U * 4,
+		32U);
 #endif
 	LOG.lock()->register_sink(&BOOT_SINK);
 
@@ -228,6 +229,10 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 	println("dtb device discovery start");
 	dtb_discover_devices();
 	println("dtb device discovery end");
+
+#if BOARD_QEMU_VIRT
+	ramfb_init();
+#endif
 
 	aarch64_smp_init(dtb);
 

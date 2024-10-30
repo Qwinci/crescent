@@ -388,6 +388,7 @@ int main() {
 		menu_window->on_close = [](Window* window, void* arg) {
 			auto* desktop = static_cast<Desktop*>(arg);
 			destroy_window(*desktop, window);
+			desktop->start_menu = nullptr;
 		};
 		menu_window->on_close_arg = desktop;
 		menu_window->set_size(desktop->ctx.width / 4, desktop->ctx.height / 2);

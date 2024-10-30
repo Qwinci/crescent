@@ -1,4 +1,4 @@
-#include "fw_cfg.hpp"
+#include "fw_cfg_x86.hpp"
 #include "acpi/acpi.hpp"
 #include "mem/portspace.hpp"
 #include "mem/register.hpp"
