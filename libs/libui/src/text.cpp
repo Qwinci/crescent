@@ -1,4 +1,6 @@
-#include "text.hpp"
+#include "ui/text.hpp"
+
+using namespace ui;
 
 TextWindow::TextWindow()
 	: Window {true}, text_ctx {libtext::Context::create().value()} {

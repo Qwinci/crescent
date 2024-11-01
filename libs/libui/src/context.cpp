@@ -1,7 +1,9 @@
-#include "context.hpp"
+#include "ui/context.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+
+using namespace ui;
 
 void Context::draw_filled_rect(const Rect& rect, uint32_t color) const {
 	auto rect_x = rect.x + x_off;

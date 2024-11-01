@@ -1,4 +1,6 @@
-#include "button.hpp"
+#include "ui/button.hpp"
+
+using namespace ui;
 
 ButtonWindow::ButtonWindow() : Window {true} {
 	bg_color = inactive_color;

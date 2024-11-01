@@ -3,4 +3,4 @@
 
 namespace protocol = windower::protocol;
 
-void send_event_to_window(Window* window, protocol::WindowEvent event);
+void send_event_to_window(ui::Window* window, protocol::WindowEvent event);

@@ -1,7 +1,7 @@
 #include "taskbar.hpp"
-#include "button.hpp"
-#include "text.hpp"
 #include "sys.hpp"
+#include <ui/button.hpp>
+#include <ui/text.hpp>
 
 TaskbarWindow::TaskbarWindow(uint32_t width) : Window {true} {
 	rect.width = width;
@@ -11,8 +11,8 @@ TaskbarWindow::TaskbarWindow(uint32_t width) : Window {true} {
 
 	CrescentDateTime date {};
 	if (sys_get_date_time(date) == 0) {
-		auto time_text_unique = std::make_unique<TextWindow>();
-		auto date_text_unique = std::make_unique<TextWindow>();
+		auto time_text_unique = std::make_unique<ui::TextWindow>();
+		auto date_text_unique = std::make_unique<ui::TextWindow>();
 
 		// todo don't hardcode font width here
 		constexpr uint32_t date_text_width = 10 * 8;
@@ -32,7 +32,7 @@ TaskbarWindow::TaskbarWindow(uint32_t width) : Window {true} {
 }
 
 void TaskbarWindow::add_icon(uint32_t color) {
-	auto window = std::make_unique<ButtonWindow>();
+	auto window = std::make_unique<ui::ButtonWindow>();
 	window->bg_color = color;
 	window->inactive_color = color;
 
@@ -57,7 +57,7 @@ void TaskbarWindow::add_entry(std::unique_ptr<Window> entry) {
 	add_child(std::move(entry));
 }
 
-void TaskbarWindow::update_time(Context& ctx) {
+void TaskbarWindow::update_time(ui::Context& ctx) {
 	CrescentDateTime date {};
 	if (sys_get_date_time(date) == 0 && time_text) {
 		char buffer[64];

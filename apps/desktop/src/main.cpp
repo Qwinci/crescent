@@ -1,9 +1,10 @@
-#include "button.hpp"
-#include "context.hpp"
 #include "desktop.hpp"
 #include "sys.hpp"
-#include "text.hpp"
 #include "windower/protocol.hpp"
+#include "window.hpp"
+#include <ui/button.hpp>
+#include <ui/context.hpp>
+#include <ui/text.hpp>
 #include <cassert>
 #include <stdio.h>
 #include <string.h>
@@ -63,7 +64,7 @@ struct Connection {
 static NoDestroy<std::vector<std::unique_ptr<Connection>>> CONNECTIONS {};
 
 struct WindowInfo {
-	Window* window;
+	ui::Window* window;
 	Connection* connection;
 	CrescentHandle event_pipe;
 };
@@ -92,14 +93,6 @@ void listener_thread(void* arg) {
 		.stderr_handle = INVALID_CRESCENT_HANDLE,
 		.flags = 0
 	};
-
-	CrescentHandle console_handle;
-	res = sys_process_create(console_handle, "/bin/console", sizeof("/bin/console") - 1, console_process_info);
-	if (res != 0) {
-		puts("failed to create console process");
-		sys_thread_exit(1);
-	}
-	sys_close_handle(console_handle);
 
 	CrescentHandle ipc_listen_socket;
 	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC, SOCK_NONE);
@@ -156,7 +149,7 @@ void listener_thread(void* arg) {
 	}
 }
 
-void send_event_to_window(Window* window, protocol::WindowEvent event) {
+void send_event_to_window(ui::Window* window, protocol::WindowEvent event) {
 	CrescentHandle event_pipe = INVALID_CRESCENT_HANDLE;
 
 	for (auto& info : *WINDOW_TO_INFO) {
@@ -172,52 +165,8 @@ void send_event_to_window(Window* window, protocol::WindowEvent event) {
 	sys_write(event_pipe, &event, 0, sizeof(event));
 }
 
-static void destroy_window(Desktop& desktop, Window* window) {
-	if (window->parent->active_child == window) {
-		window->parent->active_child = nullptr;
-	}
-
-	desktop.dragging = nullptr;
-
-	if (desktop.last_mouse_over == window ||
-		desktop.last_mouse_over == window->titlebar.get()) {
-		desktop.last_mouse_over = nullptr;
-	}
-	else {
-		std::vector<Window*> stack;
-		stack.push_back(window);
-		if (!window->no_decorations) {
-			stack.push_back(window->titlebar.get());
-		}
-
-		while (!stack.empty()) {
-			auto entry = stack.back();
-			stack.pop_back();
-			if (desktop.last_mouse_over == entry) {
-				desktop.last_mouse_over = nullptr;
-			}
-
-			for (auto& child : entry->children) {
-				stack.push_back(child.get());
-			}
-		}
-	}
-
-	for (size_t i = 0; i < window->parent->children.size(); ++i) {
-		if (window->parent->children[i].get() == window) {
-			auto dirty_rect = window->get_abs_rect();
-			if (!window->no_decorations) {
-				dirty_rect.width += BORDER_WIDTH * 2;
-				dirty_rect.height += TITLEBAR_HEIGHT + BORDER_WIDTH;
-			}
-			desktop.ctx.dirty_rects.push_back(dirty_rect);
-
-			window->parent->children.erase(
-				window->parent->children.begin() +
-				static_cast<std::vector<std::unique_ptr<Window>>::difference_type>(i));
-			break;
-		}
-	}
+static void destroy_window(Desktop& desktop, ui::Window* window) {
+	desktop.gui.destroy_window(window);
 
 	for (size_t i = 0; i < WINDOW_TO_INFO->size(); ++i) {
 		auto& iter = (*WINDOW_TO_INFO)[i];
@@ -227,13 +176,119 @@ static void destroy_window(Desktop& desktop, Window* window) {
 
 			WINDOW_TO_INFO->erase(
 				WINDOW_TO_INFO->begin() +
-				static_cast<std::vector<std::pair<Window*, CrescentHandle>>::difference_type>(i));
+				static_cast<ptrdiff_t>(i));
 			break;
 		}
 	}
 }
 
 int main() {
+	while (false) {
+		DevLinkRequest request {
+			.type = DevLinkRequestType::GetDevices,
+			.data {
+				.get_devices {
+					.type = CrescentDeviceType::Sound
+				}
+			}
+		};
+		char response[DEVLINK_BUFFER_SIZE];
+		DevLink link {
+			.request = &request,
+			.response_buffer = response,
+			.response_buf_size = DEVLINK_BUFFER_SIZE
+		};
+		auto status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to get sound devices");
+			return 1;
+		}
+		request.type = DevLinkRequestType::OpenDevice;
+		request.data.open_device.device = link.response->get_devices.names[0];
+		request.data.open_device.device_len = link.response->get_devices.name_sizes[0];
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to open sound device");
+			return 1;
+		}
+		auto handle = link.response->open_device.handle;
+
+		SoundLink sound_link {
+			.op = SoundLinkOp::GetInfo,
+			.dummy {}
+		};
+
+		link.request = &sound_link.request;
+		sound_link.request.handle = handle;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to get sound info");
+			return 1;
+		}
+		auto* sound_resp = static_cast<SoundLinkResponse*>(link.response->specific);
+		printf("%d outputs\n", (int) sound_resp->info.output_count);
+
+		sound_link.op = SoundLinkOp::GetOutputInfo;
+		sound_link.get_output_info.index = 4;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to get output info");
+			return 1;
+		}
+
+		auto buffer_size = sound_resp->output_info.buffer_size;
+
+		sound_link.op = SoundLinkOp::SetActiveOutput;
+		sound_link.set_active_output.id = sound_resp->output_info.id;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to set active output");
+			return 1;
+		}
+
+		sound_link.op = SoundLinkOp::SetOutputParams;
+		sound_link.set_output_params.params = {
+			.sample_rate = 44100,
+			.channels = 2,
+			.fmt = SoundFormat::PcmU16
+		};
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to set output params");
+			return 1;
+		}
+
+		CrescentHandle file_handle;
+		status = sys_open(file_handle, "/output.raw", sizeof("/output.raw") - 1, 0);
+		assert(status == 0);
+
+		CrescentStat stat {};
+		status = sys_stat(file_handle, stat);
+		assert(status == 0);
+
+		std::vector<uint8_t> file_data;
+		file_data.resize(stat.size);
+		assert(sys_read(file_handle, file_data.data(), 0, stat.size) == 0);
+		assert(sys_close_handle(file_handle) == 0);
+
+		sound_link.op = SoundLinkOp::QueueOutput;
+		sound_link.queue_output.buffer = file_data.data();
+		sound_link.queue_output.len = std::min(buffer_size, stat.size);
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to queue data");
+			return 1;
+		}
+
+		sound_link.op = SoundLinkOp::Play;
+		sound_link.play.play = true;
+		status = sys_devlink(link);
+		if (status != 0) {
+			puts("failed to play");
+			return 1;
+		}
+	}
+
 	//dumb_loop();
 
 	DevLinkRequest request {
@@ -318,7 +373,7 @@ int main() {
 		puts("[desktop]: not using double buffering");
 	}
 
-	Context ctx {};
+	ui::Context ctx {};
 	ctx.fb = static_cast<uint32_t*>(back_mapping);
 	ctx.pitch_32 = info.pitch / 4;
 	ctx.width = info.width;
@@ -332,19 +387,19 @@ int main() {
 		return 1;
 	}
 
-	auto window1 = std::make_unique<Window>(false);
+	auto window1 = std::make_unique<DesktopWindow>(false);
 	window1->set_pos(0, 0);
 	window1->set_size(100, 100);
 	window1->bg_color = 0x00FF00;
 	window1->internal = true;
 
-	auto window2 = std::make_unique<Window>(false);
+	auto window2 = std::make_unique<DesktopWindow>(false);
 	window2->set_pos(200, 0);
 	window2->set_size(50, 50);
 	window2->bg_color = 0x0000FF;
 	window2->internal = true;
 
-	auto window3 = std::make_unique<ButtonWindow>();
+	auto window3 = std::make_unique<ui::ButtonWindow>();
 	window3->set_pos(0, 0);
 	window3->set_size(50, 50);
 	window3->bg_color = 0x00FFFF;
@@ -355,10 +410,10 @@ int main() {
 
 	window1->add_child(std::move(window3));
 
-	desktop.root_window->add_child(std::move(window1));
-	desktop.root_window->add_child(std::move(window2));
+	desktop.add_child(std::move(window1));
+	desktop.add_child(std::move(window2));
 
-	auto window4 = std::make_unique<ButtonWindow>();
+	auto window4 = std::make_unique<ui::ButtonWindow>();
 	window4->set_pos(ctx.width - 50, 0);
 	window4->set_size(50, 50);
 	window4->bg_color = 0x00FFFF;
@@ -367,13 +422,13 @@ int main() {
 	};
 	window4->internal = true;
 
-	desktop.root_window->add_child(std::move(window4));
+	desktop.add_child(std::move(window4));
 
-	auto start_menu_text = std::make_unique<TextWindow>();
+	auto start_menu_text = std::make_unique<ui::TextWindow>();
 	start_menu_text->set_size(desktop.taskbar->rect.height, desktop.taskbar->rect.height);
 	start_menu_text->text = "Start";
 
-	auto start_menu_button = std::make_unique<ButtonWindow>();
+	auto start_menu_button = std::make_unique<ui::ButtonWindow>();
 	start_menu_button->bg_color = 0x333333;
 	start_menu_button->callback = [](void* arg) {
 		auto* desktop = static_cast<Desktop*>(arg);
@@ -383,18 +438,18 @@ int main() {
 			return;
 		}
 
-		auto menu_window = std::make_unique<Window>(false);
+		auto menu_window = std::make_unique<DesktopWindow>(false);
 		menu_window->internal = true;
-		menu_window->on_close = [](Window* window, void* arg) {
+		menu_window->on_close = [](ui::Window* window, void* arg) {
 			auto* desktop = static_cast<Desktop*>(arg);
 			destroy_window(*desktop, window);
 			desktop->start_menu = nullptr;
 		};
 		menu_window->on_close_arg = desktop;
-		menu_window->set_size(desktop->ctx.width / 4, desktop->ctx.height / 2);
+		menu_window->set_size(desktop->gui.ctx.width / 4, desktop->gui.ctx.height / 2);
 		menu_window->set_pos(
 			0,
-			desktop->ctx.height - menu_window->rect.height - desktop->taskbar->rect.height - BORDER_WIDTH - TITLEBAR_HEIGHT);
+			desktop->gui.ctx.height - menu_window->rect.height - desktop->taskbar->rect.height - BORDER_WIDTH - TITLEBAR_HEIGHT);
 		menu_window->set_title("Start Menu");
 
 		desktop->start_menu = menu_window.get();
@@ -426,12 +481,12 @@ int main() {
 		};
 
 		for (auto& entry : entries) {
-			auto entry_button = std::make_unique<ButtonWindow>();
+			auto entry_button = std::make_unique<ui::ButtonWindow>();
 			entry_button->set_pos(0, y_offset);
 			entry_button->set_size(menu_window->rect.width, (menu_window->rect.height - TaskbarWindow::HEIGHT) / 10);
 			y_offset += entry_button->rect.height;
 
-			auto entry_text = std::make_unique<TextWindow>();
+			auto entry_text = std::make_unique<ui::TextWindow>();
 			entry_text->set_size(entry_button->rect.width, entry_button->rect.height);
 			entry_text->text = entry.name;
 			entry_text->bg_color = COLORS[entry_index % (sizeof(COLORS) / sizeof(*COLORS))];
@@ -442,7 +497,7 @@ int main() {
 			entry_button->add_child(std::move(entry_text));
 
 			entry_button->callback = [](void* arg) {
-				auto* text = static_cast<TextWindow*>(arg);
+				auto* text = static_cast<ui::TextWindow*>(arg);
 
 				ProcessCreateInfo proc_info {
 					.args = nullptr,
@@ -477,11 +532,11 @@ int main() {
 		uint32_t button_height = TaskbarWindow::HEIGHT - 8;
 		uint32_t button_y = menu_window->rect.height - TaskbarWindow::HEIGHT - 4;
 
-		auto shutdown_button = std::make_unique<ButtonWindow>();
+		auto shutdown_button = std::make_unique<ui::ButtonWindow>();
 		shutdown_button->set_size(button_width, button_height);
 		shutdown_button->set_pos(padding, button_y);
 
-		auto shutdown_text = std::make_unique<TextWindow>();
+		auto shutdown_text = std::make_unique<ui::TextWindow>();
 		shutdown_text->set_size(shutdown_button->rect.width, shutdown_button->rect.height);
 		shutdown_text->bg_color = 0xFFA500;
 		shutdown_text->text_color = 0;
@@ -489,11 +544,11 @@ int main() {
 
 		shutdown_button->add_child(std::move(shutdown_text));
 
-		auto reboot_button = std::make_unique<ButtonWindow>();
+		auto reboot_button = std::make_unique<ui::ButtonWindow>();
 		reboot_button->set_size(button_width, button_height);
 		reboot_button->set_pos(shutdown_button->rect.width + padding * 2, button_y);
 
-		auto reboot_text = std::make_unique<TextWindow>();
+		auto reboot_text = std::make_unique<ui::TextWindow>();
 		reboot_text->set_size(reboot_button->rect.width, reboot_button->rect.height);
 		reboot_text->bg_color = 0xFFA500;
 		reboot_text->text_color = 0;
@@ -501,11 +556,11 @@ int main() {
 
 		reboot_button->add_child(std::move(reboot_text));
 
-		auto sleep_button = std::make_unique<ButtonWindow>();
+		auto sleep_button = std::make_unique<ui::ButtonWindow>();
 		sleep_button->set_size(button_width, button_height);
 		sleep_button->set_pos(shutdown_button->rect.width * 2 + padding * 3, button_y);
 
-		auto sleep_text = std::make_unique<TextWindow>();
+		auto sleep_text = std::make_unique<ui::TextWindow>();
 		sleep_text->set_size(sleep_button->rect.width, sleep_button->rect.height);
 		sleep_text->bg_color = 0xFFA500;
 		sleep_text->text_color = 0;
@@ -527,14 +582,14 @@ int main() {
 		menu_window->add_child(std::move(reboot_button));
 		menu_window->add_child(std::move(sleep_button));
 
-		desktop->ctx.dirty_rects.push_back({
+		desktop->gui.ctx.dirty_rects.push_back({
 			.x = menu_window->rect.x,
 			.y = menu_window->rect.y,
 			.width = menu_window->rect.width + BORDER_WIDTH * 2,
 			.height = menu_window->rect.height + TITLEBAR_HEIGHT + BORDER_WIDTH
 		});
 
-		desktop->root_window->add_child(std::move(menu_window));
+		desktop->add_child(std::move(menu_window));
 	};
 	start_menu_button->arg = &desktop;
 
@@ -562,7 +617,7 @@ int main() {
 	auto mouse_x = static_cast<int32_t>(info.width / 2);
 	auto mouse_y = static_cast<int32_t>(info.height / 2);
 
-	desktop.taskbar->update_time(desktop.ctx);
+	desktop.taskbar->update_time(desktop.gui.ctx);
 
 	uint64_t last_time_update_us;
 	status = sys_get_time(&last_time_update_us);
@@ -608,7 +663,7 @@ int main() {
 			switch (req.type) {
 				case protocol::Request::CreateWindow:
 				{
-					auto window = std::make_unique<Window>(false);
+					auto window = std::make_unique<DesktopWindow>(false);
 					window->set_pos(req.create_window.x, req.create_window.y);
 					window->set_size(req.create_window.width, req.create_window.height);
 
@@ -623,9 +678,9 @@ int main() {
 
 					auto* window_ptr = window.get();
 
-					desktop.root_window->add_child(std::move(window));
+					desktop.add_child(std::move(window));
 
-					desktop.ctx.dirty_rects.push_back({
+					desktop.gui.ctx.dirty_rects.push_back({
 						.x = req.create_window.x,
 						.y = req.create_window.y,
 						.width = req.create_window.width + BORDER_WIDTH * 2,
@@ -650,7 +705,7 @@ int main() {
 				}
 				case protocol::Request::CloseWindow:
 				{
-					auto* window = static_cast<Window*>(req.close_window.window_handle);
+					auto* window = static_cast<DesktopWindow*>(req.close_window.window_handle);
 					destroy_window(desktop, window);
 
 					// todo check status
@@ -660,7 +715,7 @@ int main() {
 				}
 				case protocol::Request::Redraw:
 				{
-					auto* window = static_cast<Window*>(req.close_window.window_handle);
+					auto* window = static_cast<DesktopWindow*>(req.close_window.window_handle);
 					ctx.dirty_rects.push_back(window->get_abs_rect());
 
 					resp.ack.window_handle = window;
@@ -726,7 +781,7 @@ int main() {
 		uint64_t time_now_us;
 		sys_get_time(&time_now_us);
 		if (time_now_us - last_time_update_us >= US_IN_S * 60) {
-			desktop.taskbar->update_time(desktop.ctx);
+			desktop.taskbar->update_time(desktop.gui.ctx);
 			last_time_update_us = time_now_us;
 		}
 
