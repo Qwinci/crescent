@@ -120,8 +120,8 @@ static void x86_init_simd() {
 	}
 }
 
-static void x86_cpu_resume(Cpu* self, Thread* current_thread) {
-	lapic_init(self);
+static void x86_cpu_resume(Cpu* self, Thread* current_thread, bool initial) {
+	lapic_init(self, initial);
 	asm volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
 
 	self->scheduler.current = current_thread;
@@ -160,7 +160,7 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	self->kernel_main = thread;
 
 	self->tss.iopb = sizeof(Tss);
-	x86_cpu_resume(self, thread);
+	x86_cpu_resume(self, thread, true);
 	sched_init(bsp);
 }
 
@@ -288,10 +288,10 @@ static void ap_wake_entry(void* arg) {
 		println("[kernel][smp]: resuming ap ", cpu->number, " after wake from sleep");
 
 		if (cpu->saved_halt_rip) {
-			x86_cpu_resume(cpu, cpu->scheduler.current);
+			x86_cpu_resume(cpu, cpu->scheduler.current, false);
 		}
 		else {
-			x86_cpu_resume(cpu, cpu->kernel_main);
+			x86_cpu_resume(cpu, cpu->kernel_main, false);
 		}
 	}
 
@@ -321,10 +321,10 @@ static void bsp_wake_entry(void*) {
 	hpet_resume();
 
 	if (CPUS[0]->saved_halt_rip) {
-		x86_cpu_resume(&*CPUS[0], CPUS[0]->scheduler.current);
+		x86_cpu_resume(&*CPUS[0], CPUS[0]->scheduler.current, false);
 	}
 	else {
-		x86_cpu_resume(&*CPUS[0], CPUS[0]->kernel_main);
+		x86_cpu_resume(&*CPUS[0], CPUS[0]->kernel_main, false);
 	}
 
 	for (usize i = 1; i < NUM_CPUS.load(kstd::memory_order::relaxed); ++i) {

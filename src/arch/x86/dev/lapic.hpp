@@ -16,7 +16,7 @@ struct LapicTickSource final : TickSource {
 struct Cpu;
 
 void lapic_first_init();
-void lapic_init(Cpu* cpu);
+void lapic_init(Cpu* cpu, bool initial);
 void lapic_eoi();
 
 void lapic_ipi(u8 vec, u8 dest);

@@ -64,7 +64,7 @@ namespace {
 	ManuallyInit<IrqHandler> LAPIC_IRQ_HANDLER;
 }
 
-static void lapic_timer_calibrate(Cpu* cpu) {
+static void lapic_timer_calibrate(Cpu* cpu, bool initial) {
 	SPACE.store(regs::DIVIDE_CONFIG, divide_config::DIV_BY_16);
 
 	IrqHandler tmp_handler {
@@ -91,7 +91,13 @@ static void lapic_timer_calibrate(Cpu* cpu) {
 		ticks_in_us = 1;
 	}
 
-	cpu->lapic_timer.initialize(0xFFFFFFFF / ticks_in_us, ticks_in_us);
+	if (initial) {
+		cpu->lapic_timer.initialize(0xFFFFFFFF / ticks_in_us, ticks_in_us);
+	}
+	else {
+		cpu->lapic_timer->max_us = 0xFFFFFFFF / ticks_in_us;
+		cpu->lapic_timer->ticks_in_us = ticks_in_us;
+	}
 
 	SPACE.store(regs::DIVIDE_CONFIG, divide_config::DIV_BY_16);
 
@@ -217,10 +223,10 @@ void lapic_boot_ap(u8 lapic_id, u32 boot_addr) {
 		icr::LEVEL(true));
 }
 
-void lapic_init(Cpu* cpu) {
+void lapic_init(Cpu* cpu, bool initial) {
 	SPACE.store(regs::SVR, 0x1FF);
 	SPACE.store(regs::TPR, 0);
-	lapic_timer_calibrate(cpu);
+	lapic_timer_calibrate(cpu, initial);
 	cpu->cpu_tick_source = &*cpu->lapic_timer;
 }
 

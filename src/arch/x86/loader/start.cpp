@@ -171,6 +171,10 @@ extern "C" [[noreturn, gnu::used]] void early_start() {
 		max_addr = kstd::max(max_addr, entry->base + entry->length);
 	}
 
+	if (max_addr < UINT32_MAX) {
+		max_addr = UINT32_MAX;
+	}
+
 	assert(smp_trampoline_addr);
 	acpi::SMP_TRAMPOLINE_PHYS_ADDR = smp_trampoline_addr;
 
