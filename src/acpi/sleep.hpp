@@ -8,4 +8,5 @@ namespace acpi {
 
 	void reboot();
 	void enter_sleep_state(SleepState state);
+	void wake_from_sleep();
 }

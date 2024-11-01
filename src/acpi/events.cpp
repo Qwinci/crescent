@@ -201,7 +201,7 @@ namespace acpi {
 
 		EC.data = ecdt->ec_data;
 		EC.control = ecdt->ec_control;
-		EC.node = GLOBAL_CTX->find_node(nullptr, ecdt->ec_id);
+		EC.node = GLOBAL_CTX->find_node(nullptr, ecdt->ec_id, false);
 		assert(EC.node);
 
 		auto status = EVENT_CTX->enable_gpe(

@@ -1,5 +1,6 @@
 #include "smp.hpp"
 #include "acpi/acpi.hpp"
+#include "acpi/sleep.hpp"
 #include "arch/cpu.hpp"
 #include "arch/irq.hpp"
 #include "arch/paging.hpp"
@@ -10,6 +11,7 @@
 #include "cpu.hpp"
 #include "cpuid.hpp"
 #include "dev/dev.hpp"
+#include "dev/pci.hpp"
 #include "interrupts/gdt.hpp"
 #include "loader/limine.h"
 #include "mem/mem.hpp"
@@ -318,6 +320,8 @@ static void bsp_wake_entry(void*) {
 
 	println("[kernel][smp]: resuming after wake from sleep");
 
+	acpi::wake_from_sleep();
+
 	hpet_resume();
 
 	if (CPUS[0]->saved_halt_rip) {
@@ -332,12 +336,16 @@ static void bsp_wake_entry(void*) {
 		start_ap(cpu);
 	}
 
+	pci::resume_from_suspend();
 	dev_resume_all();
 
 	println("[kernel][smp]: bsp resume done");
 
 	IrqGuard irq_guard {};
 	CPUS[0]->cpu_tick_source->oneshot(50 * US_IN_MS);
+	CPUS[0]->scheduler.current_irq_period = 50 * US_IN_MS;
+	CPUS[0]->scheduler.us_to_next_schedule = 0;
+
 	if (CPUS[0]->saved_halt_rip) {
 		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(CPUS[0]->saved_halt_rsp), "r"(CPUS[0]->saved_halt_rip));
 	}
