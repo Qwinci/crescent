@@ -7,6 +7,8 @@ namespace pci {
 	void acpi_init();
 	void acpi_enumerate();
 
+	void resume_from_suspend();
+
 	enum class Cap : u8 {
 		Power = 1,
 		Agp = 2,
@@ -33,8 +35,6 @@ namespace pci {
 		D2 = 0b10,
 		D3Hot = 0b11
 	};
-
-	struct Device;
 
 	namespace caps {
 		struct Msi {
@@ -123,7 +123,7 @@ namespace pci {
 			BasicRegister<u32> {24},
 			BasicRegister<u32> {28},
 			BasicRegister<u32> {32},
-			BasicRegister<u32> {36},
+			BasicRegister<u32> {36}
 		};
 		inline constexpr BasicRegister<u32> CARDBUS_CIS_PTR {40};
 		inline constexpr BasicRegister<u16> SUBSYSTEM_VENDOR_ID {44};
@@ -311,6 +311,7 @@ namespace pci {
 		PciAddress addr;
 		u16 vendor_id;
 		u16 device_id;
+		u32 raw_bars[6] {};
 
 	private:
 		u32 msi_cap_offset;

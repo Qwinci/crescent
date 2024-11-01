@@ -10,7 +10,6 @@
 #include "mem/portspace.hpp"
 #include "stdio.hpp"
 #include "utils/driver.hpp"
-#include "x86/io.hpp"
 #include "x86/irq.hpp"
 
 extern Driver DRIVERS_START[];
@@ -40,6 +39,17 @@ namespace pci {
 
 	static PciAddress ADDRESS {};
 
+	ManuallyDestroy<IrqSpinlock<kstd::vector<Device*>>> DEVICES {};
+
+	void resume_from_suspend() {
+		auto guard = DEVICES->lock();
+		for (auto device : *guard) {
+			for (int i = 0; i < 6; ++i) {
+				device->write(hdr0::BARS[i], device->raw_bars[i]);
+			}
+		}
+	}
+
 	static void enumerate_func(u32 func) {
 		ADDRESS.func = func;
 
@@ -60,6 +70,9 @@ namespace pci {
 		u8 prog_if = read(ADDRESS, common::PROG_IF);
 
 		auto* dev = new Device {ADDRESS};
+
+		DEVICES->lock()->push(dev);
+
 		for (const auto* driver = DRIVERS_START; driver != DRIVERS_END; ++driver) {
 			if (driver->type == DriverType::Pci) {
 				auto& driver_pci = driver->pci;
@@ -99,7 +112,6 @@ namespace pci {
 			}
 		}
 
-		delete dev;
 		end:
 		//println(Fmt::Hex, zero_pad(4), vendor_id, ":", device_id, Fmt::Reset);
 	}
@@ -185,21 +197,25 @@ namespace pci {
 		msix_cap_offset = get_cap_offset(Cap::MsiX, 0);
 		msi_cap_offset = get_cap_offset(Cap::Msi, 0);
 		power_cap_offset = get_cap_offset(Cap::Power, 0);
+
+		for (int i = 0; i < 6; ++i) {
+			raw_bars[i] = read(hdr0::BARS[i]);
+		}
 	}
 
 	usize Device::get_bar(u8 bar) const {
-		usize phys = read(hdr0::BARS[bar]);
+		usize phys = raw_bars[bar];
 		assert(!(phys & 1) && "tried to get io bar address");
 		bool is_64 = (phys >> 1 & 0b11) == 2;
 		phys &= ~0xF;
 		if (is_64) {
-			phys |= static_cast<u64>(read(hdr0::BARS[bar + 1])) << 32;
+			phys |= static_cast<u64>(raw_bars[bar + 1]) << 32;
 		}
 		return phys;
 	}
 
 	void* Device::map_bar(u8 bar) {
-		usize phys = read(hdr0::BARS[bar]);
+		usize phys = raw_bars[bar];
 		assert(!(phys & 1) && "tried to map io space bar");
 
 		auto size = get_bar_size(bar);
@@ -215,7 +231,7 @@ namespace pci {
 		auto align = phys & 0xFFF;
 		phys &= ~0xFFF;
 		if (is_64) {
-			phys |= static_cast<u64>(read(hdr0::BARS[bar + 1])) << 32;
+			phys |= static_cast<u64>(raw_bars[bar + 1]) << 32;
 		}
 
 		auto& KERNEL_MAP = KERNEL_PROCESS->page_map;
@@ -233,7 +249,7 @@ namespace pci {
 	}
 
 	u32 Device::get_bar_size(u8 bar) {
-		u32 phys = read(hdr0::BARS[bar]);
+		u32 phys = raw_bars[bar];
 
 		assert(!(phys & 1) && "tried to get the size of io space bar");
 
