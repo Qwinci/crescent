@@ -49,6 +49,15 @@ kstd::optional<Mac> arp_get_mac(u32 ip) {
 	}
 
 	if (!found) {
+		u8 first = ip & 0xFF;
+		u8 second = ip >> 8 & 0xFF;
+		if (
+			first == 10 ||
+			(first == 172 && second >= 16 && second <= 31) ||
+			(first == 192 && second == 168)) {
+			return {};
+		}
+
 		// todo choose nic
 		IrqGuard irq_guard {};
 		auto guard = NICS->lock();
