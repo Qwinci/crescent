@@ -41,11 +41,19 @@ namespace pci {
 
 	ManuallyDestroy<IrqSpinlock<kstd::vector<Device*>>> DEVICES {};
 
+	namespace {
+		Mcfg* GLOBAL_MCFG = nullptr;
+	}
+
 	void resume_from_suspend() {
 		auto guard = DEVICES->lock();
 		for (auto device : *guard) {
 			for (int i = 0; i < 6; ++i) {
 				device->write(hdr0::BARS[i], device->raw_bars[i]);
+				assert(device->read(hdr0::BARS[i]) == device->raw_bars[i]);
+				device->set_power_state(PowerState::D0);
+				device->enable_mem_space(true);
+				device->enable_io_space(true);
 			}
 		}
 	}
@@ -144,10 +152,6 @@ namespace pci {
 		for (u32 dev = 0; dev < 32; ++dev) {
 			enumerate_dev(dev);
 		}
-	}
-
-	namespace {
-		Mcfg* GLOBAL_MCFG = nullptr;
 	}
 
 	void acpi_init() {
