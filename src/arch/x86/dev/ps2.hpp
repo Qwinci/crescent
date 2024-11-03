@@ -82,6 +82,8 @@ enum class Ps2Ack {
 struct Ps2Device {
 	virtual ~Ps2Device() = default;
 	virtual void on_receive(u8 byte) = 0;
+
+	virtual void resume() = 0;
 };
 
 struct Ps2Port {

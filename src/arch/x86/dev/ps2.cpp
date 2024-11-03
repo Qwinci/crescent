@@ -2,13 +2,14 @@
 #include "acpi/acpi.hpp"
 #include "arch/irq.hpp"
 #include "dev/clock.hpp"
+#include "dev/dev.hpp"
 #include "io_apic.hpp"
 #include "manually_destroy.hpp"
 #include "mem/portspace.hpp"
 #include "mem/register.hpp"
+#include "sched/mutex.hpp"
 #include "stdio.hpp"
 #include "x86/irq.hpp"
-#include "sched/mutex.hpp"
 
 /*
  * This code has been ported from Linux i8042/libps2 driver.
@@ -178,6 +179,18 @@ static bool ps2_enable_aux(bool enable) {
 static bool ps2_enable_aux_in_config() {
 	CURRENT_CONFIG &= ~config::PORT2_CLOCK_DISABLE;
 	CURRENT_CONFIG |= config::PORT2_IRQ;
+	if (!ps2_send_cmd(controller_cmd::WRITE_CONFIG, &CURRENT_CONFIG)) {
+		CURRENT_CONFIG |= config::PORT2_CLOCK_DISABLE;
+		CURRENT_CONFIG &= ~config::PORT2_IRQ;
+		return false;
+	}
+
+	return true;
+}
+
+static bool ps2_enable_kb_in_config() {
+	CURRENT_CONFIG &= ~config::PORT1_CLOCK_DISABLE;
+	CURRENT_CONFIG |= config::PORT1_IRQ;
 	if (!ps2_send_cmd(controller_cmd::WRITE_CONFIG, &CURRENT_CONFIG)) {
 		CURRENT_CONFIG |= config::PORT2_CLOCK_DISABLE;
 		CURRENT_CONFIG &= ~config::PORT2_IRQ;
@@ -612,56 +625,113 @@ namespace {
 		.fn = ps2_irq,
 		.can_be_shared = true
 	}};
+
+	u32 PORT1_IRQ;
+	u32 PORT2_IRQ = 0xFFFF;
+
+	struct Ps2Controller : Device {
+		Ps2Controller() {
+			dev_add(this);
+		}
+
+		int suspend() override {
+			ps2_flush_data();
+
+			if (!ps2_send_cmd(controller_cmd::WRITE_CONFIG, &INITIAL_CONFIG)) {
+				println("[kernel][ps2]: failed to write config before suspend");
+			}
+
+			return 0;
+		}
+
+		int resume() override {
+			if (!ps2_flush_data()) {
+				println("[kernel][ps2]: failed to resume controller");
+				return 0;
+			}
+
+			CURRENT_CONFIG = INITIAL_CONFIG;
+			CURRENT_CONFIG &= ~config::PORT1_TRANSLATION;
+			CURRENT_CONFIG |= config::PORT1_CLOCK_DISABLE;
+			CURRENT_CONFIG |= config::PORT2_CLOCK_DISABLE;
+			CURRENT_CONFIG &= ~config::PORT1_IRQ;
+			CURRENT_CONFIG &= ~config::PORT2_IRQ;
+			if (!ps2_send_cmd(controller_cmd::WRITE_CONFIG, &CURRENT_CONFIG)) {
+				println("[kernel][ps2]: failed to write config after resume, retrying");
+				mdelay(50);
+				if (!ps2_send_cmd(controller_cmd::WRITE_CONFIG, &CURRENT_CONFIG)) {
+					println("[kernel][ps2]: failed to write config after resume");
+					return 0;
+				}
+			}
+
+			IO_APIC.register_isa_irq(1, PORT1_IRQ);
+
+			if (PORT2_PRESENT) {
+				IO_APIC.register_isa_irq(12, PORT2_IRQ);
+				ps2_enable_aux_in_config();
+			}
+
+			ps2_enable_kb_in_config();
+
+			ps2_irq(nullptr);
+
+			if (PORT1.device) {
+				PORT1.device->resume();
+			}
+			if (PORT2.device) {
+				PORT2.device->resume();
+			}
+
+			return 0;
+		}
+	};
+
+	ManuallyInit<Ps2Controller> CONTROLLER;
 }
 
 bool ps2_keyboard_init(Ps2Port* port);
 bool ps2_mouse_init(Ps2Port* port);
 
 void x86_ps2_init() {
-	if (!(acpi::GLOBAL_FADT->iapc_boot_arch & FADT_FLAG_8042)) {
-		return;
-	}
-
 	if (!init_controller()) {
 		return;
 	}
 
-	u32 port2_irq = 0xFFFF;
-
 	if (ps2_detect_aux()) {
-		port2_irq = x86_alloc_irq(1, false);
-		assert(port2_irq);
+		PORT2_IRQ = x86_alloc_irq(1, false);
+		assert(PORT2_IRQ);
 
-		register_irq_handler(port2_irq, &*PS2_PORT2_IRQ);
-		IO_APIC.register_isa_irq(12, port2_irq);
+		register_irq_handler(PORT2_IRQ, &*PS2_PORT2_IRQ);
+		IO_APIC.register_isa_irq(12, PORT2_IRQ);
 
 		if (!ps2_enable_aux_in_config()) {
 			IO_APIC.deregister_isa_irq(12);
-			deregister_irq_handler(port2_irq, &*PS2_PORT2_IRQ);
-			x86_dealloc_irq(port2_irq, 1, true);
-			port2_irq = 0xFFFF;
+			deregister_irq_handler(PORT2_IRQ, &*PS2_PORT2_IRQ);
+			x86_dealloc_irq(PORT2_IRQ, 1, true);
+			PORT2_IRQ = 0xFFFF;
 		}
 		else {
 			PORT2_PRESENT = true;
 		}
 	}
 
-	CURRENT_CONFIG &= ~config::PORT1_CLOCK_DISABLE;
-	CURRENT_CONFIG |= config::PORT1_IRQ;
-	if (!ps2_send_cmd(controller_cmd::WRITE_CONFIG, &CURRENT_CONFIG)) {
-		if (port2_irq != 0xFFFF) {
+	if (!ps2_enable_kb_in_config()) {
+		if (PORT2_IRQ != 0xFFFF) {
 			IO_APIC.deregister_isa_irq(12);
-			deregister_irq_handler(port2_irq, &*PS2_PORT2_IRQ);
-			x86_dealloc_irq(port2_irq, 1, true);
+			deregister_irq_handler(PORT2_IRQ, &*PS2_PORT2_IRQ);
+			x86_dealloc_irq(PORT2_IRQ, 1, true);
 		}
 		return;
 	}
 
-	u8 port1_irq = x86_alloc_irq(1, true);
-	assert(port1_irq);
+	PORT1_IRQ = x86_alloc_irq(1, true);
+	assert(PORT1_IRQ);
 
-	register_irq_handler(port1_irq, &*PS2_PORT1_IRQ);
-	IO_APIC.register_isa_irq(1, port1_irq);
+	register_irq_handler(PORT1_IRQ, &*PS2_PORT1_IRQ);
+	IO_APIC.register_isa_irq(1, PORT1_IRQ);
+
+	CONTROLLER.initialize();
 
 	if (PORT2_PRESENT) {
 		if (!ps2_mouse_init(&PORT2)) {

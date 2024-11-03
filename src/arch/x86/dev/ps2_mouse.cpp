@@ -80,6 +80,46 @@ struct Ps2Mouse : Ps2Device {
 		}
 	}
 
+	void resume() override {
+		if (!probe()) {
+			auto guard = port->lock.lock();
+			port->device = nullptr;
+			return;
+		}
+
+		scanning = false;
+
+		println("[kernel][x86]: ps2 mouse resume");
+
+		u8 param[2] {};
+		param[0] = 200;
+		port->send_cmd(cmd::SAMPLE_RATE, param);
+		param[0] = 100;
+		port->send_cmd(cmd::SAMPLE_RATE, param);
+		param[0] = 80;
+		port->send_cmd(cmd::SAMPLE_RATE, param);
+
+		port->send_cmd(ps2_cmd::GET_ID, param);
+		bool has_z_axis = param[0] == 3;
+
+		if (has_z_axis) {
+			packet_type = PacketType::ZAxis;
+		}
+		else {
+			packet_type = PacketType::Generic;
+		}
+
+		param[0] = 200;
+		port->send_cmd(cmd::SAMPLE_RATE, param);
+
+		{
+			auto guard = port->lock.lock();
+			scanning = true;
+		}
+
+		port->send_cmd(ps2_cmd::ENABLE_SCANNING, nullptr);
+	}
+
 	[[nodiscard]] bool probe() const {
 		u8 param[2] {0xA5};
 

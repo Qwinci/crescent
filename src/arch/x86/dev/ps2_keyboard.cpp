@@ -323,6 +323,29 @@ struct Ps2Keyboard : Ps2Device {
 		}
 	}
 
+	void resume() override {
+		if (!probe()) {
+			auto guard = port->lock.lock();
+			port->device = nullptr;
+			return;
+		}
+
+		scanning = false;
+
+		println("[kernel][x86]: ps2 keyboard resume");
+
+		u8 param[1] {};
+		port->send_cmd(ps2_cmd::SET_LEDS, param);
+		port->send_cmd(ps2_cmd::SET_REP, param);
+
+		{
+			auto guard = port->lock.lock();
+			scanning = true;
+		}
+
+		port->send_cmd(ps2_cmd::ENABLE_SCANNING, nullptr);
+	}
+
 	[[nodiscard]] bool probe() const {
 		u8 param[2] {0xA5};
 
