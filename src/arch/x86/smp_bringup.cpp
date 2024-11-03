@@ -32,12 +32,12 @@ smp_trampoline_start:
 	mov %cs, %ebx
 	shl $4, %ebx
 	lea gdt - smp_trampoline_start(%ebx), %eax
-	mov %eax, %cs:(gdtr - smp_trampoline_start + 2)
+	mov %eax, gdtr - smp_trampoline_start + 2(%ebx)
 
 	lgdt %cs:(gdtr - smp_trampoline_start)
 
 	lea long_mode - smp_trampoline_start(%ebx), %eax
-	mov %eax, %cs:(farjmp - smp_trampoline_start)
+	mov %eax, farjmp - smp_trampoline_start(%ebx)
 
 	ljmpl *%cs:(farjmp - smp_trampoline_start)
 

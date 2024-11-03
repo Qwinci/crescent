@@ -22,7 +22,9 @@ struct Msr {
 
 namespace msrs {
 	constexpr Msr IA32_APIC_BASE {0x1B};
+	constexpr Msr IA32_MTRRCAP {0xFE};
 	constexpr Msr IA32_PAT {0x277};
+	constexpr Msr IA32_MTRRDEFTYPE {0x2FF};
 	constexpr Msr IA32_EFER {0xC0000080};
 	constexpr Msr IA32_STAR {0xC0000081};
 	constexpr Msr IA32_LSTAR {0xC0000082};

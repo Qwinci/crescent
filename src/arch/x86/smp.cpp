@@ -279,6 +279,57 @@ static void start_ap(Cpu* cpu) {
 	lapic_boot_ap(cpu->lapic_id, acpi::SMP_TRAMPOLINE_PHYS_ADDR);
 }
 
+namespace {
+	u64 MTRR_DEF_TYPE = 0;
+
+	struct VariableMttr {
+		u64 base;
+		u64 mask;
+	};
+
+	VariableMttr VARIABLE_MTTRS[0x100];
+	u64 FIXED_MTTRS[11];
+
+	constexpr Msr FIXED_MTRR_MSRS[] {
+		Msr {0x250},
+		Msr {0x258},
+		Msr {0x259},
+		Msr {0x268},
+		Msr {0x269},
+		Msr {0x26A},
+		Msr {0x26B},
+		Msr {0x26C},
+		Msr {0x26D},
+		Msr {0x26E},
+		Msr {0x26F}
+	};
+}
+
+static void restore_mtrrs() {
+	auto cpu_info = cpuid(1, 0);
+	if (cpu_info.edx & 1 << 12) {
+		auto cap = msrs::IA32_MTRRCAP.read();
+		bool fixed_size_available = cap & 1 << 8;
+		u8 variable_size_count = cap & 0xFF;
+
+		for (u32 i = 0; i < variable_size_count; ++i) {
+			Msr base {0x200U + i * 2};
+			Msr mask {0x201U + i * 2};
+
+			base.write(VARIABLE_MTTRS[i].base);
+			mask.write(VARIABLE_MTTRS[i].mask);
+		}
+
+		if (fixed_size_available) {
+			for (u32 i = 0; i < 11; ++i) {
+				FIXED_MTRR_MSRS[i].write(FIXED_MTTRS[i]);
+			}
+		}
+
+		msrs::IA32_MTRRDEFTYPE.write(MTRR_DEF_TYPE);
+	}
+}
+
 static void ap_wake_entry(void* arg) {
 	auto* cpu = static_cast<Cpu*>(arg);
 
@@ -286,6 +337,7 @@ static void ap_wake_entry(void* arg) {
 		auto guard = SMP_LOCK.lock();
 		x86_load_gdt(&cpu->tss);
 		x86_load_idt();
+		restore_mtrrs();
 
 		println("[kernel][smp]: resuming ap ", cpu->number, " after wake from sleep");
 
@@ -312,6 +364,7 @@ static void ap_wake_entry(void* arg) {
 static void bsp_wake_entry(void*) {
 	x86_load_gdt(&CPUS[0]->tss);
 	x86_load_idt();
+	restore_mtrrs();
 
 	auto status = acpi::EVENT_CTX->prepare_for_wake();
 	assert(status == qacpi::Status::Success);
@@ -319,8 +372,6 @@ static void bsp_wake_entry(void*) {
 	assert(status == qacpi::Status::Success);
 
 	println("[kernel][smp]: resuming after wake from sleep");
-
-	acpi::wake_from_sleep();
 
 	hpet_resume();
 
@@ -331,15 +382,17 @@ static void bsp_wake_entry(void*) {
 		x86_cpu_resume(&*CPUS[0], CPUS[0]->kernel_main, false);
 	}
 
-	for (usize i = 1; i < NUM_CPUS.load(kstd::memory_order::relaxed); ++i) {
-		auto cpu = &*CPUS[i];
-		start_ap(cpu);
-	}
+	acpi::wake_from_sleep();
 
 	pci::resume_from_suspend();
 	dev_resume_all();
 
 	println("[kernel][smp]: bsp resume done");
+
+	for (usize i = 1; i < NUM_CPUS.load(kstd::memory_order::relaxed); ++i) {
+		auto cpu = &*CPUS[i];
+		start_ap(cpu);
+	}
 
 	IrqGuard irq_guard {};
 	CPUS[0]->cpu_tick_source->oneshot(50 * US_IN_MS);
@@ -363,6 +416,28 @@ namespace {
 extern char BSP_STACK[];
 
 void arch_prepare_for_sleep() {
+	auto cpu_info = cpuid(1, 0);
+	if (cpu_info.edx & 1 << 12) {
+		auto cap = msrs::IA32_MTRRCAP.read();
+		bool fixed_size_available = cap & 1 << 8;
+		u8 variable_size_count = cap & 0xFF;
+
+		MTRR_DEF_TYPE = msrs::IA32_MTRRDEFTYPE.read();
+
+		for (u32 i = 0; i < variable_size_count; ++i) {
+			Msr base {0x200U + i * 2};
+			Msr mask {0x201U + i * 2};
+			VARIABLE_MTTRS[i].base = base.read();
+			VARIABLE_MTTRS[i].mask = mask.read();
+		}
+
+		if (fixed_size_available) {
+			for (u32 i = 0; i < 11; ++i) {
+				FIXED_MTTRS[i] = FIXED_MTRR_MSRS[i].read();
+			}
+		}
+	}
+
 	auto* info = to_virt<BootInfo>(
 		acpi::SMP_TRAMPOLINE_PHYS_ADDR +
 		(smp_trampoline_end - smp_trampoline_start) -

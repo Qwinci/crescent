@@ -8,7 +8,6 @@
 #include "manually_destroy.hpp"
 #include "manually_init.hpp"
 #include "mem/mem.hpp"
-#include "mem/register.hpp"
 #include "qacpi/event.hpp"
 #include "qacpi/ns.hpp"
 #include "qacpi/os.hpp"
@@ -372,11 +371,17 @@ namespace {
 		.can_be_shared = true
 	}};
 	u8 SCI_VEC;
+	u32 SCI_IRQ;
+}
+
+void reinstall_sci_handler() {
+	IO_APIC.register_isa_irq(SCI_IRQ, SCI_VEC, true, true);
 }
 
 qacpi::Status qacpi_os_install_sci_handler(uint32_t irq, bool (*handler)(void* arg), void* arg, void** handle) {
 	QACPI_SCI_HANDLER = handler;
 	QACPI_SCI_ARG = arg;
+	SCI_IRQ = irq;
 
 	SCI_VEC = x86_alloc_irq(1, true);
 	assert(SCI_VEC);

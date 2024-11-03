@@ -15,6 +15,8 @@
 extern "C" void sched_switch_thread(ArchThread* prev, ArchThread* next);
 void sched_before_switch(Thread* prev, Thread* thread);
 
+void reinstall_sci_handler();
+
 namespace acpi {
 	extern ManuallyDestroy<qacpi::events::Context> EVENT_CTX;
 
@@ -274,6 +276,8 @@ namespace acpi {
 	}
 
 	void wake_from_sleep() {
+		reinstall_sci_handler();
+
 		GLOBAL_CTX->iterate_nodes(
 			nullptr,
 			[](qacpi::Context& ctx, qacpi::NamespaceNode* node) {
