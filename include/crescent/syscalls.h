@@ -41,6 +41,7 @@ typedef enum {
 	SYS_OPENAT,
 	SYS_READ,
 	SYS_WRITE,
+	SYS_SEEK,
 	SYS_STAT,
 	SYS_LIST_DIR,
 	SYS_PIPE_CREATE,
@@ -120,5 +121,9 @@ typedef struct {
 
 #define OPEN_NONE 0
 #define OPEN_NONBLOCK (1 << 0)
+
+#define SEEK_START 0
+#define SEEK_CURRENT 1
+#define SEEK_END 2
 
 #endif

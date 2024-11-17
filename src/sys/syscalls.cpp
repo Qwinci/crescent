@@ -1472,6 +1472,72 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			break;
+
+		}
+		case SYS_SEEK:
+		{
+			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
+			auto offset = static_cast<int64_t>(*frame->arg1());
+			int whence = static_cast<int>(*frame->arg2());
+
+			auto handle = thread->process->handles.get(user_handle);
+			kstd::shared_ptr<OpenFile>* file_ptr;
+			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+			auto& file = *file_ptr;
+
+			if (!file->node->seekable) {
+				*frame->ret() = ERR_UNSUPPORTED;
+				break;
+			}
+
+			if (whence == SEEK_START) {
+				file->cursor = offset;
+			}
+			else if (whence == SEEK_CURRENT) {
+				file->cursor += offset;
+			}
+			else if (whence == SEEK_END) {
+				FsStat stat {};
+				auto status = file->node->stat(stat);
+				switch (status) {
+					case FsStatus::Success:
+						*frame->ret() = 0;
+						break;
+					case FsStatus::Unsupported:
+						*frame->ret() = ERR_UNSUPPORTED;
+						break;
+					case FsStatus::OutOfBounds:
+						*frame->ret() = ERR_INVALID_ARGUMENT;
+						break;
+					case FsStatus::TryAgain:
+						*frame->ret() = ERR_TRY_AGAIN;
+						break;
+				}
+
+				if (status != FsStatus::Success) {
+					break;
+				}
+
+				file->cursor = stat.size + offset;
+				break;
+			}
+			else {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			if (*frame->arg3()) {
+				if (!UserAccessor(*frame->arg3()).store(file->cursor)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+			}
+
+			*frame->ret() = 0;
+			break;
 		}
 		case SYS_STAT:
 		{

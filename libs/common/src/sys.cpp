@@ -83,6 +83,10 @@ int sys_write(CrescentHandle handle, const void* data, size_t size, size_t* actu
 	return static_cast<int>(syscall(SYS_WRITE, handle, data, size, actual));
 }
 
+int sys_seek(CrescentHandle handle, int64_t offset, int whence, uint64_t* value) {
+	return static_cast<int>(syscall(SYS_SEEK, handle, offset, whence, value));
+}
+
 int sys_stat(CrescentHandle handle, CrescentStat& stat) {
 	return static_cast<int>(syscall(SYS_STAT, handle, &stat));
 }
