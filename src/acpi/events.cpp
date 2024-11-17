@@ -112,28 +112,47 @@ namespace acpi {
 		}
 
 		void on_gpe() {
-			u64 status_int = 0;
-			assert(qacpi::read_from_addr(control, status_int) == qacpi::Status::Success);
-			BitValue<u8> status {static_cast<u8>(status_int)};
-			if (!(status & ec_control::SCI_EVT)) {
-				return;
+			while (true) {
+				u64 status_int = 0;
+				assert(qacpi::read_from_addr(control, status_int) == qacpi::Status::Success);
+				BitValue<u8> status {static_cast<u8>(status_int)};
+				if (!(status & ec_control::SCI_EVT)) {
+					return;
+				}
+
+				enable_burst();
+				write_control(ec_cmd::QR_EC);
+				u8 code = read_data();
+				disable_burst();
+				if (!code) {
+					return;
+				}
+
+				println("ec query ", Fmt::Hex, code, Fmt::Reset);
+
+				static constexpr char CHARS[] = "0123456789ABCDEF";
+				char name[5] {'_', 'Q', CHARS[code >> 4], CHARS[code & 0xF]};
+
+				auto res = qacpi::ObjectRef::empty();
+				GLOBAL_CTX->evaluate(node, name, res);
 			}
+		}
 
-			enable_burst();
-			write_control(ec_cmd::QR_EC);
-			u8 code = read_data();
-			disable_burst();
-			if (!code) {
-				return;
+		void clear_events() {
+			for (int i = 0; i < 100; ++i) {
+				enable_burst();
+				write_control(ec_cmd::QR_EC);
+				u8 code = read_data();
+				disable_burst();
+				if (!code) {
+					break;
+				}
+				else if (i == 99) {
+					println("[kernel][acpi]: warning: ec keeps generating events");
+				}
+
+				println("[kernel][acpi]: discarding ec query ", Fmt::Hex, code, Fmt::Reset);
 			}
-
-			println("ec query ", Fmt::Hex, code, Fmt::Reset);
-
-			static constexpr char CHARS[] = "0123456789ABCDEF";
-			char name[5] {'_', 'Q', CHARS[code >> 4], CHARS[code & 0xF]};
-
-			auto res = qacpi::ObjectRef::empty();
-			GLOBAL_CTX->evaluate(node, name, res);
 		}
 	};
 
@@ -203,6 +222,7 @@ namespace acpi {
 		EC.control = ecdt->ec_control;
 		EC.node = GLOBAL_CTX->find_node(nullptr, ecdt->ec_id, false);
 		assert(EC.node);
+		EC.clear_events();
 
 		auto status = EVENT_CTX->enable_gpe(
 			ecdt->gpe,
@@ -224,6 +244,9 @@ namespace acpi {
 	}
 
 	void events_init() {
+		// todo proper locking in qacpi to fix races between gpe init and gpe handling
+		IrqGuard irq_guard {};
+
 		assert(EVENT_CTX->enable_events_from_ns(*GLOBAL_CTX) == qacpi::Status::Success);
 
 		auto status = EVENT_CTX->enable_fixed_event(
@@ -335,6 +358,7 @@ namespace acpi {
 				EC.data = data_reg;
 				EC.control = control_reg;
 				EC.node = node;
+				EC.clear_events();
 
 				status = EVENT_CTX->enable_gpe(
 					gpe_index,

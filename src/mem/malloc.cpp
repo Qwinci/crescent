@@ -44,6 +44,9 @@ void* Allocator::alloc(usize size) {
 	auto index = size_to_index(size);
 	assert(index < sizeof(freelists) / sizeof(*freelists));
 
+	// required because we don't want to get interrupted in the following code
+	// as it could cause a deadlock if the irq wants to allocate.
+	IrqGuard irq_guard {};
 	auto guard = FREELIST_MUTEX[index].lock();
 
 	auto& list = freelists[index];
@@ -106,6 +109,9 @@ void Allocator::free(void* ptr, usize size) {
 	assert(index < sizeof(freelists) / sizeof(*freelists));
 	assert(index_to_size(index) >= size);
 
+	// required because we don't want to get interrupted in the following code
+	// as it could cause a deadlock if the irq wants to allocate.
+	IrqGuard irq_guard {};
 	auto guard = FREELIST_MUTEX[index].lock();
 
 	auto* hdr = reinterpret_cast<Header*>(ALIGNDOWN(reinterpret_cast<usize>(ptr), PAGE_SIZE));
