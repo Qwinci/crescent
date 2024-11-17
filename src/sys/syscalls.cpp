@@ -145,7 +145,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 			auto name = path_view.substr(name_start);
 
-			auto node = INITRD_VFS->lookup(path_view);
+			auto node = vfs_lookup(INITRD_VFS->get_root(), path_view);
 			if (!node) {
 				*frame->ret() = ERR_NOT_EXISTS;
 				break;
@@ -154,17 +154,17 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			Process* process;
 			if (process_info.flags & PROCESS_STD_HANDLES) {
 				auto stdin = thread->process->handles.get(process_info.stdin_handle);
-				if (!stdin || !stdin->get<kstd::shared_ptr<VNode>>()) {
+				if (!stdin || !stdin->get<kstd::shared_ptr<OpenFile>>()) {
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
 				}
 				auto stdout = thread->process->handles.get(process_info.stdout_handle);
-				if (!stdout || !stdout->get<kstd::shared_ptr<VNode>>()) {
+				if (!stdout || !stdout->get<kstd::shared_ptr<OpenFile>>()) {
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
 				}
 				auto stderr = thread->process->handles.get(process_info.stderr_handle);
-				if (!stderr || !stderr->get<kstd::shared_ptr<VNode>>()) {
+				if (!stderr || !stderr->get<kstd::shared_ptr<OpenFile>>()) {
 					*frame->ret() = ERR_INVALID_ARGUMENT;
 					break;
 				}
@@ -1327,24 +1327,43 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
-		case SYS_OPEN:
+		case SYS_OPENAT:
 		{
 			kstd::string path;
-			path.resize_without_null(*frame->arg2());
-			if (!UserAccessor(*frame->arg1()).load(path.data(), *frame->arg2())) {
+			path.resize_without_null(*frame->arg3());
+			if (!UserAccessor(*frame->arg2()).load(path.data(), *frame->arg3())) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
 
-			int flags = static_cast<int>(*frame->arg3());
+			CrescentHandle dir_handle = *frame->arg1();
 
-			auto node = INITRD_VFS->lookup(path);
+			kstd::shared_ptr<VNode> start;
+			if (dir_handle != INVALID_CRESCENT_HANDLE) {
+				auto dir_entry = thread->process->handles.get(dir_handle);
+				kstd::shared_ptr<OpenFile>* ptr;
+				if (!dir_entry || !(ptr = dir_entry->get<kstd::shared_ptr<OpenFile>>())) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					break;
+				}
+
+				start = (*ptr)->node;
+			}
+			else {
+				start = INITRD_VFS->get_root();
+			}
+
+			int flags = static_cast<int>(*frame->arg4());
+
+			auto node = vfs_lookup(std::move(start), path);
 			if (!node) {
 				*frame->ret() = ERR_NOT_EXISTS;
 				break;
 			}
 
-			auto handle = thread->process->handles.insert(std::move(node));
+			auto new_file = kstd::make_shared<OpenFile>(std::move(node));
+
+			auto handle = thread->process->handles.insert(std::move(new_file));
 			if (!UserAccessor(*frame->arg0()).store(handle)) {
 				thread->process->handles.remove(handle);
 				*frame->ret() = ERR_FAULT;
@@ -1358,27 +1377,37 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_READ:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
-			auto offset = static_cast<size_t>(*frame->arg2());
-			auto size = static_cast<size_t>(*frame->arg3());
+			auto size = static_cast<size_t>(*frame->arg2());
 
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<VNode>* vnode;
-			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+			kstd::shared_ptr<OpenFile>* file_ptr;
+			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
+			auto& file = *file_ptr;
 
 			kstd::vector<u8> buffer;
 			buffer.resize(size);
 
-			auto status = (*vnode)->read(buffer.data(), size, offset);
+			auto status = file->node->read(buffer.data(), size, file->cursor);
 			switch (status) {
 				case FsStatus::Success:
-					if (!UserAccessor(*frame->arg1()).store(buffer.data(), buffer.size())) {
+					if (file->node->seekable) {
+						file->cursor += size;
+					}
+
+					if (!UserAccessor(*frame->arg1()).store(buffer.data(), size)) {
 						*frame->ret() = ERR_FAULT;
 					}
 					else {
 						*frame->ret() = 0;
+					}
+
+					if (*frame->arg3()) {
+						if (!UserAccessor(*frame->arg3()).store(size)) {
+							*frame->ret() = ERR_FAULT;
+						}
 					}
 
 					break;
@@ -1398,15 +1427,15 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_WRITE:
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
-			auto offset = static_cast<size_t>(*frame->arg2());
-			auto size = static_cast<size_t>(*frame->arg3());
+			auto size = static_cast<size_t>(*frame->arg2());
 
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<VNode>* vnode;
-			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+			kstd::shared_ptr<OpenFile>* file_ptr;
+			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
+			auto& file = *file_ptr;
 
 			kstd::vector<u8> buffer;
 			buffer.resize(size);
@@ -1415,10 +1444,21 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			auto status = (*vnode)->write(buffer.data(), size, offset);
+			auto status = file->node->write(buffer.data(), size, file->cursor);
 			switch (status) {
 				case FsStatus::Success:
+					if (file->node->seekable) {
+						file->cursor += size;
+					}
+
 					*frame->ret() = 0;
+
+					if (*frame->arg3()) {
+						if (!UserAccessor(*frame->arg3()).store(size)) {
+							*frame->ret() = ERR_FAULT;
+						}
+					}
+
 					break;
 				case FsStatus::Unsupported:
 					*frame->ret() = ERR_UNSUPPORTED;
@@ -1438,14 +1478,15 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
 
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<VNode>* vnode;
-			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+			kstd::shared_ptr<OpenFile>* file_ptr;
+			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
+			auto& file = *file_ptr;
 
 			FsStat stat {};
-			auto status = (*vnode)->stat(stat);
+			auto status = file->node->stat(stat);
 			switch (status) {
 				case FsStatus::Success:
 				{
@@ -1479,11 +1520,12 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		{
 			auto user_handle = static_cast<CrescentHandle>(*frame->arg0());
 			auto handle = thread->process->handles.get(user_handle);
-			kstd::shared_ptr<VNode>* vnode;
-			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+			kstd::shared_ptr<OpenFile>* file_ptr;
+			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
+			auto& file = *file_ptr;
 
 			usize max_count;
 			if (!UserAccessor(*frame->arg2()).load(max_count)) {
@@ -1505,7 +1547,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			kstd::vector<DirEntry> entries;
 			entries.resize(max_count);
-			auto status = (*vnode)->list_dir(entries.data(), max_count, offset);
+			auto status = file->node->list_dir(entries.data(), max_count, offset);
 			switch (status) {
 				case FsStatus::Success:
 				{
@@ -1556,11 +1598,13 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			auto [reading, writing] = std::move(opt).value();
-			kstd::shared_ptr<VNode> reading_ptr {kstd::make_shared<PipeVNode>(std::move(reading))};
-			kstd::shared_ptr<VNode> writing_ptr {kstd::make_shared<PipeVNode>(std::move(writing))};
+			auto reading_ptr {kstd::make_shared<PipeVNode>(std::move(reading))};
+			auto writing_ptr {kstd::make_shared<PipeVNode>(std::move(writing))};
+			auto reading_file = kstd::make_shared<OpenFile>(std::move(reading_ptr));
+			auto writing_file = kstd::make_shared<OpenFile>(std::move(writing_ptr));
 
-			auto reading_handle = thread->process->handles.insert(std::move(reading_ptr));
-			auto writing_handle = thread->process->handles.insert(std::move(writing_ptr));
+			auto reading_handle = thread->process->handles.insert(std::move(reading_file));
+			auto writing_handle = thread->process->handles.insert(std::move(writing_file));
 
 			if (!UserAccessor(*frame->arg0()).store(reading_handle)) {
 				thread->process->handles.remove(reading_handle);
@@ -1590,14 +1634,15 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			kstd::shared_ptr<VNode>* vnode;
+			kstd::shared_ptr<OpenFile>* file_ptr;
 			auto handle = thread->process->handles.get(new_handle);
-			if (!handle || !(vnode = handle->get<kstd::shared_ptr<VNode>>())) {
+			if (!handle || !(file_ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
+			auto file = *file_ptr;
 
-			thread->process->handles.replace(user_std_handle, std::move(*vnode));
+			thread->process->handles.replace(user_std_handle, std::move(file));
 
 			*frame->ret() = 0;
 

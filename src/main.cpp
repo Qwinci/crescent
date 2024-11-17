@@ -25,7 +25,7 @@
 // a0c8 == audio
 
 struct KernelStdoutVNode : public VNode {
-	KernelStdoutVNode() : VNode {FileFlags::None} {}
+	KernelStdoutVNode() : VNode {FileFlags::None, false} {}
 
 	FsStatus write(const void* data, usize& size, usize offset) override {
 		if (offset) {
@@ -153,7 +153,10 @@ void print_mem() {
 	kstd::shared_ptr<VNode> stdout_vnode {kstd::make_shared<KernelStdoutVNode>()};
 	auto stderr_vnode = stdout_vnode;
 
-	auto* user_process = new Process {"user process", true, EmptyHandle {}, std::move(stdout_vnode), std::move(stderr_vnode)};
+	auto stdout_file = kstd::make_shared<OpenFile>(std::move(stdout_vnode));
+	auto stderr_file = kstd::make_shared<OpenFile>(std::move(stderr_vnode));
+
+	auto* user_process = new Process {"user process", true, EmptyHandle {}, std::move(stdout_file), std::move(stderr_file)};
 
 	auto root = INITRD_VFS->get_root();
 	auto bin = root->lookup("bin");

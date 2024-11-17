@@ -1,11 +1,12 @@
 #include "vfs.hpp"
 
-kstd::shared_ptr<VNode> Vfs::lookup(kstd::string_view path) {
+kstd::shared_ptr<VNode> vfs_lookup(kstd::shared_ptr<VNode> start, kstd::string_view path) {
 	if (path.is_empty()) {
 		return nullptr;
 	}
 
-	kstd::shared_ptr<VNode> node = get_root();
+	assert(start);
+	auto node = std::move(start);
 
 	size_t i = 0;
 	while (path[i] == '/') {

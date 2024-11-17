@@ -33,8 +33,8 @@ private:
 
 int puts(const char* str) {
 	auto len = strlen(str);
-	sys_write(STDOUT_HANDLE, str, 0, len);
-	sys_write(STDOUT_HANDLE, "\n", 0, 1);
+	sys_write(STDOUT_HANDLE, str, len, nullptr);
+	sys_write(STDOUT_HANDLE, "\n", 1, nullptr);
 	return static_cast<int>(len);
 }
 
@@ -47,7 +47,7 @@ struct StdFile : public FILE {
 	constexpr explicit StdFile(CrescentHandle handle) : handle {handle} {}
 
 	int write(const void* data, size_t size) override {
-		sys_write(handle, data, 0, size);
+		sys_write(handle, data, size, nullptr);
 		return 0;
 	}
 

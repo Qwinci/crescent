@@ -162,7 +162,7 @@ void send_event_to_window(ui::Window* window, protocol::WindowEvent event) {
 	assert(event_pipe != INVALID_CRESCENT_HANDLE);
 
 	// todo check status
-	sys_write(event_pipe, &event, 0, sizeof(event));
+	sys_write(event_pipe, &event, sizeof(event), nullptr);
 }
 
 static void destroy_window(Desktop& desktop, ui::Window* window) {
@@ -268,7 +268,7 @@ int main() {
 
 		std::vector<uint8_t> file_data;
 		file_data.resize(stat.size);
-		assert(sys_read(file_handle, file_data.data(), 0, stat.size) == 0);
+		assert(sys_read(file_handle, file_data.data(), stat.size, nullptr) == 0);
 		assert(sys_close_handle(file_handle) == 0);
 
 		sound_link.op = SoundLinkOp::QueueOutput;

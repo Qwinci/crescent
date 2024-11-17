@@ -38,7 +38,7 @@ typedef enum {
 
 	SYS_SHUTDOWN,
 
-	SYS_OPEN,
+	SYS_OPENAT,
 	SYS_READ,
 	SYS_WRITE,
 	SYS_STAT,

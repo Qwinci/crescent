@@ -25,8 +25,8 @@ int sys_poll_event(InputEvent& event, size_t timeout_us);
 int sys_shutdown(ShutdownType type);
 
 int sys_open(CrescentHandle& handle, const char* path, size_t path_len, int flags);
-int sys_read(CrescentHandle handle, void* data, size_t offset, size_t size);
-int sys_write(CrescentHandle handle, const void* data, size_t offset, size_t size);
+int sys_read(CrescentHandle handle, void* data, size_t size, size_t* actual);
+int sys_write(CrescentHandle handle, const void* data, size_t size, size_t* actual);
 int sys_stat(CrescentHandle handle, CrescentStat& stat);
 int sys_list_dir(CrescentHandle handle, CrescentDirEntry* entries, size_t* count, size_t* offset);
 

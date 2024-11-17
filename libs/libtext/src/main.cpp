@@ -34,7 +34,7 @@ std::optional<Context> Context::create(std::string_view font_path) {
 
 	std::vector<uint8_t> data;
 	data.resize(stat.size);
-	auto status = sys_read(handle, data.data(), 0, data.size());
+	auto status = sys_read(handle, data.data(), data.size(), nullptr);
 	assert(status == 0);
 	status = sys_close_handle(handle);
 	assert(status == 0);
