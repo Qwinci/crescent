@@ -376,17 +376,17 @@ static u32 adjust_timeout(Ps2Port* port, u8 cmd, u32 timeout) {
 			break;
 		case ps2_cmd::GET_ID.cmd:
 			if (port->cmd_resp[1] == 0xAA) {
-				port->lock.manual_lock();
+				auto old = port->lock.manual_lock();
 				port->flags = Ps2PortFlags::None;
-				port->lock.manual_unlock();
+				port->lock.manual_unlock(old);
 				timeout = 0;
 			}
 
 			if (!ps2_is_kb_id(port->cmd_resp[1])) {
-				port->lock.manual_lock();
+				auto old = port->lock.manual_lock();
 				port->flags = Ps2PortFlags::None;
 				port->cmd_resp_count = 0;
-				port->lock.manual_unlock();
+				port->lock.manual_unlock(old);
 				timeout = 0;
 			}
 			break;
@@ -403,7 +403,7 @@ bool Ps2Port::send_cmd(Ps2Cmd cmd, u8* param) {
 }
 
 bool Ps2Port::send_cmd_unlocked(Ps2Cmd cmd, u8* param) {
-	lock.manual_lock();
+	auto old = lock.manual_lock();
 
 	cmd_resp_count = cmd.ret;
 
@@ -429,40 +429,40 @@ bool Ps2Port::send_cmd_unlocked(Ps2Cmd cmd, u8* param) {
 	}
 
 	u32 timeout_ms = cmd.cmd == ps2_cmd::RESET.cmd ? 1000 : 200;
-	auto status = send_byte(cmd.cmd, timeout_ms, 2);
+	auto status = send_byte(cmd.cmd, timeout_ms, 2, old);
 	if (!status) {
 		flags = Ps2PortFlags::None;
-		lock.manual_unlock();
+		lock.manual_unlock(old);
 		return false;
 	}
 
 	for (int i = 0; i < cmd.params; ++i) {
-		status = send_byte(param[i], 200, 2);
+		status = send_byte(param[i], 200, 2, old);
 		if (!status) {
 			flags = Ps2PortFlags::None;
-			lock.manual_unlock();
+			lock.manual_unlock(old);
 			return false;
 		}
 	}
 
-	lock.manual_unlock();
+	lock.manual_unlock(old);
 
 	timeout_ms = cmd.cmd == ps2_cmd::RESET.cmd ? 4000 : 500;
 	if (cmd.ret) {
 		event.wait_with_timeout(timeout_ms * US_IN_MS);
 
-		lock.manual_lock();
+		old = lock.manual_lock();
 		if (cmd_resp_count && !(flags & Ps2PortFlags::WaitForCmdResp)) {
-			lock.manual_unlock();
+			lock.manual_unlock(old);
 			timeout_ms = adjust_timeout(this, cmd.cmd, timeout_ms);
 			event.wait_with_timeout(timeout_ms * US_IN_MS);
 		}
 		else {
-			lock.manual_unlock();
+			lock.manual_unlock(old);
 		}
 	}
 
-	lock.manual_lock();
+	old = lock.manual_lock();
 
 	for (int i = 0; i < cmd.ret; ++i) {
 		param[i] = cmd_resp[(cmd.ret - 1) - i];
@@ -470,30 +470,30 @@ bool Ps2Port::send_cmd_unlocked(Ps2Cmd cmd, u8* param) {
 
 	if (cmd_resp_count && (cmd.cmd != ps2_cmd::RESET.cmd || cmd_resp_count != 1)) {
 		flags = Ps2PortFlags::None;
-		lock.manual_unlock();
+		lock.manual_unlock(old);
 		return false;
 	}
 
 	flags = Ps2PortFlags::None;
-	lock.manual_unlock();
+	lock.manual_unlock(old);
 	return true;
 }
 
-bool Ps2Port::send_byte(u8 byte, u32 timeout_ms, u32 max_retries) {
+bool Ps2Port::send_byte(u8 byte, u32 timeout_ms, u32 max_retries, bool irq_state) {
 	bool success = false;
 
 	for (; max_retries; --max_retries) {
 		ack = Ps2Ack::Nack;
 		flags |= Ps2PortFlags::WaitForAck;
 
-		lock.manual_unlock();
+		lock.manual_unlock(irq_state);
 
 		success = send(byte);
 		if (success) {
 			event.wait_with_timeout(timeout_ms * US_IN_MS);
 		}
 
-		lock.manual_lock();
+		irq_state = lock.manual_lock();
 
 		if (ack != Ps2Ack::Nack) {
 			break;

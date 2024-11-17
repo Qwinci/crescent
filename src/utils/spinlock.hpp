@@ -244,7 +244,7 @@ public:
 	struct Guard {
 		~Guard() {
 			owner->inner.manual_unlock();
-			arch_enable_irqs(owner->old);
+			arch_enable_irqs(old);
 		}
 
 		operator T&() { // NOLINT(*-explicit-constructor)
@@ -260,16 +260,18 @@ public:
 		}
 
 	private:
-		constexpr explicit Guard(IrqSpinlock* owner) : owner {owner} {}
+		constexpr explicit Guard(IrqSpinlock* owner, bool old)
+			: owner {owner}, old {old} {}
 
 		friend class IrqSpinlock;
 		IrqSpinlock* owner;
+		bool old;
 	};
 
 	Guard lock() {
-		old = arch_enable_irqs(false);
+		auto old = arch_enable_irqs(false);
 		inner.manual_lock();
-		return Guard {this};
+		return Guard {this, old};
 	}
 
 	T* get_unsafe() {
@@ -279,7 +281,6 @@ public:
 private:
 	T data {};
 	Spinlock<void> inner;
-	bool old {};
 };
 
 template<>
@@ -290,33 +291,35 @@ public:
 	struct Guard {
 		~Guard() {
 			owner->inner.manual_unlock();
-			arch_enable_irqs(owner->old);
+			arch_enable_irqs(old);
 		}
 
 	private:
-		constexpr explicit Guard(IrqSpinlock* owner) : owner {owner} {}
+		constexpr explicit Guard(IrqSpinlock* owner, bool old)
+			: owner {owner}, old {old} {}
 
 		friend class IrqSpinlock;
 		IrqSpinlock* owner;
+		bool old;
 	};
 
-	void manual_lock() {
-		old = arch_enable_irqs(false);
+	[[nodiscard]] bool manual_lock() {
+		auto old = arch_enable_irqs(false);
 		inner.manual_lock();
+		return old;
 	}
 
-	void manual_unlock() {
+	void manual_unlock(bool old) {
 		inner.manual_unlock();
 		arch_enable_irqs(old);
 	}
 
 	Guard lock() {
-		old = arch_enable_irqs(false);
+		auto old = arch_enable_irqs(false);
 		inner.manual_lock();
-		return Guard {this};
+		return Guard {this, old};
 	}
 
 private:
 	Spinlock<void> inner;
-	bool old {};
 };

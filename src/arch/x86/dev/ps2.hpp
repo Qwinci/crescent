@@ -107,7 +107,7 @@ private:
 		Nack
 	};
 
-	bool send_byte(u8 byte, u32 timeout_ms, u32 max_retries);
+	bool send_byte(u8 byte, u32 timeout_ms, u32 max_retries, bool irq_state);
 };
 
 void x86_ps2_init();
