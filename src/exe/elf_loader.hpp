@@ -4,6 +4,10 @@
 
 struct LoadedElf {
 	void (*entry)(void*);
+	usize base;
+	usize phdrs_addr;
+	u16 phdr_count;
+	u16 phdr_size;
 };
 
 enum class ElfLoadError {

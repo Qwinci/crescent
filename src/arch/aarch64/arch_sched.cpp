@@ -1,6 +1,7 @@
-#include "sched/sched.hpp"
 #include "arch/cpu.hpp"
+#include "mem/vspace.hpp"
 #include "sched/process.hpp"
+#include "sched/sched.hpp"
 
 asm(R"(
 .pushsection .text
@@ -220,6 +221,95 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
 	else {
 		frame->x[13] = reinterpret_cast<u64>(arch_on_first_switch);
 	}
+}
+
+#define AT_PHDR 3
+#define AT_PHENT 4
+#define AT_PHNUM 5
+#define AT_BASE 7
+#define AT_ENTRY 9
+
+ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
+	assert(process->user);
+
+	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - sizeof(InitFrame);
+	auto* frame = reinterpret_cast<InitFrame*>(sp);
+	memset(frame, 0, sizeof(InitFrame));
+	frame->x[1] = sysv.ld_entry;
+
+	user_stack_base = reinterpret_cast<u8*>(process->allocate(
+		nullptr,
+		USER_STACK_SIZE + PAGE_SIZE,
+		MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, nullptr));
+	assert(user_stack_base);
+	process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
+
+	simd = static_cast<u8*>(ALLOCATOR.alloc(sizeof(SimdRegisters)));
+	assert(simd);
+	memset(simd, 0, sizeof(SimdRegisters));
+	frame->x[13] = reinterpret_cast<u64>(arch_on_first_switch_user);
+
+	usize data_size = 16 * 8;
+	usize aligned_data_size = (data_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+	auto kernel_mapping = KERNEL_VSPACE.alloc(aligned_data_size);
+	assert(kernel_mapping);
+	for (usize i = 0; i < aligned_data_size; i += PAGE_SIZE) {
+		auto status = KERNEL_PROCESS->page_map.map(
+			reinterpret_cast<u64>(kernel_mapping) + i,
+			process->page_map.get_phys(reinterpret_cast<u64>(user_stack_base) + USER_STACK_SIZE + PAGE_SIZE - aligned_data_size + i),
+			PageFlags::Read | PageFlags::Write,
+			CacheMode::WriteBack);
+		assert(status);
+	}
+
+	u64 user_rsp = offset(user_stack_base, u64, USER_STACK_SIZE + PAGE_SIZE);
+	u64* kernel_user_rsp = offset(kernel_mapping, u64*, aligned_data_size);
+
+	auto push = [&](u64 value) {
+		*--kernel_user_rsp = value;
+		user_rsp -= 8;
+	};
+
+	// align to 16 bytes
+	push(0);
+
+	// aux end
+	push(0);
+	push(0);
+
+	push(sysv.exe_entry);
+	push(AT_ENTRY);
+
+	push(sysv.ld_base);
+	push(AT_BASE);
+
+	push(sysv.exe_phdr_count);
+	push(AT_PHNUM);
+
+	push(sysv.exe_phdr_size);
+	push(AT_PHENT);
+
+	push(sysv.exe_phdrs_addr);
+	push(AT_PHDR);
+
+	// env end
+	push(0);
+	// env (nothing)
+	// argv end
+	push(0);
+	// argv (nothing)
+	// argc
+	push(0);
+
+	for (usize i = 0; i < aligned_data_size; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.unmap(reinterpret_cast<u64>(kernel_mapping) + i);
+	}
+	KERNEL_VSPACE.free(kernel_mapping, aligned_data_size);
+
+	frame->x[2] = user_rsp;
 }
 
 ArchThread::~ArchThread() {

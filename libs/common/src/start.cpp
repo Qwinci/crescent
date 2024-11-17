@@ -16,13 +16,31 @@ extern Fn __fini_array_end[];
 
 #ifdef __x86_64__
 #define R_RELATIVE R_X86_64_RELATIVE
+
+asm(R"(
+.pushsection .text
+.globl _start
+_start:
+	call c_start
+.popsection
+)");
+
 #elif defined(__aarch64__)
 #define R_RELATIVE R_AARCH64_RELATIVE
+
+asm(R"(
+.pushsection .text
+.globl _start
+_start:
+	b c_start
+.popsection
+)");
+
 #else
 #error Unsupported architecture
 #endif
 
-extern "C" void _start() {
+extern "C" void c_start() {
 	auto base = reinterpret_cast<uintptr_t>(__ehdr_start);
 
 	uintptr_t rela_addr = 0;

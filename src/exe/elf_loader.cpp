@@ -70,8 +70,14 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 		return ElfLoadError::NoMemory;
 	}
 
+	uintptr_t phdrs_offset = 0;
+
 	for (const auto& phdr : phdrs) {
-		if (phdr.p_type != PhdrType::Load) {
+		if (phdr.p_type == PhdrType::Phdr) {
+			phdrs_offset = phdr.p_vaddr - base;
+			continue;
+		}
+		else if (phdr.p_type != PhdrType::Load) {
 			continue;
 		}
 
@@ -110,6 +116,10 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 	}
 
 	return LoadedElf {
-		.entry = reinterpret_cast<void (*)(void*)>(user_mem + (ehdr.e_entry - base))
+		.entry = reinterpret_cast<void (*)(void*)>(user_mem + (ehdr.e_entry - base)),
+		.base = user_mem,
+		.phdrs_addr = user_mem + phdrs_offset,
+		.phdr_count = ehdr.e_phnum,
+		.phdr_size = ehdr.e_phentsize
 	};
 }

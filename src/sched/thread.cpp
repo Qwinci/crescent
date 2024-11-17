@@ -7,6 +7,11 @@ Thread::Thread(kstd::string_view name, Cpu* cpu, Process* process, void (*fn)(vo
 	process->add_thread(this);
 }
 
+Thread::Thread(kstd::string_view name, Cpu* cpu, Process* process, const SysvInfo& sysv)
+	: ArchThread {sysv, process}, name {name}, cpu {cpu}, process {process} {
+	process->add_thread(this);
+}
+
 Thread::Thread(kstd::string_view name, Cpu* cpu, Process* process) : ArchThread {}, name {name}, cpu {cpu}, process {process} {
 	process->add_thread(this);
 }

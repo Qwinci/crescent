@@ -161,8 +161,16 @@ void print_mem() {
 	auto elf_result = elf_load(user_process, desktop_file.data());
 	assert(elf_result);
 
-	auto user_arg = reinterpret_cast<void*>(1234);
-	auto* user_thread = new Thread {"user thread", cpu, user_process, elf_result.value().entry, user_arg};
+	SysvInfo sysv_info {
+		.ld_entry = reinterpret_cast<usize>(elf_result.value().entry),
+		.exe_entry = reinterpret_cast<usize>(elf_result.value().entry),
+		.ld_base = elf_result.value().base,
+		.exe_phdrs_addr = elf_result.value().phdrs_addr,
+		.exe_phdr_count = elf_result.value().phdr_count,
+		.exe_phdr_size = elf_result.value().phdr_size
+	};
+
+	auto* user_thread = new Thread {"user thread", cpu, user_process, sysv_info};
 
 	println("[kernel]: launching init");
 	print_mem();

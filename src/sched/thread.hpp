@@ -2,6 +2,7 @@
 #include "arch/arch_thread.hpp"
 #include "double_list.hpp"
 #include "string.hpp"
+#include "sysv.hpp"
 
 struct Cpu;
 struct Process;
@@ -21,6 +22,7 @@ struct ThreadDescriptor {
 
 struct Thread : public ArchThread {
 	Thread(kstd::string_view name, Cpu* cpu, Process* process, void (*fn)(void*), void* arg);
+	Thread(kstd::string_view name, Cpu* cpu, Process* process, const SysvInfo& sysv);
 	Thread(kstd::string_view name, Cpu* cpu, Process* process);
 
 	void sleep_for(u64 us) const;

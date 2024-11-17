@@ -192,6 +192,15 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
+			SysvInfo sysv_info {
+				.ld_entry = reinterpret_cast<usize>(elf_result.value().entry),
+				.exe_entry = reinterpret_cast<usize>(elf_result.value().entry),
+				.ld_base = elf_result.value().base,
+				.exe_phdrs_addr = elf_result.value().phdrs_addr,
+				.exe_phdr_count = elf_result.value().phdr_count,
+				.exe_phdr_size = elf_result.value().phdr_size
+			};
+
 			auto descriptor = kstd::make_shared<ProcessDescriptor>(process, 0);
 			CrescentHandle handle = thread->process->handles.insert(descriptor);
 			process->add_descriptor(descriptor.data());
@@ -209,8 +218,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				name,
 				cpu,
 				process,
-				elf_result.value().entry,
-				nullptr
+				sysv_info
 			};
 			cpu->scheduler.queue(new_thread);
 			cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
