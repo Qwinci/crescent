@@ -88,6 +88,7 @@ extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 
 		if (current->handler_ip) {
 			frame->elr_el1 = current->handler_ip;
+			frame->sp = current->handler_sp;
 			return;
 		}
 		else if (current->process->handle_pagefault(frame->far_el1)) {

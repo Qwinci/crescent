@@ -125,7 +125,7 @@ struct UserInitFrame {
 	u64 rsp;
 };
 
-constexpr usize KERNEL_STACK_SIZE = 1024 * 32;
+constexpr usize KERNEL_STACK_SIZE = 1024 * 64;
 constexpr usize USER_STACK_SIZE = 1024 * 1024;
 
 extern "C" void arch_on_first_switch();

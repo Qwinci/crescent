@@ -139,7 +139,7 @@ void sched_before_switch(Thread* prev, Thread* thread) {
 	}
 }
 
-constexpr usize KERNEL_STACK_SIZE = 1024 * 32;
+constexpr usize KERNEL_STACK_SIZE = 1024 * 64;
 constexpr usize USER_STACK_SIZE = 1024 * 1024;
 
 struct InitFrame {
