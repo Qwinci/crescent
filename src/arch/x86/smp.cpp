@@ -183,7 +183,8 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	}
 
 	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
-	cpu->scheduler.block();
+	auto state = cpu->scheduler.prepare_for_block();
+	cpu->scheduler.block(state);
 	panic("scheduler block returned");
 }
 
@@ -356,7 +357,8 @@ static void ap_wake_entry(void* arg) {
 		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(cpu->saved_halt_rsp), "r"(cpu->saved_halt_rip));
 	}
 	else {
-		cpu->scheduler.block();
+		auto state = cpu->scheduler.prepare_for_block();
+		cpu->scheduler.block(state);
 	}
 	panic("resumed in ap wake entry");
 }
@@ -403,7 +405,8 @@ static void bsp_wake_entry(void*) {
 		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(CPUS[0]->saved_halt_rsp), "r"(CPUS[0]->saved_halt_rip));
 	}
 	else {
-		CPUS[0]->scheduler.block();
+		auto state = CPUS[0]->scheduler.prepare_for_block();
+		CPUS[0]->scheduler.block(state);
 	}
 	panic("resumed in bsp wake entry");
 }

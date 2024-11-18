@@ -179,6 +179,7 @@ void print_mem() {
 	print_mem();
 	cpu->scheduler.queue(user_thread);
 	cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
-	cpu->scheduler.block();
+	auto state = cpu->scheduler.prepare_for_block();
+	cpu->scheduler.block(state);
 	panic("returned to kmain");
 }

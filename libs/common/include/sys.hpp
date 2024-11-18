@@ -55,3 +55,6 @@ int sys_socket_get_peer_name(CrescentHandle handle, SocketAddress& address);
 int sys_shared_mem_alloc(CrescentHandle& handle, size_t size);
 int sys_shared_mem_map(CrescentHandle handle, void** ptr);
 int sys_shared_mem_share(CrescentHandle handle, CrescentHandle process_handle, CrescentHandle& result_handle);
+
+int sys_futex_wait(int* ptr, int expected, uint64_t timeout_ns);
+int sys_futex_wake(int* ptr, int count);

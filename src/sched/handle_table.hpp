@@ -45,5 +45,5 @@ private:
 	kstd::vector<Handle> table;
 	CrescentHandle count {};
 	kstd::vector<CrescentHandle> free_handles;
-	Spinlock<void> lock {};
+	IrqSpinlock<void> lock {};
 };

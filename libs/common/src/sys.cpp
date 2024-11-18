@@ -163,3 +163,11 @@ int sys_shared_mem_map(CrescentHandle handle, void** ptr) {
 int sys_shared_mem_share(CrescentHandle handle, CrescentHandle process_handle, CrescentHandle& result_handle) {
 	return static_cast<int>(syscall(SYS_SHARED_MEM_SHARE, handle, process_handle, &result_handle));
 }
+
+int sys_futex_wait(int* ptr, int expected, uint64_t timeout_ns) {
+	return static_cast<int>(syscall(SYS_FUTEX_WAIT, ptr, expected, timeout_ns));
+}
+
+int sys_futex_wake(int* ptr, int count) {
+	return static_cast<int>(syscall(SYS_FUTEX_WAKE, ptr, count));
+}

@@ -194,7 +194,8 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 	}
 
 	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
-	cpu->scheduler.block();
+	auto state = cpu->scheduler.prepare_for_block();
+	cpu->scheduler.block(state);
 	panic("scheduler block returned");
 }
 

@@ -107,6 +107,19 @@ struct Process {
 	bool killed {};
 	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
 	Spinlock<CpuSet> cpu_set {};
+
+	struct Futex {
+		RbTreeHook hook {};
+		kstd::atomic<int>* ptr {};
+		DoubleList<Thread, &Thread::misc_hook> waiters {};
+
+		constexpr int operator<=>(const Futex& other) const {
+			return kstd::threeway(ptr, other.ptr);
+		}
+	};
+
+	Spinlock<RbTree<Futex, &Futex::hook>> futexes {};
+
 private:
 	struct Mapping {
 		RbTreeHook hook {};

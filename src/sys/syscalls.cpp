@@ -1714,6 +1714,93 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
+		case SYS_FUTEX_WAIT:
+		{
+			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
+			auto value = static_cast<int>(*frame->arg1());
+			auto timeout_ns = *frame->arg2();
+
+			IrqGuard irq_guard {};
+
+			bool state;
+			{
+				auto guard = thread->process->futexes.lock();
+
+				// todo if this faults the process is killed
+				auto current_value = ptr->load(kstd::memory_order::seq_cst);
+				if (current_value != value) {
+					*frame->ret() = ERR_TRY_AGAIN;
+					break;
+				}
+
+				auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
+				if (!entry) {
+					auto* new_entry = new Process::Futex {
+						.ptr = ptr
+					};
+					guard->insert(new_entry);
+					entry = new_entry;
+				}
+
+				entry->waiters.push(thread);
+				thread->sleep_interrupted = false;
+				if (timeout_ns == UINT64_MAX) {
+					state = thread->cpu->scheduler.prepare_for_block();
+				}
+				else {
+					auto timeout_us = timeout_ns / NS_IN_US;
+					if (timeout_us > SCHED_MAX_SLEEP_US) {
+						timeout_us = SCHED_MAX_SLEEP_US;
+					}
+					state = thread->cpu->scheduler.prepare_for_sleep(timeout_us);
+				}
+			}
+
+			if (timeout_ns == UINT64_MAX) {
+				thread->cpu->scheduler.block(state);
+			}
+			else {
+				thread->cpu->scheduler.sleep(state);
+
+				if (thread->sleep_interrupted) {
+					*frame->ret() = ERR_TIMEOUT;
+				}
+				else {
+					*frame->ret() = 0;
+				}
+			}
+
+			break;
+		}
+		case SYS_FUTEX_WAKE:
+		{
+			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
+			auto count = static_cast<int>(*frame->arg1());
+
+			IrqGuard irq_guard {};
+			auto guard = thread->process->futexes.lock();
+
+			auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
+			if (!entry) {
+				*frame->ret() = 0;
+				break;
+			}
+
+			assert(!entry->waiters.is_empty());
+			for (; !entry->waiters.is_empty() && count > 0; --count) {
+				auto waiter = entry->waiters.pop_front();
+				auto thread_guard = waiter->sched_lock.lock();
+				assert(thread->status == Thread::Status::Sleeping);
+				thread->cpu->scheduler.unblock(thread, true, true);
+			}
+
+			if (entry->waiters.is_empty()) {
+				guard->remove(entry);
+				delete entry;
+			}
+
+			break;
+		}
 		default:
 			println("[kernel]: invalid syscall ", num);
 			*frame->ret() = ERR_INVALID_ARGUMENT;

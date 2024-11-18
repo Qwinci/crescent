@@ -108,7 +108,8 @@
 			}
 		}
 
-		scheduler.sleep(US_IN_S);
+		auto state = scheduler.prepare_for_sleep(US_IN_S);
+		scheduler.sleep(state);
 	}
 }
 
@@ -278,19 +279,27 @@ void Scheduler::do_schedule() const {
 	sched_switch_thread(prev, current);
 }
 
-void Scheduler::block() {
-	IrqGuard irq_guard {};
-	auto current_guard = current->sched_lock.lock();
+bool Scheduler::prepare_for_block() {
+	auto state = arch_enable_irqs(false);
+
+	current->sched_lock.manual_lock();
 	current->status = Thread::Status::Blocked;
 	current->cpu->cpu_tick_source->reset();
 
 	if (!current->pin_level && current->level_index > 0) {
 		--current->level_index;
 	}
+	us_to_next_schedule = 0;
 
+	return state;
+}
+
+void Scheduler::block(bool prepare_state) {
 	update_schedule();
 	enable_preemption(current->cpu);
 	do_schedule();
+	current->sched_lock.manual_unlock();
+	arch_enable_irqs(prepare_state);
 }
 
 void Scheduler::yield() {
@@ -352,6 +361,7 @@ void Scheduler::unblock(Thread* thread, bool remove_sleeping, bool assert_not_sl
 		thread->sleep_interrupted = true;
 		*/
 		thread->sleep_end = SIZE_MAX;
+		thread->sleep_interrupted = true;
 	}
 	else {
 		if (assert_not_sleeping) {
@@ -431,13 +441,13 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	cpu->cpu_tick_source->oneshot(amount);
 }
 
-void Scheduler::sleep(u64 us) {
-	if (!us) {
-		return;
-	}
-
-	IrqGuard irq_guard {};
+bool Scheduler::prepare_for_sleep(u64 us) {
+	auto state = arch_enable_irqs(false);
 	current->cpu->cpu_tick_source->reset();
+
+	if (!us) {
+		return state;
+	}
 
 	usize sleep_end;
 	{
@@ -446,7 +456,7 @@ void Scheduler::sleep(u64 us) {
 		sleep_end = now + us;
 	}
 
-	auto current_guard = current->sched_lock.lock();
+	current->sched_lock.manual_lock();
 	{
 		Thread* next_sleeping = nullptr;
 		auto guard = sleeping_threads.lock();
@@ -473,7 +483,13 @@ void Scheduler::sleep(u64 us) {
 		--current->level_index;
 	}
 
+	return state;
+}
+
+void Scheduler::sleep(bool prepare_state) {
 	update_schedule();
 	enable_preemption(current->cpu);
 	do_schedule();
+	current->sched_lock.manual_unlock();
+	arch_enable_irqs(prepare_state);
 }

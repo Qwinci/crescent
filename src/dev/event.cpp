@@ -13,6 +13,7 @@ void Event::wait() {
 	auto current = get_current_thread();
 
 	while (true) {
+		bool state;
 		{
 			auto guard = signaled_count.lock();
 			if (*guard) {
@@ -22,9 +23,10 @@ void Event::wait() {
 
 			auto waiters_guard = waiters.lock();
 			waiters_guard->push(current);
+			state = current->cpu->scheduler.prepare_for_block();
 		}
 
-		current->cpu->scheduler.block();
+		current->cpu->scheduler.block(state);
 	}
 }
 
@@ -32,6 +34,7 @@ bool Event::wait_with_timeout(u64 max_us) {
 	IrqGuard irq_guard {};
 	auto current = get_current_thread();
 
+	bool state;
 	{
 		auto guard = signaled_count.lock();
 		if (*guard) {
@@ -41,9 +44,10 @@ bool Event::wait_with_timeout(u64 max_us) {
 
 		auto waiters_guard = waiters.lock();
 		waiters_guard->push(current);
+		state = current->cpu->scheduler.prepare_for_sleep(max_us);
 	}
 
-	current->cpu->scheduler.sleep(max_us);
+	current->cpu->scheduler.sleep(state);
 	auto guard = signaled_count.lock();
 	if (*guard) {
 		--*guard;
