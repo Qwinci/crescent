@@ -67,7 +67,12 @@ typedef enum {
 	SYS_SHARED_MEM_SHARE,
 
 	SYS_FUTEX_WAIT,
-	SYS_FUTEX_WAKE
+	SYS_FUTEX_WAKE,
+
+	SYS_SET_FS_BASE,
+	SYS_SET_GS_BASE,
+	SYS_GET_FS_BASE,
+	SYS_GET_GS_BASE
 } CrescentSyscall;
 
 typedef enum {

@@ -59,3 +59,8 @@ int sys_shared_mem_share(CrescentHandle handle, CrescentHandle process_handle, C
 
 int sys_futex_wait(int* ptr, int expected, uint64_t timeout_ns);
 int sys_futex_wake(int* ptr, int count);
+
+int sys_set_fs_base(uintptr_t value);
+int sys_set_gs_base(uintptr_t value);
+int sys_get_fs_base(uintptr_t* value);
+int sys_get_gs_base(uintptr_t* value);

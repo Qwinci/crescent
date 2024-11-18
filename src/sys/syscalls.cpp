@@ -19,6 +19,7 @@
 
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
+#include "arch/x86/cpu.hpp"
 #elif defined(__aarch64__)
 #include "arch/aarch64/dev/psci.hpp"
 #include "exe/elf_loader.hpp"
@@ -1804,6 +1805,56 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				delete entry;
 			}
 
+			break;
+		}
+		case SYS_SET_FS_BASE:
+		{
+#ifdef __x86_64__
+			thread->fs_base = *frame->arg0();
+			msrs::IA32_FSBASE.write(thread->fs_base);
+			*frame->ret() = 0;
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_SET_GS_BASE:
+		{
+#ifdef __x86_64__
+			thread->gs_base = *frame->arg0();
+			msrs::IA32_KERNEL_GSBASE.write(thread->gs_base);
+			*frame->ret() = 0;
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_GET_FS_BASE:
+		{
+#ifdef __x86_64__
+			if (!UserAccessor(*frame->arg0()).store(thread->fs_base)) {
+				*frame->ret() = ERR_FAULT;
+			}
+			else {
+				*frame->ret() = 0;
+			}
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_GET_GS_BASE:
+		{
+#ifdef __x86_64__
+			if (!UserAccessor(*frame->arg0()).store(thread->gs_base)) {
+				*frame->ret() = ERR_FAULT;
+			}
+			else {
+				*frame->ret() = 0;
+			}
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
 			break;
 		}
 		default:

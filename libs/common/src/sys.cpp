@@ -175,3 +175,19 @@ int sys_futex_wait(int* ptr, int expected, uint64_t timeout_ns) {
 int sys_futex_wake(int* ptr, int count) {
 	return static_cast<int>(syscall(SYS_FUTEX_WAKE, ptr, count));
 }
+
+int sys_set_fs_base(uintptr_t value) {
+	return static_cast<int>(syscall(SYS_SET_FS_BASE, value));
+}
+
+int sys_set_gs_base(uintptr_t value) {
+	return static_cast<int>(syscall(SYS_SET_GS_BASE, value));
+}
+
+int sys_get_fs_base(uintptr_t* value) {
+	return static_cast<int>(syscall(SYS_GET_FS_BASE, value));
+}
+
+int sys_get_gs_base(uintptr_t* value) {
+	return static_cast<int>(syscall(SYS_GET_GS_BASE, value));
+}
