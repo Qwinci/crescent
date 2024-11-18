@@ -10,6 +10,7 @@ int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len
 [[noreturn]] void sys_process_exit(int status);
 int sys_kill(CrescentHandle handle);
 int sys_get_status(CrescentHandle handle);
+int sys_get_thread_id();
 int sys_sleep(uint64_t us);
 int sys_get_time(uint64_t* us);
 int sys_get_date_time(CrescentDateTime& time);

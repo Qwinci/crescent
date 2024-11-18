@@ -302,6 +302,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 			break;
 		}
+		case SYS_GET_THREAD_ID:
+		{
+			*frame->ret() = thread->thread_id;
+			break;
+		}
 		case SYS_SLEEP:
 		{
 			auto us = *frame->arg0();

@@ -149,7 +149,9 @@ void Process::free(usize ptr, usize) {
 
 void Process::add_thread(Thread* thread) {
 	IrqGuard irq_guard {};
-	threads.lock()->push(thread);
+	auto guard = threads.lock();
+	thread->thread_id = ++max_thread_id;
+	guard->push(thread);
 }
 
 void Process::remove_thread(Thread* thread) {

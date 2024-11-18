@@ -27,6 +27,10 @@ int sys_get_status(CrescentHandle handle) {
 	return static_cast<int>(syscall(SYS_GET_STATUS, handle));
 }
 
+int sys_get_thread_id() {
+	return static_cast<int>(syscall(SYS_GET_THREAD_ID));
+}
+
 int sys_sleep(uint64_t us) {
 	return static_cast<int>(syscall(SYS_SLEEP, us));
 }

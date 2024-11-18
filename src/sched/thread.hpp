@@ -55,6 +55,7 @@ struct Thread : public ArchThread {
 	bool pin_cpu {};
 	Spinlock<void> sched_lock {};
 	bool sleep_interrupted {};
+	uint32_t thread_id {};
 };
 
 #ifdef __x86_64__

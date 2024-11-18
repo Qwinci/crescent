@@ -135,6 +135,7 @@ private:
 	VMem vmem {};
 	Spinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
 	Spinlock<DoubleList<ProcessDescriptor, &ProcessDescriptor::hook>> descriptors {};
+	uint32_t max_thread_id {};
 };
 
 extern ManuallyInit<Process> KERNEL_PROCESS;
