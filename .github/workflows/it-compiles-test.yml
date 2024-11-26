@@ -4,6 +4,11 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      - name: Disable initramfs update
+        run: sudo sed -i 's/yes/no/g' /etc/initramfs-tools/update-initramfs.conf
+      - name: Disable man-db update
+        run: sudo rm -f /var/lib/man-db/auto-update
+
       - name: Install llvm
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -13,28 +18,29 @@ jobs:
           sudo rm -f /usr/bin/clang /usr/bin/clang++
           sudo ln -s $(which clang-19) /usr/bin/clang
           sudo ln -s $(which clang++-19) /usr/bin/clang++
+          sudo ln -s $(which llvm-objcopy-19) /usr/bin/llvm-objcopy
+
+      - name: Install qpkg
+        run: |
+          wget https://github.com/Qwinci/qpkg/releases/latest/download/qpkg-x86_64-unknown-linux-musl.tar.gz
+          tar -xf qpkg-x86_64-unknown-linux-musl.tar.gz
+          sudo mv qpkg /usr/bin
 
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install binutils gcc g++ cmake ninja-build xorriso acpica-tools git -y
+          sudo apt-get update && sudo apt-get install make cmake ninja-build acpica-tools git -y
 
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          repository: 'Qwinci/crescent-bootstrap'
           submodules: true
 
-      - name: Build (x86_64 Clang)
+      - name: Build (x86_64)
         run: |
-          LDFLAGS="-fuse-ld=lld" cmake -B build_x86_64_clang -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          ninja -C build_x86_64_clang
+          make
 
-      - name: Build (x86_64 Gcc)
+      - name: Build (Aarch64)
         run: |
-          cmake -B build_x86_64_gcc -G Ninja
-          ninja -C build_x86_64_gcc
-
-      - name: Build (Aarch64 Clang)
-        run: |
-          cmake -B build_aarch64_clang -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain_clang_aarch64.cmake
-          ninja -C build_aarch64_clang
+          make ARCH=aarch64
 
