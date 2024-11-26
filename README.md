@@ -16,36 +16,47 @@ This repository hosts the Crescent kernel and apps.
 - Works on real hardware and supports different kinds of devices
 - Architectures supported: X86-64, AArch64
 
-### Building the kernel and apps
-The required tools for building are:
-- C/C++ compiler
+### Building the full distribution
+Building the whole distribution is best done using [qpkg](https://github.com/Qwinci/qpkg), the required tools for that are:
+- Clang >= 19
+- [qpkg](https://github.com/Qwinci/qpkg/releases)
+- CMake/Meson/Ninja/Make depending on which packages are built
+#### Steps
+Clone the [crescent bootstrap repository](https://github.com/Qwinci/crescent-bootstrap) using `--single-branch` git option to avoid pulling in binaries from the other branches,
+and proceed with the instructions below in that directory.
+
+- Run `make`. This will build the distribution for x86_64,
+you can optionally select an architecture with `arch` e.g.
+`make ARCH=aarch64`.
+- Create an empty image once by running `make create_image`
+- Update the image using `make update_image`.
+This needs to be done for any changes to the installed packages or the system root to take effect.
+- Run the resulting image in qemu using `make run`
+
+Installing other packages is done using `qpkg install <name>`
+and running `qpkg sync <name>` to sync the package to the sysroot.
+In case you need to rebuild a package you can use `qpkg rebuild <name>`,
+it is an alias to `qpkg build install sync --force <name>`.
+
+### Building the plain kernel
+It is also possible to build the plain kernel, for that you need the following tools:
+- C++ compiler
 - CMake
 - Ninja (or Make, but the steps below assume Ninja is used)
 #### Steps
 Note: If you want to cross-compile to a different architecture,
 there are some pre-defined cmake toolchain files in `cmake` folder
 that you can use by adding `-DCMAKE_TOOLCHAIN_FILE=<path to toolchain file>`
-to the cmake commandline.
-If there isn't an existing toolchain for the target that you want to build for
+to the cmake command line.
+If there isn't an existing toolchain file for the target that you want to build for
 then refer to the existing toolchains and CMake documentation on toolchain files
 and create a new one.
 - `mkdir build`
 - `cd build`
-- `cmake -G Ninja ..`
+- `cmake -G Ninja .. -DBUILD_APPS=OFF`
 - `ninja`
 
-There are also different targets that may be useful:
-
-`run` target for running the kernel in Qemu
-- `ninja run`
-
-`debug` target that runs the kernel in qemu and also launches remote gdb
-- `ninja debug`
-- `gdb bin/crescent`
-- in gdb: `target remote localhost:1234`
-
-`boot.img` target on AArch64 to create an android boot image (needs `mkbootimg`)
-- `ninja boot.img`
+Note: `BUILD_APPS` needs to be off when not using a Crescent cross toolchain.
 
 ### Todo
 - [x] Basic logging
@@ -67,7 +78,7 @@ There are also different targets that may be useful:
     - [ ] Power management
     	- [x] Shutdown
     	- [x] Reboot
-    	- [ ] Sleep
+    	- [ ] Sleep (partially done)
 - [ ] Filesystems
     - [x] TAR initramfs
     - [ ] FAT32
