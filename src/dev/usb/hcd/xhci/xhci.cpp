@@ -831,7 +831,7 @@ struct XhciController {
 
 		auto& slot = slots[slot_index];
 
-		slot.default_control_ring.get_unsafe()->max_packet_size = max_packet_size;
+		slot.default_control_ring.get_unsafe().max_packet_size = max_packet_size;
 		slot.port = port;
 		slot.speed = slot_speed;
 
@@ -848,9 +848,9 @@ struct XhciController {
 		ctx.ep0->third =
 			endpoint_ctx::third::AVG_TRB_LEN(8);
 		ctx.ep0->tr_dequeue_ptr_low =
-			slot.default_control_ring.get_unsafe()->phys |
+			slot.default_control_ring.get_unsafe().phys |
 			endpoint_ctx::tr_dequeue_ptr::DCS;
-		ctx.ep0->tr_dequeue_ptr_high = slot.default_control_ring.get_unsafe()->phys >> 32;
+		ctx.ep0->tr_dequeue_ptr_high = slot.default_control_ring.get_unsafe().phys >> 32;
 
 		assert(slot.state == DeviceContext::State::Initial ||
 		    slot.state == DeviceContext::State::Default);
@@ -980,7 +980,7 @@ struct XhciController {
 						usb::setup::desc_type::DEVICE << 8 | 0,
 						0,
 						page,
-						static_cast<u16>(slot.default_control_ring.get_unsafe()->max_packet_size)
+						static_cast<u16>(slot.default_control_ring.get_unsafe().max_packet_size)
 					};
 
 					auto guard = slot.default_control_ring.lock();
@@ -1161,7 +1161,7 @@ struct XhciController {
 								slot.device_descriptor.max_packet_size0 = 3;
 							}
 
-							slot.default_control_ring.get_unsafe()->reset();
+							slot.default_control_ring.get_unsafe().reset();
 
 							if (slot.speed >= DeviceContext::Speed::Super) {
 								address_device(port.slot, slot.port, 1U << slot.device_descriptor.max_packet_size0);
@@ -1743,12 +1743,12 @@ usb::Status DeviceContext::set_config(const UniquePhysical& config) {
 			}
 
 			auto& real_ep = ep->dir_in() ? endpoint[num].in : endpoint[num].out;
-			*real_ep.ring.get_unsafe() = new TransferRing {};
+			real_ep.ring.get_unsafe() = new TransferRing {};
 
 			ep_ctx->tr_dequeue_ptr_low =
-				(*real_ep.ring.get_unsafe())->phys |
+				(*real_ep.ring.get_unsafe()).phys |
 				endpoint_ctx::tr_dequeue_ptr::DCS;
-			ep_ctx->tr_dequeue_ptr_high = (*real_ep.ring.get_unsafe())->phys >> 32;
+			ep_ctx->tr_dequeue_ptr_high = (*real_ep.ring.get_unsafe()).phys >> 32;
 		}
 		else if (type == usb::setup::desc_type::SS_ENDPOINT_COMPANION) {
 			auto* desc = static_cast<usb::SsEndpointCompanionDesc*>(data);

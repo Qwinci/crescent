@@ -7,5 +7,5 @@ LIB(ui
 )
 
 target_include_directories(ui PUBLIC include)
-target_link_libraries(ui PUBLIC libcxx text)
+target_link_libraries(ui PUBLIC text)
 target_link_libraries(ui PRIVATE common)

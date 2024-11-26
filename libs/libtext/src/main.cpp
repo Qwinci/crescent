@@ -17,11 +17,12 @@ struct Psf2Header {
 
 std::optional<Context> Context::create(std::string_view font_path) {
 	if (font_path.empty()) {
-		font_path = "/fonts/Tamsyn8x16r.psf";
+		font_path = "/usr/crescent/Tamsyn8x16r.psf";
 	}
 
 	CrescentHandle handle;
 	if (sys_open(handle, font_path.data(), font_path.size(), 0) != 0) {
+		assert(!"failed to open /usr/crescent/Tamsyn8x16r.psf");
 		return std::nullopt;
 	}
 

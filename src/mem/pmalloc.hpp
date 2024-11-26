@@ -11,7 +11,7 @@ struct Page {
 	bool used : 1 {};
 	bool in_list : 1 {};
 	u8 list_index : 4 {};
-	Spinlock<void> lock {};
+	IrqSpinlock<void> lock {};
 
 	[[nodiscard]] constexpr usize phys() const {
 		return page_num << 12;

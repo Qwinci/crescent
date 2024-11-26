@@ -158,16 +158,22 @@ void print_mem() {
 
 	auto* user_process = new Process {"user process", true, EmptyHandle {}, std::move(stdout_file), std::move(stderr_file)};
 
-	auto root = INITRD_VFS->get_root();
-	auto bin = root->lookup("bin");
-	auto desktop_file = bin->lookup("desktop");
+	auto desktop_file = vfs_lookup(INITRD_VFS->get_root(), "bin/desktop");
+	assert(desktop_file);
+
 	auto elf_result = elf_load(user_process, desktop_file.data());
 	assert(elf_result);
 
+	auto ld_file = vfs_lookup(INITRD_VFS->get_root(), "usr/lib/libc.so");
+	assert(ld_file);
+
+	auto ld_elf_result = elf_load(user_process, ld_file.data());
+	assert(ld_elf_result);
+
 	SysvInfo sysv_info {
-		.ld_entry = reinterpret_cast<usize>(elf_result.value().entry),
+		.ld_entry = reinterpret_cast<usize>(ld_elf_result.value().entry),
 		.exe_entry = reinterpret_cast<usize>(elf_result.value().entry),
-		.ld_base = elf_result.value().base,
+		.ld_base = ld_elf_result.value().base,
 		.exe_phdrs_addr = elf_result.value().phdrs_addr,
 		.exe_phdr_count = elf_result.value().phdr_count,
 		.exe_phdr_size = elf_result.value().phdr_size

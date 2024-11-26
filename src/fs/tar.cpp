@@ -43,6 +43,7 @@ struct TarFileNode : public VNode {
 
 		kstd::string_view dir_name {hdr->name};
 
+		start:
 		usize offset = 512 + ALIGNUP(parse_oct(hdr->size), 512);
 		while (true) {
 			auto* next = offset(hdr, const TarHeader*, offset);
@@ -57,6 +58,12 @@ struct TarFileNode : public VNode {
 			next_name.remove_suffix("/");
 
 			if (next_name == name) {
+				if (next->type_flag == '2') {
+					// todo multi-component
+					name = next->linkname;
+					goto start;
+				}
+
 				return kstd::make_shared<TarFileNode>(next);
 			}
 

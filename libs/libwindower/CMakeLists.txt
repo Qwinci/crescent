@@ -3,4 +3,4 @@ LIB(windower
 )
 
 target_include_directories(windower PUBLIC include)
-target_link_libraries(windower PRIVATE libcxx common)
+target_link_libraries(windower PRIVATE common)

@@ -274,8 +274,8 @@ public:
 		return Guard {this, old};
 	}
 
-	T* get_unsafe() {
-		return &data;
+	T& get_unsafe() {
+		return data;
 	}
 
 private:

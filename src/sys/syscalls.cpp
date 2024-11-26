@@ -193,10 +193,16 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
+			auto ld_file = vfs_lookup(INITRD_VFS->get_root(), "usr/lib/libc.so");
+			assert(ld_file);
+
+			auto ld_elf_result = elf_load(process, ld_file.data());
+			assert(ld_elf_result);
+
 			SysvInfo sysv_info {
-				.ld_entry = reinterpret_cast<usize>(elf_result.value().entry),
+				.ld_entry = reinterpret_cast<usize>(ld_elf_result.value().entry),
 				.exe_entry = reinterpret_cast<usize>(elf_result.value().entry),
-				.ld_base = elf_result.value().base,
+				.ld_base = ld_elf_result.value().base,
 				.exe_phdrs_addr = elf_result.value().phdrs_addr,
 				.exe_phdr_count = elf_result.value().phdr_count,
 				.exe_phdr_size = elf_result.value().phdr_size

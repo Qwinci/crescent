@@ -73,7 +73,13 @@ mov %rsp, %rbp
 
 mov $\i, %esi
 
+.cfi_def_cfa_register %rbp
+and $~15, %rsp
+
 call arch_irq_handler
+
+mov %rbp, %rsp
+.cfi_def_cfa_register %rsp
 
 add $16, %rsp
 .cfi_adjust_cfa_offset -16

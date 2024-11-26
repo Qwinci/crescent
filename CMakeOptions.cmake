@@ -1,6 +1,8 @@
 set(CONFIG_MAX_CPUS 24 CACHE STRING "Maximum number of cpus to support")
 option(CONFIG_TRACING "Enable verbose trace logging" OFF)
 
+option(BUILD_APPS "Build apps and libraries" ON)
+
 if(ARCH STREQUAL "x86_64")
 	set(CONFIG_PCI ON CACHE BOOL "Enable pci support")
 else()

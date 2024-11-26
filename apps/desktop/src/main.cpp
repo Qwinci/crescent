@@ -624,6 +624,9 @@ int main() {
 	assert(status == 0);
 
 	while (true) {
+		uint64_t start_time;
+		sys_get_time(&start_time);
+
 		for (size_t i = 0; i < CONNECTIONS->size();) {
 			auto& connection = (*CONNECTIONS)[i];
 
@@ -652,7 +655,7 @@ int main() {
 					}
 				}
 
-				CONNECTIONS->erase(&connection);
+				CONNECTIONS->erase(CONNECTIONS->begin() + (&connection - CONNECTIONS->data()));
 				continue;
 			}
 
@@ -729,60 +732,60 @@ int main() {
 			++i;
 		}
 
-		InputEvent event;
-		if (sys_poll_event(event, US_IN_S / 144) == ERR_TRY_AGAIN) {
-
-		}
-		else if (event.type == EVENT_TYPE_MOUSE) {
-			if (mouse_x + event.mouse.x_movement < 0) {
-				mouse_x = 0;
+		while (true) {
+			InputEvent event;
+			if (sys_poll_event(event, 0) == ERR_TRY_AGAIN) {
+				break;
 			}
-			else {
-				mouse_x += event.mouse.x_movement;
-				if (mouse_x > static_cast<int32_t>(info.width)) {
-					mouse_x = static_cast<int32_t>(info.width);
+			else if (event.type == EVENT_TYPE_MOUSE) {
+				if (mouse_x + event.mouse.x_movement < 0) {
+					mouse_x = 0;
 				}
-			}
-			if (mouse_y + -event.mouse.y_movement < 0) {
-				mouse_y = 0;
-			}
-			else {
-				mouse_y += -event.mouse.y_movement;
-				if (mouse_y > static_cast<int32_t>(info.height)) {
-					mouse_y = static_cast<int32_t>(info.height);
+				else {
+					mouse_x += event.mouse.x_movement;
+					if (mouse_x > static_cast<int32_t>(info.width)) {
+						mouse_x = static_cast<int32_t>(info.width);
+					}
 				}
-			}
+				if (mouse_y + -event.mouse.y_movement < 0) {
+					mouse_y = 0;
+				}
+				else {
+					mouse_y += -event.mouse.y_movement;
+					if (mouse_y > static_cast<int32_t>(info.height)) {
+						mouse_y = static_cast<int32_t>(info.height);
+					}
+				}
 
-			desktop.handle_mouse({
-				.pos {
-					.x = static_cast<uint32_t>(mouse_x),
-					.y = static_cast<uint32_t>(mouse_y)
-				},
-				.left_pressed = event.mouse.left_pressed,
-				.right_pressed = event.mouse.right_pressed,
-				.middle_pressed = event.mouse.middle_pressed
-			});
-		}
-		else if (event.type == EVENT_TYPE_KEY) {
-			if (event.key.code == SCANCODE_F1) {
-				sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
-			}
-			else if (event.key.code == SCANCODE_F5) {
-				sys_shutdown(SHUTDOWN_TYPE_REBOOT);
-			}
-			else {
-				desktop.handle_keyboard({
-					.code = event.key.code,
-					.pressed = event.key.pressed
+				desktop.handle_mouse({
+					.pos {
+						.x = static_cast<uint32_t>(mouse_x),
+						.y = static_cast<uint32_t>(mouse_y)
+					},
+					.left_pressed = event.mouse.left_pressed,
+					.right_pressed = event.mouse.right_pressed,
+					.middle_pressed = event.mouse.middle_pressed
 				});
 			}
+			else if (event.type == EVENT_TYPE_KEY) {
+				if (event.key.code == SCANCODE_F1) {
+					sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
+				}
+				else if (event.key.code == SCANCODE_F5) {
+					sys_shutdown(SHUTDOWN_TYPE_REBOOT);
+				}
+				else {
+					desktop.handle_keyboard({
+						.code = event.key.code,
+						.pressed = event.key.pressed
+					});
+				}
+			}
 		}
 
-		uint64_t time_now_us;
-		sys_get_time(&time_now_us);
-		if (time_now_us - last_time_update_us >= US_IN_S * 60) {
+		if (start_time - last_time_update_us >= US_IN_S * 60) {
 			desktop.taskbar->update_time(desktop.gui.ctx);
-			last_time_update_us = time_now_us;
+			last_time_update_us = start_time;
 		}
 
 		if (double_buffer) {
@@ -804,6 +807,14 @@ int main() {
 		}
 		else {
 			desktop.draw();
+		}
+
+		uint64_t end_time;
+		sys_get_time(&end_time);
+		auto elapsed = end_time - start_time;
+		if (elapsed < 1000 * 1000 / 144) {
+			auto remaining = 1000 * 1000 / 144 - elapsed;
+			sys_sleep(remaining);
 		}
 	}
 }
