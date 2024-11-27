@@ -16,9 +16,9 @@ Thread::Thread(kstd::string_view name, Cpu* cpu, Process* process) : ArchThread 
 	process->add_thread(this);
 }
 
-void Thread::sleep_for(u64 us) const {
+void Thread::sleep_for(u64 ns) const {
 	IrqGuard guard {};
-	auto state = cpu->scheduler.prepare_for_sleep(us);
+	auto state = cpu->scheduler.prepare_for_sleep(ns);
 	cpu->scheduler.sleep(state);
 }
 

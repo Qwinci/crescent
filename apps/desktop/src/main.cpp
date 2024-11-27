@@ -9,8 +9,10 @@
 #include <stdio.h>
 #include <string.h>
 
+static constexpr size_t NS_IN_US = 1000;
 static constexpr size_t US_IN_MS = 1000;
-static constexpr size_t US_IN_S = US_IN_MS * 1000;
+static constexpr size_t NS_IN_MS = NS_IN_US * US_IN_MS;
+static constexpr size_t NS_IN_S = NS_IN_MS * 1000;
 
 [[noreturn]] void dumb_loop() {
 	while (true) {
@@ -619,13 +621,13 @@ int main() {
 
 	desktop.taskbar->update_time(desktop.gui.ctx);
 
-	uint64_t last_time_update_us;
-	status = sys_get_time(&last_time_update_us);
+	uint64_t last_time_update_ns;
+	status = sys_get_time(&last_time_update_ns);
 	assert(status == 0);
 
 	while (true) {
-		uint64_t start_time;
-		sys_get_time(&start_time);
+		uint64_t start_time_ns;
+		sys_get_time(&start_time_ns);
 
 		for (size_t i = 0; i < CONNECTIONS->size();) {
 			auto& connection = (*CONNECTIONS)[i];
@@ -783,9 +785,9 @@ int main() {
 			}
 		}
 
-		if (start_time - last_time_update_us >= US_IN_S * 60) {
+		if (start_time_ns - last_time_update_ns >= NS_IN_S * 60) {
 			desktop.taskbar->update_time(desktop.gui.ctx);
-			last_time_update_us = start_time;
+			last_time_update_ns = start_time_ns;
 		}
 
 		if (double_buffer) {
@@ -809,11 +811,11 @@ int main() {
 			desktop.draw();
 		}
 
-		uint64_t end_time;
-		sys_get_time(&end_time);
-		auto elapsed = end_time - start_time;
-		if (elapsed < 1000 * 1000 / 144) {
-			auto remaining = 1000 * 1000 / 144 - elapsed;
+		uint64_t end_time_ns;
+		sys_get_time(&end_time_ns);
+		auto elapsed = end_time_ns - start_time_ns;
+		if (elapsed < NS_IN_S / 144) {
+			auto remaining = NS_IN_S / 144 - elapsed;
 			sys_sleep(remaining);
 		}
 	}

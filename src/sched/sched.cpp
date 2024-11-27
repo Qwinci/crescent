@@ -108,7 +108,7 @@
 			}
 		}
 
-		auto state = scheduler.prepare_for_sleep(US_IN_S);
+		auto state = scheduler.prepare_for_sleep(NS_IN_S);
 		scheduler.sleep(state);
 	}
 }
@@ -387,7 +387,7 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	usize now;
 	{
 		auto guard = CLOCK_SOURCE.lock_read();
-		now = (*guard)->get_ns() / NS_IN_US;
+		now = (*guard)->get_ns();
 	}
 
 	usize first_sleep_end = UINTPTR_MAX;
@@ -441,19 +441,19 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	cpu->cpu_tick_source->oneshot(amount);
 }
 
-bool Scheduler::prepare_for_sleep(u64 us) {
+bool Scheduler::prepare_for_sleep(u64 ns) {
 	auto state = arch_enable_irqs(false);
 	current->cpu->cpu_tick_source->reset();
 
-	if (!us) {
+	if (!ns) {
 		return state;
 	}
 
 	usize sleep_end;
 	{
 		auto guard = CLOCK_SOURCE.lock_read();
-		auto now = (*guard)->get_ns() / NS_IN_US;
-		sleep_end = now + us;
+		auto now = (*guard)->get_ns();
+		sleep_end = now + ns;
 	}
 
 	current->sched_lock.manual_lock();

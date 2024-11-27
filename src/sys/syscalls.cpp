@@ -316,13 +316,13 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		}
 		case SYS_SLEEP:
 		{
-			auto us = *frame->arg0();
-			if (us > SCHED_MAX_SLEEP_US) {
+			auto ns = *frame->arg0();
+			if (ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
 
-			thread->sleep_for(us);
+			thread->sleep_for(ns);
 			*frame->ret() = 0;
 			break;
 		}
@@ -332,7 +332,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			{
 				IrqGuard irq_guard {};
 				auto guard = CLOCK_SOURCE.lock_read();
-				now = (*guard)->get_ns() / NS_IN_US;
+				now = (*guard)->get_ns();
 			}
 
 			if (!UserAccessor(*frame->arg0()).store(now)) {
@@ -669,8 +669,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		case SYS_POLL_EVENT:
 		{
 			InputEvent event {};
-			size_t timeout_us = *frame->arg1();
-			if (timeout_us != SIZE_MAX && timeout_us > SCHED_MAX_SLEEP_US) {
+			size_t timeout_ns = *frame->arg1();
+			if (timeout_ns != SIZE_MAX && timeout_ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
 				*frame->ret() = ERR_INVALID_ARGUMENT;
 				break;
 			}
@@ -689,16 +689,16 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					}
 				}
 				else {
-					if (!timeout_us) {
+					if (!timeout_ns) {
 						*frame->ret() = ERR_TRY_AGAIN;
 						break;
 					}
 					else {
-						if (timeout_us == SIZE_MAX) {
+						if (timeout_ns == SIZE_MAX) {
 							GLOBAL_EVENT_QUEUE.produce_event.wait();
 						}
 						else {
-							if (!GLOBAL_EVENT_QUEUE.produce_event.wait_with_timeout(timeout_us)) {
+							if (!GLOBAL_EVENT_QUEUE.produce_event.wait_with_timeout(timeout_ns)) {
 								*frame->ret() = ERR_TRY_AGAIN;
 								break;
 							}
@@ -1760,11 +1760,10 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 					state = thread->cpu->scheduler.prepare_for_block();
 				}
 				else {
-					auto timeout_us = timeout_ns / NS_IN_US;
-					if (timeout_us > SCHED_MAX_SLEEP_US) {
-						timeout_us = SCHED_MAX_SLEEP_US;
+					if (timeout_ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
+						timeout_ns = SCHED_MAX_SLEEP_US * NS_IN_US;
 					}
-					state = thread->cpu->scheduler.prepare_for_sleep(timeout_us);
+					state = thread->cpu->scheduler.prepare_for_sleep(timeout_ns);
 				}
 			}
 

@@ -31,7 +31,7 @@ bool Nic::wait_for_ip_with_timeout(usize seconds) {
 	}
 
 	if (wait) {
-		if (!ip_available_event.wait_with_timeout(US_IN_S * seconds)) {
+		if (!ip_available_event.wait_with_timeout(NS_IN_S * seconds)) {
 			IrqGuard irq_guard {};
 			auto guard = lock.lock();
 			return ip;

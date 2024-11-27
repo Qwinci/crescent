@@ -21,7 +21,7 @@ struct Scheduler {
 	void update_schedule();
 	void do_schedule() const;
 
-	bool prepare_for_sleep(u64 us);
+	bool prepare_for_sleep(u64 ns);
 	void sleep(bool prepare_state);
 	void yield();
 

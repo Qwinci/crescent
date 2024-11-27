@@ -31,12 +31,12 @@ int sys_get_thread_id() {
 	return static_cast<int>(syscall(SYS_GET_THREAD_ID));
 }
 
-int sys_sleep(uint64_t us) {
-	return static_cast<int>(syscall(SYS_SLEEP, us));
+int sys_sleep(uint64_t ns) {
+	return static_cast<int>(syscall(SYS_SLEEP, ns));
 }
 
-int sys_get_time(uint64_t* us) {
-	return static_cast<int>(syscall(SYS_GET_TIME, us));
+int sys_get_time(uint64_t* ns) {
+	return static_cast<int>(syscall(SYS_GET_TIME, ns));
 }
 
 int sys_get_date_time(CrescentDateTime& time) {
@@ -67,8 +67,8 @@ int sys_move_handle(CrescentHandle& handle, CrescentHandle process_handle) {
 	return static_cast<int>(syscall(SYS_MOVE_HANDLE, &handle, process_handle));
 }
 
-int sys_poll_event(InputEvent& event, size_t timeout_us) {
-	return static_cast<int>(syscall(SYS_POLL_EVENT, &event, timeout_us));
+int sys_poll_event(InputEvent& event, size_t timeout_ns) {
+	return static_cast<int>(syscall(SYS_POLL_EVENT, &event, timeout_ns));
 }
 
 int sys_shutdown(ShutdownType type) {

@@ -81,7 +81,7 @@ kstd::optional<Mac> arp_get_mac(u32 ip) {
 			arp_send_query(**guard->front(), ip);
 		}
 
-		bool status = new_ip_event.wait_with_timeout(US_IN_S * 2);
+		bool status = new_ip_event.wait_with_timeout(NS_IN_S * 2);
 		if (!status) {
 			return {};
 		}

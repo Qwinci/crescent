@@ -22,7 +22,6 @@ struct OpenFile {
 	uint64_t cursor {};
 };
 
-
 using Handle = kstd::variant<
 	kstd::monostate,
 	EmptyHandle,

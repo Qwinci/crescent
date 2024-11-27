@@ -159,7 +159,7 @@ qacpi::Status qacpi_os_event_wait(void* handle, uint16_t timeout_ms) {
 		event->wait();
 		return qacpi::Status::Success;
 	}
-	auto ret = event->wait_with_timeout(timeout_ms * US_IN_MS);
+	auto ret = event->wait_with_timeout(timeout_ms * NS_IN_MS);
 	return ret ? qacpi::Status::Success : qacpi::Status::TimeOut;
 }
 
@@ -200,7 +200,7 @@ void qacpi_os_stall(uint64_t us) {
 }
 
 void qacpi_os_sleep(uint64_t ms) {
-	get_current_thread()->sleep_for(ms * US_IN_MS);
+	get_current_thread()->sleep_for(ms * US_IN_MS * NS_IN_US);
 }
 
 void qacpi_os_fatal(uint8_t type, uint16_t code, uint64_t arg) {

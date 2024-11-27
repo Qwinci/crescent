@@ -39,7 +39,9 @@ extern RwSpinlock<ClockSource*> CLOCK_SOURCE;
 
 static constexpr u64 NS_IN_US = 1000;
 static constexpr u64 US_IN_MS = 1000;
+static constexpr u64 NS_IN_MS = NS_IN_US * US_IN_MS;
 static constexpr u64 US_IN_S = US_IN_MS * 1000;
+static constexpr u64 NS_IN_S = NS_IN_US * US_IN_MS * 1000;
 
 template<typename F> requires requires(F f) {
 	static_cast<bool>(f());

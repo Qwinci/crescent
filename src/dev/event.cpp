@@ -30,7 +30,7 @@ void Event::wait() {
 	}
 }
 
-bool Event::wait_with_timeout(u64 max_us) {
+bool Event::wait_with_timeout(u64 max_ns) {
 	IrqGuard irq_guard {};
 	auto current = get_current_thread();
 
@@ -44,7 +44,7 @@ bool Event::wait_with_timeout(u64 max_us) {
 
 		auto waiters_guard = waiters.lock();
 		waiters_guard->push(current);
-		state = current->cpu->scheduler.prepare_for_sleep(max_us);
+		state = current->cpu->scheduler.prepare_for_sleep(max_ns);
 	}
 
 	current->cpu->scheduler.sleep(state);

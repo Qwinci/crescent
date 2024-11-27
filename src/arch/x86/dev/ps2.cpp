@@ -287,7 +287,7 @@ static bool ps2_detect_aux() {
 
 	bool ret = true;
 
-	if (!port2_irq_event.wait_with_timeout(US_IN_MS * 250)) {
+	if (!port2_irq_event.wait_with_timeout(NS_IN_MS * 250)) {
 		ps2_flush_data();
 		ret = false;
 	}
@@ -449,13 +449,13 @@ bool Ps2Port::send_cmd_unlocked(Ps2Cmd cmd, u8* param) {
 
 	timeout_ms = cmd.cmd == ps2_cmd::RESET.cmd ? 4000 : 500;
 	if (cmd.ret) {
-		event.wait_with_timeout(timeout_ms * US_IN_MS);
+		event.wait_with_timeout(timeout_ms * NS_IN_MS);
 
 		old = lock.manual_lock();
 		if (cmd_resp_count && !(flags & Ps2PortFlags::WaitForCmdResp)) {
 			lock.manual_unlock(old);
 			timeout_ms = adjust_timeout(this, cmd.cmd, timeout_ms);
-			event.wait_with_timeout(timeout_ms * US_IN_MS);
+			event.wait_with_timeout(timeout_ms * NS_IN_MS);
 		}
 		else {
 			lock.manual_unlock(old);
@@ -490,7 +490,7 @@ bool Ps2Port::send_byte(u8 byte, u32 timeout_ms, u32 max_retries, bool irq_state
 
 		success = send(byte);
 		if (success) {
-			event.wait_with_timeout(timeout_ms * US_IN_MS);
+			event.wait_with_timeout(timeout_ms * NS_IN_MS);
 		}
 
 		irq_state = lock.manual_lock();

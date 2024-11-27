@@ -25,7 +25,7 @@ struct Thread : public ArchThread {
 	Thread(kstd::string_view name, Cpu* cpu, Process* process, const SysvInfo& sysv);
 	Thread(kstd::string_view name, Cpu* cpu, Process* process);
 
-	void sleep_for(u64 us) const;
+	void sleep_for(u64 ns) const;
 	void yield() const;
 
 	void add_descriptor(ThreadDescriptor* descriptor);

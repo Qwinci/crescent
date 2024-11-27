@@ -6,7 +6,7 @@
 struct Event {
 	void reset();
 	void wait();
-	bool wait_with_timeout(u64 max_us);
+	bool wait_with_timeout(u64 max_ns);
 
 	void signal_one();
 	void signal_one_if_not_pending();

@@ -11,8 +11,8 @@ int sys_process_create(CrescentHandle& handle, const char* path, size_t path_len
 int sys_kill(CrescentHandle handle);
 int sys_get_status(CrescentHandle handle);
 int sys_get_thread_id();
-int sys_sleep(uint64_t us);
-int sys_get_time(uint64_t* us);
+int sys_sleep(uint64_t ns);
+int sys_get_time(uint64_t* ns);
 int sys_get_date_time(CrescentDateTime& time);
 int sys_syslog(const char* str, size_t size);
 int sys_map(void** addr, size_t size, int protection);
@@ -22,7 +22,7 @@ int sys_devlink(const DevLink& dev_link);
 int sys_close_handle(CrescentHandle handle);
 int sys_move_handle(CrescentHandle& handle, CrescentHandle process_handle);
 
-int sys_poll_event(InputEvent& event, size_t timeout_us);
+int sys_poll_event(InputEvent& event, size_t timeout_ns);
 int sys_shutdown(ShutdownType type);
 
 int sys_open(CrescentHandle& handle, const char* path, size_t path_len, int flags);
