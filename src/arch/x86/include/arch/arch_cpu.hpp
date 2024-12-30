@@ -9,5 +9,6 @@ struct ArchCpu {
 	usize kernel_stack_base;
 	usize saved_halt_rsp;
 	usize saved_halt_rip;
+	u64 tsc_freq;
 	u32 lapic_id;
 };

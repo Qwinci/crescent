@@ -191,3 +191,39 @@ int sys_get_fs_base(uintptr_t* value) {
 int sys_get_gs_base(uintptr_t* value) {
 	return static_cast<int>(syscall(SYS_GET_GS_BASE, value));
 }
+
+int sys_get_arch_info(ArchInfo* info) {
+	return static_cast<int>(syscall(SYS_GET_ARCH_INFO, info));
+}
+
+int sys_evm_create(CrescentHandle& handle) {
+	return static_cast<int>(syscall(SYS_EVM_CREATE, &handle));
+}
+
+int sys_evm_create_vcpu(CrescentHandle handle, CrescentHandle& vcpu_handle, EvmGuestState** guest_state) {
+	return static_cast<int>(syscall(SYS_EVM_CREATE_VCPU, handle, &vcpu_handle, guest_state));
+}
+
+int sys_evm_map(CrescentHandle handle, size_t guest, void* host, size_t size) {
+	return static_cast<int>(syscall(SYS_EVM_MAP, handle, guest, host, size));
+}
+
+int sys_evm_unmap(CrescentHandle handle, size_t guest, size_t size) {
+	return static_cast<int>(syscall(SYS_EVM_UNMAP, handle, guest, size));
+}
+
+int sys_evm_vcpu_run(CrescentHandle handle) {
+	return static_cast<int>(syscall(SYS_EVM_VCPU_RUN, handle));
+}
+
+int sys_evm_vcpu_write_state(CrescentHandle handle, int changed_state) {
+	return static_cast<int>(syscall(SYS_EVM_VCPU_WRITE_STATE, handle, changed_state));
+}
+
+int sys_evm_vcpu_read_state(CrescentHandle handle, int wanted_state) {
+	return static_cast<int>(syscall(SYS_EVM_VCPU_READ_STATE, handle, wanted_state));
+}
+
+int sys_evm_vcpu_trigger_irq(CrescentHandle handle, const EvmIrqInfo& info) {
+	return static_cast<int>(syscall(SYS_EVM_VCPU_TRIGGER_IRQ, handle, &info));
+}

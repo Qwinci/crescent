@@ -1,6 +1,8 @@
 #ifndef CRESCENT_SYSCALLS_H
 #define CRESCENT_SYSCALLS_H
+
 #include <stddef.h>
+#include <stdint.h>
 
 typedef size_t CrescentHandle;
 
@@ -72,7 +74,18 @@ typedef enum {
 	SYS_SET_FS_BASE,
 	SYS_SET_GS_BASE,
 	SYS_GET_FS_BASE,
-	SYS_GET_GS_BASE
+	SYS_GET_GS_BASE,
+
+	SYS_GET_ARCH_INFO,
+
+	SYS_EVM_CREATE,
+	SYS_EVM_CREATE_VCPU,
+	SYS_EVM_MAP,
+	SYS_EVM_UNMAP,
+	SYS_EVM_VCPU_RUN,
+	SYS_EVM_VCPU_WRITE_STATE,
+	SYS_EVM_VCPU_READ_STATE,
+	SYS_EVM_VCPU_TRIGGER_IRQ
 } CrescentSyscall;
 
 typedef enum {
@@ -136,5 +149,15 @@ typedef struct {
 #define SEEK_START 0
 #define SEEK_CURRENT 1
 #define SEEK_END 2
+
+typedef struct {
+	uint64_t tsc_frequency;
+} X86ArchInfo;
+
+#ifdef __x86_64__
+typedef X86ArchInfo ArchInfo;
+#else
+typedef void ArchInfo;
+#endif
 
 #endif

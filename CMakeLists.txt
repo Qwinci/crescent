@@ -90,6 +90,7 @@ target_sources(crescent PUBLIC FILE_SET HEADERS
 	include/crescent/x86/arch_syscall.h
 	include/crescent/devlink.h
 	include/crescent/event.h
+	include/crescent/evm.h
 	include/crescent/socket.h
 	include/crescent/syscall.h
 	include/crescent/syscalls.h

@@ -7,6 +7,7 @@ struct PRegion;
 struct Page {
 	DoubleListHook hook {};
 	PRegion* region {};
+	usize ref_count {};
 	usize page_num : 36 {};
 	bool used : 1 {};
 	bool in_list : 1 {};

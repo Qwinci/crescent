@@ -118,9 +118,6 @@ struct Process {
 		}
 	};
 
-	Spinlock<RbTree<Futex, &Futex::hook>> futexes {};
-
-private:
 	struct Mapping {
 		RbTreeHook hook {};
 		usize base {};
@@ -132,8 +129,11 @@ private:
 		}
 	};
 
+	Spinlock<RbTree<Futex, &Futex::hook>> futexes {};
+	IrqSpinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
+
+private:
 	VMem vmem {};
-	Spinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
 	Spinlock<DoubleList<ProcessDescriptor, &ProcessDescriptor::hook>> descriptors {};
 	uint32_t max_thread_id {};
 };

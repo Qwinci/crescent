@@ -54,6 +54,11 @@ static void x86_detect_cpu_features() {
 	if (info.ecx & 1U << 30) {
 		CPU_FEATURES.rdrnd = true;
 	}
+
+	if (info.ecx & 1U << 5) {
+		CPU_FEATURES.vmx = true;
+	}
+
 	if (info.ecx & 1U << 26) {
 		CPU_FEATURES.xsave = true;
 
@@ -124,6 +129,12 @@ static void x86_init_simd() {
 
 static void x86_cpu_resume(Cpu* self, Thread* current_thread, bool initial) {
 	lapic_init(self, initial);
+
+	u64 start = rdtsc();
+	mdelay(10);
+	u64 end = rdtsc();
+	self->tsc_freq = (end - start) * 100;
+
 	asm volatile("mov $6 * 8, %%ax; ltr %%ax" : : : "ax");
 
 	self->scheduler.current = current_thread;

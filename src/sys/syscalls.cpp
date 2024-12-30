@@ -20,6 +20,7 @@
 #ifdef __x86_64__
 #include "acpi/sleep.hpp"
 #include "arch/x86/cpu.hpp"
+#include "arch/x86/dev/vmx.hpp"
 #elif defined(__aarch64__)
 #include "arch/aarch64/dev/psci.hpp"
 #include "exe/elf_loader.hpp"
@@ -1857,6 +1858,285 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			else {
 				*frame->ret() = 0;
 			}
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_GET_ARCH_INFO:
+		{
+#ifdef __x86_64__
+			IrqGuard irq_guard {};
+			X86ArchInfo info {
+				.tsc_frequency = get_current_thread()->cpu->tsc_freq
+			};
+			if (!UserAccessor(*frame->arg0()).store(info)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+			else {
+				*frame->ret() = 0;
+			}
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_CREATE:
+		{
+#ifdef __x86_64__
+			if (!vmx_supported()) {
+				*frame->ret() = ERR_UNSUPPORTED;
+				break;
+			}
+
+			auto vm = vmx_create_vm();
+			auto handle = thread->process->handles.insert(std::move(vm));
+			if (!UserAccessor(*frame->arg0()).store(handle)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_CREATE_VCPU:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::Evm>* evm_ptr;
+			if (!handle || !(evm_ptr = handle->get<kstd::shared_ptr<evm::Evm>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& evm = *evm_ptr->data();
+
+			auto status = evm.create_vcpu();
+			if (!status) {
+				*frame->ret() = status.error();
+				break;
+			}
+
+			auto vcpu = std::move(status).value();
+			auto vcpu_handle = thread->process->handles.insert(vcpu);
+			if (!UserAccessor(*frame->arg1()).store(vcpu_handle)) {
+				thread->process->handles.remove(vcpu_handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			auto state_addr = thread->process->allocate(nullptr, PAGE_SIZE, MemoryAllocFlags::Read | MemoryAllocFlags::Write, nullptr);
+			if (!state_addr) {
+				thread->process->handles.remove(vcpu_handle);
+				*frame->ret() = ERR_NO_MEM;
+				break;
+			}
+
+			auto map_status = thread->process->page_map.map(
+				state_addr,
+				vcpu->state_phys,
+				PageFlags::Read | PageFlags::Write | PageFlags::User,
+				CacheMode::WriteBack);
+			if (!map_status) {
+				thread->process->free(state_addr, PAGE_SIZE);
+				thread->process->handles.remove(vcpu_handle);
+				*frame->ret() = ERR_NO_MEM;
+				break;
+			}
+
+			if (!UserAccessor(*frame->arg2()).store(state_addr)) {
+				thread->process->page_map.unmap(state_addr);
+				thread->process->free(state_addr, PAGE_SIZE);
+				thread->process->handles.remove(vcpu_handle);
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = 0;
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_MAP:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::Evm>* evm_ptr;
+			if (!handle || !(evm_ptr = handle->get<kstd::shared_ptr<evm::Evm>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& evm = *evm_ptr->data();
+
+			auto guest = *frame->arg1();
+			auto host_virt = *frame->arg2();
+			auto size = *frame->arg3();
+
+			if (host_virt & (PAGE_SIZE - 1)) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto guard = thread->process->mappings.lock();
+
+			bool success = true;
+			for (usize i = 0; i < size; i += PAGE_SIZE) {
+				auto phys = thread->process->page_map.get_phys(host_virt + i);
+				if (!phys) {
+					*frame->ret() = ERR_INVALID_ARGUMENT;
+					success = false;
+					break;
+				}
+
+				auto page = Page::from_phys(phys);
+				assert(page);
+				auto status = evm.map_page(guest + i, page->phys());
+				if (status != 0) {
+					for (usize j = 0; j < i; j += PAGE_SIZE) {
+						evm.unmap_page(guest + j);
+					}
+
+					*frame->ret() = status;
+					success = false;
+					break;
+				}
+			}
+
+			if (!success) {
+				break;
+			}
+
+			*frame->ret() = 0;
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_UNMAP:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::Evm>* evm_ptr;
+			if (!handle || !(evm_ptr = handle->get<kstd::shared_ptr<evm::Evm>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& evm = *evm_ptr->data();
+
+			auto guest = *frame->arg1();
+			auto size = *frame->arg3();
+
+			if (guest & (PAGE_SIZE - 1)) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto guard = thread->process->mappings.lock();
+
+			for (usize i = 0; i < size; i += PAGE_SIZE) {
+				evm.unmap_page(guest + i);
+			}
+
+			*frame->ret() = 0;
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_VCPU_RUN:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::VirtualCpu>* vcpu_ptr;
+			if (!handle || !(vcpu_ptr = handle->get<kstd::shared_ptr<evm::VirtualCpu>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& vcpu = *vcpu_ptr->data();
+
+			*frame->ret() = vcpu.run();
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_VCPU_WRITE_STATE:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::VirtualCpu>* vcpu_ptr;
+			if (!handle || !(vcpu_ptr = handle->get<kstd::shared_ptr<evm::VirtualCpu>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& vcpu = *vcpu_ptr->data();
+
+			*frame->ret() = vcpu.write_state(static_cast<EvmStateBits>(*frame->arg1()));
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_VCPU_READ_STATE:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::VirtualCpu>* vcpu_ptr;
+			if (!handle || !(vcpu_ptr = handle->get<kstd::shared_ptr<evm::VirtualCpu>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& vcpu = *vcpu_ptr->data();
+
+			*frame->ret() = vcpu.read_state(static_cast<EvmStateBits>(*frame->arg1()));
+#else
+			*frame->ret() = ERR_UNSUPPORTED;
+#endif
+			break;
+		}
+		case SYS_EVM_VCPU_TRIGGER_IRQ:
+		{
+#ifdef __x86_64__
+			auto user_handle = *frame->arg0();
+			auto handle = thread->process->handles.get(user_handle);
+
+			kstd::shared_ptr<evm::VirtualCpu>* vcpu_ptr;
+			if (!handle || !(vcpu_ptr = handle->get<kstd::shared_ptr<evm::VirtualCpu>>())) {
+				*frame->ret() = ERR_INVALID_ARGUMENT;
+				break;
+			}
+
+			auto& vcpu = *vcpu_ptr->data();
+
+			EvmIrqInfo info {};
+			if (!UserAccessor(*frame->arg1()).load(info)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
+			*frame->ret() = vcpu.trigger_irq(info);
 #else
 			*frame->ret() = ERR_UNSUPPORTED;
 #endif

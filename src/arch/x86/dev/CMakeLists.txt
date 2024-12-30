@@ -6,4 +6,5 @@ target_sources(crescent PRIVATE
 	ps2_keyboard.cpp
 	ps2_mouse.cpp
 	rtc.cpp
+	vmx.cpp
 )

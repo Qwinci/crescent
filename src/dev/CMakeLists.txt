@@ -3,6 +3,7 @@ target_sources(crescent PRIVATE
 	date_time_provider.cpp
 	dev.cpp
 	event.cpp
+	evm.cpp
 	user_dev.cpp
 	random.cpp
 )

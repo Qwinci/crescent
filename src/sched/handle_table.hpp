@@ -1,5 +1,6 @@
 #pragma once
 #include "dev/user_dev.hpp"
+#include "dev/evm.hpp"
 #include "fs/vfs.hpp"
 #include "sched/ipc.hpp"
 #include "sched/shared_mem.hpp"
@@ -30,7 +31,9 @@ using Handle = kstd::variant<
 	kstd::shared_ptr<ThreadDescriptor>,
 	kstd::shared_ptr<Socket>,
 	kstd::shared_ptr<SharedMemory>,
-	kstd::shared_ptr<OpenFile>
+	kstd::shared_ptr<OpenFile>,
+	kstd::shared_ptr<evm::Evm>,
+	kstd::shared_ptr<evm::VirtualCpu>
 	>;
 
 class HandleTable {

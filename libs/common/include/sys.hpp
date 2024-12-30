@@ -3,6 +3,7 @@
 #include "crescent/event.h"
 #include "crescent/socket.h"
 #include "crescent/time.h"
+#include "crescent/evm.h"
 
 int sys_thread_create(CrescentHandle& handle, const char* name, size_t name_len, void (*fn)(void* arg), void* arg);
 [[noreturn]] void sys_thread_exit(int status);
@@ -64,3 +65,14 @@ int sys_set_fs_base(uintptr_t value);
 int sys_set_gs_base(uintptr_t value);
 int sys_get_fs_base(uintptr_t* value);
 int sys_get_gs_base(uintptr_t* value);
+
+int sys_get_arch_info(ArchInfo* info);
+
+int sys_evm_create(CrescentHandle& handle);
+int sys_evm_create_vcpu(CrescentHandle handle, CrescentHandle& vcpu_handle, EvmGuestState** guest_state);
+int sys_evm_map(CrescentHandle handle, size_t guest, void* host, size_t size);
+int sys_evm_unmap(CrescentHandle handle, size_t guest, size_t size);
+int sys_evm_vcpu_run(CrescentHandle handle);
+int sys_evm_vcpu_write_state(CrescentHandle handle, int changed_state);
+int sys_evm_vcpu_read_state(CrescentHandle handle, int wanted_state);
+int sys_evm_vcpu_trigger_irq(CrescentHandle handle, const EvmIrqInfo& info);
