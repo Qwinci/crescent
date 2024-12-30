@@ -96,7 +96,7 @@ extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 
 	entropy ^= diff;
 
-	random_add_entropy(&entropy, 1);
+	random_add_entropy(&entropy, 1, 16);
 
 	bool handler_found = false;
 	{

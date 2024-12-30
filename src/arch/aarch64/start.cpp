@@ -79,6 +79,13 @@ extern void kernel_dtb_init(void* plain_dtb);
 
 extern EarlyPageMap* AARCH64_EARLY_KERNEL_MAP;
 
+u64 arch_get_random_seed() {
+	// todo improve
+	u64 count;
+	asm volatile("mrs %0, cntvct_el0" : "=r"(count));
+	return count;
+}
+
 extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_phys) {
 	run_constructors();
 

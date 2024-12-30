@@ -1,5 +1,6 @@
 #include "random.hpp"
 #include "algorithm.hpp"
+#include "arch/random.hpp"
 #include "cstring.hpp"
 #include "event.hpp"
 #include "manually_destroy.hpp"
@@ -404,33 +405,68 @@ constexpr int verify() {
 
 namespace {
 	struct Pool {
-		void initialize() {
-			data.get_unsafe().reserve(1024);
+		Pool() {
+			state.init(32, nullptr, 0);
 		}
 
-		void add_entropy(const u64* ptr, usize words) {
-			IrqGuard irq_guard {};
-			auto guard = data.lock();
-			for (usize i = 0; i < words; ++i) {
-				guard->push(ptr[i]);
+		void add_entropy(const u64* ptr, usize words, u32 credible_bits) {
+			state.add_data(ptr, words);
+			entropy_bits += credible_bits;
+			if (entropy_bits >= 256) {
+				entropy_bits = 256;
 			}
-			event.signal_all();
 		}
 
-		bool is_full() {
-			IrqGuard irq_guard {};
-			return data.lock()->size() >= 512;
+		void get_entropy(void* ptr, usize size) {
+			u64 seed[4];
+			state.generate_digest(seed);
+
+			if (entropy_bits >= 128) {
+				entropy_bits -= 128;
+			}
+			else {
+				entropy_bits = 0;
+			}
+
+			u64 arch_seeds[4];
+			for (auto& arch_seed : arch_seeds) {
+				arch_seed = arch_get_random_seed();
+			}
+
+			Blake2bState next_key_state {};
+			next_key_state.init(32, seed, 4);
+			next_key_state.add_data(arch_seeds, 4);
+
+			u64 next_key[4];
+			next_key_state.generate_digest(next_key);
+
+			state.init(32, next_key, 4);
+
+			u64 counter = 0;
+			while (size) {
+				auto to_copy = kstd::min(size, usize {32});
+				++counter;
+
+				Blake2bState new_state {};
+				new_state.init(32, seed, 4);
+				new_state.add_data(arch_seeds, 4);
+				new_state.add_data(&counter, 1);
+
+				u64 digest[4];
+				new_state.generate_digest(digest);
+
+				memcpy(ptr, digest, to_copy);
+				ptr = offset(ptr, void*, to_copy);
+				size -= to_copy;
+			}
 		}
 
-		void wait_for_entropy() {
-			event.wait();
-		}
-
-		Spinlock<kstd::vector<u64>> data;
-		Event event;
+		Blake2bState state {};
+		u32 entropy_bits {};
 	};
 
-	ManuallyDestroy<Pool> POOLS[20] {};
+	IrqSpinlock<Pool> POOL {};
+	Event EVENT {};
 
 	struct Nonce {
 		void use() {
@@ -447,72 +483,38 @@ namespace {
 	};
 
 	Nonce NONCE {};
-	Spinlock<u32> POOL_INDEX {};
-}
 
-void random_initialize() {
-	for (auto& pool : POOLS) {
-		pool->initialize();
-	}
-}
+	void wait_for_entropy(u32 entropy) {
+		while (true) {
+			bool wait;
+			{
+				auto guard = POOL.lock();
+				wait = guard->entropy_bits < entropy;
+			}
 
-void random_add_entropy(const u64* data, usize words) {
-	IrqGuard irq_guard {};
-
-	for (auto& pool : POOLS) {
-		if (!pool->is_full()) {
-			pool->add_entropy(data, words);
+			if (wait) {
+				EVENT.wait();
+			}
+			else {
+				break;
+			}
 		}
 	}
+}
+
+void random_add_entropy(const u64* data, usize words, u32 credible_bits) {
+	auto guard = POOL.lock();
+	guard->add_entropy(data, words, credible_bits);
+	EVENT.signal_one();
 }
 
 void random_generate(void* data, usize size) {
-	Blake2bState blake2b {};
-	blake2b.init(32, nullptr, 0);
+	wait_for_entropy(4 * 8);
 
-	Pool* pool;
-
-	{
-		IrqGuard irq_guard {};
-		auto index_guard = POOL_INDEX.lock();
-
-		pool = &*POOLS[*index_guard / 10];
-
-		++*index_guard;
-		if (*index_guard == 10 * 20) {
-			*index_guard = 0;
-		}
-	}
-
-	usize needed_entropy = size < 32 ? 32 : 128;
-
-	usize entropy = 0;
-	while (true) {
-		{
-			IrqGuard irq_guard {};
-			auto guard = pool->data.lock();
-			if (!guard->is_empty()) {
-				usize to_add = kstd::min(guard->size(), usize {needed_entropy / 8});
-
-				blake2b.add_data(guard->data() + guard->size() - to_add, to_add);
-				entropy += to_add * 8;
-
-				guard->resize(guard->size() - to_add);
-			}
-		}
-
-		if (entropy >= needed_entropy) {
-			break;
-		}
-
-		pool->wait_for_entropy();
-	}
-
-	u64 digest[4];
-	blake2b.generate_digest(digest);
+	auto guard = POOL.lock();
 
 	u32 key[8];
-	memcpy(key, digest, 32);
+	guard->get_entropy(key, sizeof(key));
 
 	auto* ptr = static_cast<u8*>(data);
 

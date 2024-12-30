@@ -13,11 +13,24 @@
 
 extern void x86_madt_parse();
 
+u64 arch_get_random_seed() {
+	if (CPU_FEATURES.rdseed) {
+		u64 seed;
+		asm volatile("0: rdseed %0; jnc 0b" : "=r"(seed));
+		return seed;
+	}
+	else {
+		u32 tsc_low;
+		u32 tsc_high;
+		asm volatile("rdtsc" : "=a"(tsc_low), "=d"(tsc_high));
+		return static_cast<u64>(tsc_high) << 32 | tsc_low;
+	}
+}
+
 extern "C" [[noreturn, gnu::used]] void arch_start(BootInfo info) {
 	acpi::init(info.rsdp);
 	acpi::sleep_init();
 	hpet_init();
-	random_initialize();
 	x86_smp_init();
 	x86_madt_parse();
 	x86_ps2_init();
@@ -27,15 +40,30 @@ extern "C" [[noreturn, gnu::used]] void arch_start(BootInfo info) {
 	assert(x86_get_module(initrd, "initramfs.tar"));
 
 	if (CPU_FEATURES.rdseed) {
-		u64 seed;
-		asm volatile("0: rdseed %0; jnc 0b" : "=r"(seed));
-		random_add_entropy(&seed, 1);
+		u64 data[] {
+			arch_get_random_seed(),
+			arch_get_random_seed(),
+			arch_get_random_seed(),
+			arch_get_random_seed()
+		};
+		random_add_entropy(data, 4, 256);
 		println("[kernel][x86]: initial entropy added from rdseed");
 	}
 	else if (CPU_FEATURES.rdrnd) {
-		u64 seed;
-		asm volatile("0: rdrand %0; jnc 0b" : "=r"(seed));
-		random_add_entropy(&seed, 1);
+		auto get_seed = []() {
+			u64 seed;
+			asm volatile("0: rdrand %0; jnc 0b" : "=r"(seed));
+			return seed;
+		};
+
+		u64 data[] {
+			get_seed(),
+			get_seed(),
+			get_seed(),
+			get_seed()
+		};
+		random_add_entropy(data, 4, 256);
+
 		println("[kernel][x86]: initial entropy added from rdrand");
 	}
 
