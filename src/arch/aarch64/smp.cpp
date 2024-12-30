@@ -9,7 +9,7 @@
 #include "mem/mem.hpp"
 #include "sched/process.hpp"
 
-static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
+static Cpu* CPUS[CONFIG_MAX_CPUS] {};
 static kstd::atomic<u32> NUM_CPUS {1};
 static Spinlock<void> SMP_LOCK {};
 static constexpr bool LOG_SMP_STARTUP = true;
@@ -135,6 +135,10 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry_stage0() {
 	__builtin_unreachable();
 }
 
+using CtorFn = void (*)();
+extern CtorFn CPU_LOCAL_CTORS_START[];
+extern CtorFn CPU_LOCAL_CTORS_END[];
+
 static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 	self->number = num;
 
@@ -166,6 +170,10 @@ static void aarch64_common_cpu_init(Cpu* self, u32 num, bool bsp) {
 	u64 mpidr;
 	asm volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
 	self->affinity = (mpidr & 0xFFFFFF) | (mpidr >> 32 & 0xFF) << 24;
+
+	for (auto* ctor = CPU_LOCAL_CTORS_START; ctor != CPU_LOCAL_CTORS_END; ++ctor) {
+		(*ctor)();
+	}
 }
 
 extern char EXCEPTION_HANDLERS_START[];
@@ -179,7 +187,6 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 		u32 num = NUM_CPUS.load(kstd::memory_order::relaxed);
 
 		auto lock = SMP_LOCK.lock();
-		CPUS[num].initialize();
 		cpu = &*CPUS[num];
 		aarch64_common_cpu_init(cpu, num, false);
 		gic_init_on_cpu();
@@ -208,8 +215,13 @@ static void aarch64_cpu_features_init() {
 	CPU_FEATURES.pan = supports_pan;
 }
 
+extern char __CPU_LOCAL_START[];
+extern char __CPU_LOCAL_END[];
+
 void aarch64_bsp_init() {
-	CPUS[0].initialize();
+	usize cpu_local_size = __CPU_LOCAL_END - __CPU_LOCAL_START;
+	auto storage = ALLOCATOR.alloc(sizeof(Cpu) + cpu_local_size);
+	CPUS[0] = new (storage) Cpu {};
 	aarch64_cpu_features_init();
 	aarch64_common_cpu_init(&*CPUS[0], 0, true);
 }
@@ -232,6 +244,8 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 	auto cells = cpus.size_cells();
 
 	println("[kernel][aarch64]: smp init");
+
+	usize cpu_local_size = __CPU_LOCAL_END - __CPU_LOCAL_START;
 
 	for (auto child : cpus.child_iter()) {
 		if (NUM_CPUS.load(kstd::memory_order::relaxed) >= CONFIG_MAX_CPUS) {
@@ -265,6 +279,9 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 		stack += 16 * PAGE_SIZE;
 
 		auto old = NUM_CPUS.load(kstd::memory_order::relaxed);
+
+		auto storage = ALLOCATOR.alloc(sizeof(Cpu) + cpu_local_size);
+		CPUS[old] = new (storage) Cpu {};
 
 		if constexpr (LOG_SMP_STARTUP) {
 			println("[kernel][aarch64]: init cpu ", Fmt::Hex, mpidr, Fmt::Reset);

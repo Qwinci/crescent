@@ -26,7 +26,7 @@ static volatile limine_smp_request SMP_REQUEST {
 	.flags = 0
 };
 
-static ManuallyInit<Cpu> CPUS[CONFIG_MAX_CPUS] {};
+static Cpu* CPUS[CONFIG_MAX_CPUS] {};
 static kstd::atomic<u32> NUM_CPUS {};
 static Spinlock<void> SMP_LOCK {};
 
@@ -147,6 +147,10 @@ static void x86_cpu_resume(Cpu* self, Thread* current_thread, bool initial) {
 	asm volatile("mov %0, %%cr4" : : "r"(cr4));
 }
 
+using CtorFn = void (*)();
+extern CtorFn CPU_LOCAL_CTORS_START[];
+extern CtorFn CPU_LOCAL_CTORS_END[];
+
 static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	self->number = NUM_CPUS.fetch_add(1, kstd::memory_order::relaxed);
 	self->lapic_id = lapic_id;
@@ -164,6 +168,10 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	self->tss.iopb = sizeof(Tss);
 	x86_cpu_resume(self, thread, true);
 	sched_init(bsp);
+
+	for (auto* ctor = CPU_LOCAL_CTORS_START; ctor != CPU_LOCAL_CTORS_END; ++ctor) {
+		(*ctor)();
+	}
 }
 
 [[noreturn]] static void smp_ap_entry(limine_smp_info* info) {
@@ -188,12 +196,18 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	panic("scheduler block returned");
 }
 
+extern char __CPU_LOCAL_START[];
+extern char __CPU_LOCAL_END[];
+
 void x86_smp_init() {
 	lapic_first_init();
 	x86_init_idt();
 	x86_detect_cpu_features();
 
-	CPUS[0].initialize();
+	usize cpu_local_size = __CPU_LOCAL_END - __CPU_LOCAL_START;
+	auto storage = ALLOCATOR.alloc(sizeof(Cpu) + cpu_local_size);
+	CPUS[0] = new (storage) Cpu {};
+
 	x86_init_cpu_common(&*CPUS[0], SMP_REQUEST.response->bsp_lapic_id, true);
 
 	u32 prev = 0;
@@ -206,7 +220,9 @@ void x86_smp_init() {
 			NUM_CPUS.store(1, kstd::memory_order::relaxed);
 			continue;
 		}
-		CPUS[i].initialize();
+
+		storage = ALLOCATOR.alloc(sizeof(Cpu) + cpu_local_size);
+		CPUS[i] = new (storage) Cpu {};
 
 		auto ap_stack_phys = pmalloc(8);
 		assert(ap_stack_phys);
