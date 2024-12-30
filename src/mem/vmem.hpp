@@ -27,14 +27,14 @@ private:
 			Span
 		} type {};
 	};
-	DoubleList<Segment, &Segment::list_hook> freelists[FREELIST_COUNT];
-	DoubleList<Segment, &Segment::seg_list_hook> seg_list;
-	DoubleList<Segment, &Segment::list_hook> hash_tab[HASHTAB_COUNT];
-	Segment* free_segs;
-	Segment* seg_page_list;
-	usize _base;
-	usize _size;
-	usize _quantum;
+	DoubleList<Segment, &Segment::list_hook> freelists[FREELIST_COUNT] {};
+	DoubleList<Segment, &Segment::seg_list_hook> seg_list {};
+	DoubleList<Segment, &Segment::list_hook> hash_tab[HASHTAB_COUNT] {};
+	Segment* free_segs {};
+	Segment* seg_page_list {};
+	usize _base {};
+	usize _size {};
+	usize _quantum {};
 	Spinlock<void> lock {};
 
 	Segment* seg_alloc();

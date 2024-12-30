@@ -182,7 +182,7 @@ void Scheduler::queue(Thread* thread) {
 
 void Scheduler::update_schedule() {
 	IrqGuard irq_guard {};
-	if (current->status == Thread::Status::Running) {
+	if (current->status == Thread::Status::Running && current != &current->cpu->idle_thread) {
 		if (us_to_next_schedule > current_irq_period) {
 			us_to_next_schedule -= current_irq_period;
 			prev = current;
