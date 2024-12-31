@@ -137,23 +137,6 @@ namespace acpi {
 				GLOBAL_CTX->evaluate(node, name, res);
 			}
 		}
-
-		void clear_events() {
-			for (int i = 0; i < 100; ++i) {
-				enable_burst();
-				write_control(ec_cmd::QR_EC);
-				u8 code = read_data();
-				disable_burst();
-				if (!code) {
-					break;
-				}
-				else if (i == 99) {
-					println("[kernel][acpi]: warning: ec keeps generating events");
-				}
-
-				println("[kernel][acpi]: discarding ec query ", Fmt::Hex, code, Fmt::Reset);
-			}
-		}
 	};
 
 	Ec EC {};
@@ -222,7 +205,6 @@ namespace acpi {
 		EC.control = ecdt->ec_control;
 		EC.node = GLOBAL_CTX->find_node(nullptr, ecdt->ec_id, false);
 		assert(EC.node);
-		EC.clear_events();
 
 		auto status = EVENT_CTX->enable_gpe(
 			ecdt->gpe,
@@ -358,7 +340,6 @@ namespace acpi {
 				EC.data = data_reg;
 				EC.control = control_reg;
 				EC.node = node;
-				EC.clear_events();
 
 				status = EVENT_CTX->enable_gpe(
 					gpe_index,
