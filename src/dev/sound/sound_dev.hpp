@@ -20,8 +20,7 @@ struct SoundDevice : public UserDevice {
 	virtual int set_active_output(void* id) = 0;
 	virtual int set_output_params(SoundOutputParams& params) = 0;
 	virtual int set_volume(u8 percentage) = 0;
-	virtual int queue_output(const void* buffer, usize size) = 0;
+	virtual int queue_output(const void* buffer, usize& size) = 0;
 	virtual int play(bool play) = 0;
-	virtual int reset() = 0;
 	virtual int wait_until_consumed(usize trip_size, usize& remaining) = 0;
 };

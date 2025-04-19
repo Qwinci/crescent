@@ -16,6 +16,8 @@ constexpr u64 FLAG_NX = 1ULL << 63;
 
 constexpr u64 PAGE_ADDR_MASK = 0x000FFFFFFFFFF000;
 
+// todo lock
+
 bool PageMap::map_2mb(u64 virt, u64 phys, PageFlags flags, CacheMode cache_mode) {
 	u64 all_flags = FLAG_PRESENT | FLAG_RW | (flags & PageFlags::User ? FLAG_USER : 0);
 

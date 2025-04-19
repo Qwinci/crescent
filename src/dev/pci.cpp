@@ -96,6 +96,7 @@ namespace pci {
 				else if (driver_pci->match & PciMatch::Device) {
 					for (auto& match_dev : driver_pci->devices) {
 						if (match_dev.vendor == vendor_id && match_dev.device == dev->device_id) {
+							dev->driver_data = match_dev.data;
 							if (driver_pci->init(*dev) == InitStatus::Success) {
 								goto end;
 							}

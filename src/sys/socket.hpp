@@ -27,7 +27,7 @@ struct Socket {
 	virtual int disconnect() = 0;
 	virtual int listen(uint32_t port) = 0;
 	virtual int accept(kstd::shared_ptr<Socket>& connection, int connection_flags) = 0;
-	virtual int send(const void* data, usize size) = 0;
+	virtual int send(const void* data, usize& size) = 0;
 	virtual int receive(void* data, usize& size) = 0;
 
 	virtual int send_to(const void* data, usize size, const AnySocketAddress& dest) {

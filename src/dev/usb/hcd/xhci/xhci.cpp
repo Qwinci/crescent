@@ -927,6 +927,9 @@ struct XhciController {
 		auto& event = const_cast<EventTrb&>(event_ring[index]);
 
 		auto type = event.generic.flags3 & EventTrb::Generic::flags3::TRB_TYPE;
+
+		auto controller_guard = lock.lock();
+
 		if (type == EventTrb::CommandCompletion) {
 			auto status = event.cmd_completion.flags0 & EventTrb::CommandCompletion::flags0::CODE;
 			auto slot_index = (event.cmd_completion.flags1 & EventTrb::CommandCompletion::flags1::SLOT_ID) - 1;
@@ -1298,7 +1301,7 @@ struct XhciController {
 						assert(false);
 					}
 
-					u64 protocol_speed = protocol_speed_mantissa * protocol_speed_multiplier;
+					u64 protocol_speed = static_cast<u64>(protocol_speed_mantissa) * protocol_speed_multiplier;
 					//println("[kernel][xhci]: supported speed: ", protocol_speed);
 
 					speeds.push(SupportedSpeed {
@@ -1605,6 +1608,7 @@ struct XhciController {
 	u32 cmd_ring_ptr {};
 	bool cmd_ring_c {true};
 	bool ctx_size_flag {};
+	IrqSpinlock<void> lock {};
 };
 
 usb::Status DeviceContext::set_config(const UniquePhysical& config) {
@@ -1772,33 +1776,37 @@ usb::Status DeviceContext::set_config(const UniquePhysical& config) {
 
 	usb::UsbEvent event {index, 1};
 
-	controller->cmd_events.insert(&event);
+	{
+		auto guard = controller->lock.lock();
 
-	controller->cmd_ring[controller->cmd_ring_ptr++] = {
-		.config_endpoint {
-			.input_context_ptr = ctx.phys(),
-			.reserved {},
-			.flags3 {
-				CmdTrb::flags3::C(controller->cmd_ring_c) |
-				CmdTrb::flags3::TRB_TYPE(CmdTrb::CONFIGURE_ENDPOINT) |
-				CmdTrb::ConfigEndpoint::flags3::SLOT_ID(index + 1)
+		controller->cmd_events.insert(&event);
+
+		controller->cmd_ring[controller->cmd_ring_ptr++] = {
+			.config_endpoint {
+				.input_context_ptr = ctx.phys(),
+				.reserved {},
+				.flags3 {
+					CmdTrb::flags3::C(controller->cmd_ring_c) |
+					CmdTrb::flags3::TRB_TYPE(CmdTrb::CONFIGURE_ENDPOINT) |
+					CmdTrb::ConfigEndpoint::flags3::SLOT_ID(index + 1)
+				}
 			}
-		}
-	};
+		};
 
-	if (controller->cmd_ring_ptr == PAGE_SIZE / 16 - 1) {
-		if (controller->cmd_ring_c) {
-			controller->cmd_ring[controller->cmd_ring_ptr].link.flags3 |= CmdTrb::flags3::C(true);
-		}
-		else {
-			controller->cmd_ring[controller->cmd_ring_ptr].link.flags3 &= ~CmdTrb::flags3::C;
+		if (controller->cmd_ring_ptr == PAGE_SIZE / 16 - 1) {
+			if (controller->cmd_ring_c) {
+				controller->cmd_ring[controller->cmd_ring_ptr].link.flags3 |= CmdTrb::flags3::C(true);
+			}
+			else {
+				controller->cmd_ring[controller->cmd_ring_ptr].link.flags3 &= ~CmdTrb::flags3::C;
+			}
+
+			controller->cmd_ring_ptr = 0;
+			controller->cmd_ring_c = !controller->cmd_ring_c;
 		}
 
-		controller->cmd_ring_ptr = 0;
-		controller->cmd_ring_c = !controller->cmd_ring_c;
+		*controller->host_controller_doorbell = doorbell::DB_TARGET(doorbell::COMMAND_DOORBELL);
 	}
-
-	*controller->host_controller_doorbell = doorbell::DB_TARGET(doorbell::COMMAND_DOORBELL);
 
 	event.wait();
 

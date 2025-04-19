@@ -68,26 +68,117 @@ struct MemSpace {
 
 	template<typename R>
 	void store(R reg, typename R::bits_type value) {
-		*reinterpret_cast<volatile typename R::bits_type*>(base + reg.offset) = value;
+		auto ptr = reinterpret_cast<volatile typename R::bits_type*>(base + reg.offset);
+		ops::store(ptr, value);
 	}
 
 	template<typename T>
-	void store(uintptr_t offset, T value) {
-		*reinterpret_cast<volatile T*>(base + offset) = value;
+	void store(usize offset, T value) {
+		auto ptr = reinterpret_cast<volatile T*>(base + offset);
+		ops::store(ptr, value);
 	}
 
 	template<typename R>
 	typename R::type load(R reg) {
-		return static_cast<typename R::type>(*reinterpret_cast<const volatile typename R::bits_type*>(base + reg.offset));
+		auto ptr = reinterpret_cast<const volatile typename R::bits_type*>(base + reg.offset);
+		return static_cast<typename R::type>(ops::load(ptr));
 	}
 
 	template<typename T>
-	T load(uintptr_t offset) {
-		return *reinterpret_cast<const volatile T*>(base + offset);
+	T load(usize offset) {
+		auto ptr = reinterpret_cast<const volatile T*>(base + offset);
+		return ops::load(ptr);
 	}
 
 protected:
 	usize base;
+
+private:
+#ifdef __x86_64__
+	struct ops {
+		[[gnu::always_inline]] static inline void store(volatile u8* ptr, u8 value) {
+			asm volatile("movb %1, %0" : "=m"(*ptr) : "er"(value));
+		}
+
+		[[gnu::always_inline]] static inline void store(volatile u16* ptr, u16 value) {
+			asm volatile("movw %1, %0" : "=m"(*ptr) : "er"(value));
+		}
+
+		[[gnu::always_inline]] static inline void store(volatile u32* ptr, u32 value) {
+			asm volatile("movl %1, %0" : "=m"(*ptr) : "er"(value));
+		}
+
+		[[gnu::always_inline]] static inline void store(volatile u64* ptr, u64 value) {
+			asm volatile("movq %1, %0" : "=m"(*ptr) : "er"(value));
+		}
+
+		[[gnu::always_inline]] static inline u8 load(const volatile u8* ptr) {
+			u8 value;
+			asm volatile("movb %1, %0" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+
+		[[gnu::always_inline]] static inline u16 load(const volatile u16* ptr) {
+			u16 value;
+			asm volatile("movw %1, %0" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+
+		[[gnu::always_inline]] static inline u32 load(const volatile u32* ptr) {
+			u32 value;
+			asm volatile("movl %1, %0" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+
+		[[gnu::always_inline]] static inline u64 load(const volatile u64* ptr) {
+			u64 value;
+			asm volatile("movq %1, %0" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+	};
+#elif defined(__aarch64__)
+	struct ops {
+		[[gnu::always_inline]] static inline void store(volatile u8* ptr, u8 value) {
+			asm volatile("strb %w1, %0" : "=m"(*ptr) : "r"(value));
+		}
+
+		[[gnu::always_inline]] static inline void store(volatile u16* ptr, u16 value) {
+			asm volatile("strh %w1, %0" : "=m"(*ptr) : "r"(value));
+		}
+
+		[[gnu::always_inline]] static inline void store(volatile u32* ptr, u32 value) {
+			asm volatile("str %w1, %0" : "=m"(*ptr) : "r"(value));
+		}
+
+		[[gnu::always_inline]] static inline void store(volatile u64* ptr, u64 value) {
+			asm volatile("str %1, %0" : "=m"(*ptr) : "r"(value));
+		}
+
+		[[gnu::always_inline]] static inline u8 load(const volatile u8* ptr) {
+			u8 value;
+			asm volatile("ldrb %w0, %1" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+
+		[[gnu::always_inline]] static inline u16 load(const volatile u16* ptr) {
+			u16 value;
+			asm volatile("ldrh %w0, %1" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+
+		[[gnu::always_inline]] static inline u32 load(const volatile u32* ptr) {
+			u32 value;
+			asm volatile("ldr %w0, %1" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+
+		[[gnu::always_inline]] static inline u64 load(const volatile u64* ptr) {
+			u64 value;
+			asm volatile("ldr %0, %1" : "=r"(value) : "m"(*ptr));
+			return value;
+		}
+	};
+#endif
 };
 
 template<typename T>

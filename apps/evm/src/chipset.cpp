@@ -1,6 +1,6 @@
 #include "chipset.hpp"
 #include "pci.hpp"
-#include "sys.hpp"
+#include "sys.h"
 #include "vga.hpp"
 #include <cassert>
 
@@ -622,11 +622,11 @@ void chipset_init(Vm* vm, uint32_t* fb, uint32_t fb_size) {
 	vga_device->config.set_type(0);
 
 	CrescentHandle vga_rom_handle;
-	auto err = sys_open(vga_rom_handle, "/vgabios.bin", sizeof("/vgabios.bin") - 1, 0);
+	auto err = sys_open(&vga_rom_handle, "/vgabios.bin", sizeof("/vgabios.bin") - 1, 0);
 	assert(err == 0);
 
 	CrescentStat bios_stat {};
-	err = sys_stat(vga_rom_handle, bios_stat);
+	err = sys_stat(vga_rom_handle, &bios_stat);
 	assert(err == 0);
 
 	void* vga_rom_mem = nullptr;

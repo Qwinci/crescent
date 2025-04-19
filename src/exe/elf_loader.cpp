@@ -64,7 +64,8 @@ kstd::expected<LoadedElf, ElfLoadError> elf_load(Process* process, VNode* file) 
 	usize user_mem = process->allocate(
 		reinterpret_cast<void*>(base),
 		map_size,
-		MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed,
+		PageFlags::Read | PageFlags::Write,
+		MemoryAllocFlags::Backed,
 		&mapping);
 	if (!user_mem) {
 		return ElfLoadError::NoMemory;

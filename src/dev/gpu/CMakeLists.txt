@@ -3,3 +3,5 @@ if(ARCH STREQUAL "x86_64")
 		bochs_vbe.cpp
 	)
 endif()
+
+add_subdirectory(intel)

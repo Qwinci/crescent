@@ -31,18 +31,18 @@ struct GpuFbDev : public UserDevice {
 		auto* resp = reinterpret_cast<FbLinkResponse*>(res.data());
 
 		switch (link->op) {
-			case FbLinkOp::GetInfo:
+			case FbLinkOpGetInfo:
 				resp->info.pitch = fb->pitch;
 				resp->info.width = fb->width;
 				resp->info.height = fb->height;
 				resp->info.bpp = fb->bpp;
 				resp->info.flags = gpu->supports_page_flipping ? FB_LINK_DOUBLE_BUFFER : 0;
 				break;
-			case FbLinkOp::Map:
+			case FbLinkOpMap:
 			{
 				auto process = get_current_thread()->process;
 				usize size = fb->height * fb->pitch;
-				auto mem = process->allocate(nullptr, size, MemoryAllocFlags::Read | MemoryAllocFlags::Write, nullptr);
+				auto mem = process->allocate(nullptr, size, PageFlags::Read | PageFlags::Write, MemoryAllocFlags::None, nullptr);
 				if (size && !mem) {
 					return ERR_NO_MEM;
 				}
@@ -73,7 +73,7 @@ struct GpuFbDev : public UserDevice {
 
 				break;
 			}
-			case FbLinkOp::Flip:
+			case FbLinkOpFlip:
 			{
 				if (supports_page_flip) {
 					auto tmp = front_surface;
@@ -133,7 +133,7 @@ void fb_dev_register_boot_fb() {
 
 	Gpu* gpu = nullptr;
 	IrqGuard irq_guard {};
-	auto guard = USER_DEVICES[static_cast<int>(CrescentDeviceType::Gpu)]->lock();
+	auto guard = USER_DEVICES[static_cast<int>(CrescentDeviceTypeGpu)]->lock();
 	for (auto& device : *guard) {
 		if (static_cast<GpuDevice*>(device.data())->gpu->owns_boot_fb) {
 			gpu = static_cast<GpuDevice*>(device.data())->gpu;
@@ -148,5 +148,5 @@ void fb_dev_register_boot_fb() {
 	}
 
 	BOOT_FB_DEV.initialize(kstd::make_shared<GpuFbDev>(&*BOOT_FB, gpu));
-	user_dev_add(*BOOT_FB_DEV, CrescentDeviceType::Fb);
+	user_dev_add(*BOOT_FB_DEV, CrescentDeviceTypeFb);
 }

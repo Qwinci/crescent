@@ -4,126 +4,206 @@
 
 void Event::reset() {
 	IrqGuard irq_guard {};
-	auto guard = signaled_count.lock();
-	*guard = 0;
+	auto guard = lock.lock();
+	signaled_count = 0;
 }
 
-void Event::wait() {
+void Event::wait(bool consume) {
 	IrqGuard irq_guard {};
+
 	auto current = get_current_thread();
 
+	Waitable waitable {
+		.thread = current,
+		.in_list = false
+	};
+
 	while (true) {
-		bool state;
 		{
-			auto guard = signaled_count.lock();
-			if (*guard) {
-				--*guard;
+			auto guard = lock.lock();
+			if (signaled_count) {
+				if (waitable.in_list) {
+					waiters.remove(&waitable);
+				}
+				if (consume) {
+					--signaled_count;
+				}
 				return;
 			}
+			if (!waitable.in_list) {
+				waiters.push(&waitable);
+				waitable.in_list = true;
+			}
+		}
+		current->cpu->scheduler.block();
+	}
+}
 
-			auto waiters_guard = waiters.lock();
-			waiters_guard->push(current);
-			state = current->cpu->scheduler.prepare_for_block();
+usize Event::wait_any(Event** events, usize count, u64 max_ns) {
+	IrqGuard irq_guard {};
+
+	auto current = get_current_thread();
+
+	kstd::vector<Waitable> waitables;
+	waitables.resize(count);
+	for (auto& waitable : waitables) {
+		waitable.thread = current;
+	}
+
+	for (usize i = 0; i < count; ++i) {
+		auto& event = events[i];
+		auto guard = event->lock.lock();
+		if (event->signaled_count) {
+			for (usize j = 0; j < i; ++j) {
+				auto& ev = events[j];
+				auto ev_guard = ev->lock.lock();
+				if (waitables[j].in_list) {
+					ev->waiters.remove(&waitables[j]);
+				}
+			}
+
+			--event->signaled_count;
+			current->dont_block = false;
+			return i + 1;
 		}
 
-		current->cpu->scheduler.block(state);
+		event->waiters.push(&waitables[i]);
 	}
+
+	if (max_ns != UINT64_MAX) {
+		current->cpu->scheduler.sleep(max_ns);
+	}
+	else {
+		current->cpu->scheduler.block();
+	}
+
+	for (usize i = 0; i < count; ++i) {
+		auto& event = events[i];
+		auto guard = event->lock.lock();
+
+		if (waitables[i].in_list) {
+			event->waiters.remove(&waitables[i]);
+		}
+
+		if (event->signaled_count) {
+			--event->signaled_count;
+
+			for (usize j = i + 1; j < count; ++j) {
+				auto& ev = events[j];
+				auto ev_guard = ev->lock.lock();
+				if (waitables[j].in_list) {
+					ev->waiters.remove(&waitables[j]);
+				}
+			}
+
+			current->dont_block = false;
+			return i + 1;
+		}
+	}
+
+	current->dont_block = false;
+	return 0;
 }
 
 bool Event::wait_with_timeout(u64 max_ns) {
 	IrqGuard irq_guard {};
+
 	auto current = get_current_thread();
 
-	bool state;
+	Waitable waitable {
+		.thread = current,
+		.in_list = true
+	};
+
 	{
-		auto guard = signaled_count.lock();
-		if (*guard) {
-			--*guard;
+		auto guard = lock.lock();
+		if (signaled_count) {
+			--signaled_count;
 			return true;
 		}
 
-		auto waiters_guard = waiters.lock();
-		waiters_guard->push(current);
-		state = current->cpu->scheduler.prepare_for_sleep(max_ns);
+		waiters.push(&waitable);
 	}
 
-	current->cpu->scheduler.sleep(state);
-	auto guard = signaled_count.lock();
-	if (*guard) {
-		--*guard;
+	current->cpu->scheduler.sleep(max_ns);
+
+	auto guard = lock.lock();
+	if (waitable.in_list) {
+		waiters.remove(&waitable);
+	}
+
+	current->dont_block = false;
+	if (signaled_count) {
+		--signaled_count;
 		return true;
 	}
 	else {
-		auto waiters_guard = waiters.lock();
-		waiters_guard->remove(current);
 		return false;
 	}
 }
 
 void Event::signal_one() {
 	IrqGuard irq_guard {};
-	auto guard = signaled_count.lock();
-	++*guard;
+	auto guard = lock.lock();
+	++signaled_count;
 
-	auto waiters_guard = waiters.lock();
-	if (!waiters_guard->is_empty()) {
-		auto thread = waiters_guard->front();
-		auto thread_guard = thread->sched_lock.lock();
-		if (thread->status != Thread::Status::Waiting &&
-			thread->status != Thread::Status::Running) {
-			thread->cpu->scheduler.unblock(thread, true, true);
-		}
-		waiters_guard->remove(thread);
+	if (!waiters.is_empty()) {
+		auto waitable = waiters.pop_front();
+		waitable->in_list = false;
+		auto thread = waitable->thread;
+		auto thread_guard = thread->move_lock.lock();
+		thread->cpu->scheduler.unblock(thread, true, false);
 	}
 }
 
 void Event::signal_one_if_not_pending() {
 	IrqGuard irq_guard {};
-	auto guard = signaled_count.lock();
-	if (*guard) {
+	auto guard = lock.lock();
+	if (signaled_count) {
 		return;
 	}
-	++*guard;
+	++signaled_count;
 
-	auto waiters_guard = waiters.lock();
-	if (!waiters_guard->is_empty()) {
-		auto thread = waiters_guard->front();
-		auto thread_guard = thread->sched_lock.lock();
-		if (thread->status != Thread::Status::Waiting &&
-			thread->status != Thread::Status::Running) {
-			thread->cpu->scheduler.unblock(thread, true, true);
-		}
-		waiters_guard->remove(thread);
+	if (!waiters.is_empty()) {
+		auto waitable = waiters.pop_front();
+		waitable->in_list = false;
+		auto thread = waitable->thread;
+		auto thread_guard = thread->move_lock.lock();
+		thread->cpu->scheduler.unblock(thread, true, false);
 	}
 }
 
 void Event::signal_all() {
 	IrqGuard irq_guard {};
-	auto guard = signaled_count.lock();
-	++*guard;
+	auto guard = lock.lock();
+	++signaled_count;
 
-	auto waiters_guard = waiters.lock();
-	for (auto& thread : *waiters_guard) {
-		auto thread_guard = thread.sched_lock.lock();
-		if (thread.status != Thread::Status::Waiting &&
-			thread.status != Thread::Status::Running) {
-			thread.cpu->scheduler.unblock(&thread, true, true);
-		}
+	for (auto& waitable : waiters) {
+		auto thread = waitable.thread;
+		auto thread_guard = thread->move_lock.lock();
+		thread->cpu->scheduler.unblock(thread, true, false);
+		waitable.in_list = false;
 	}
-	waiters_guard->clear();
+	waiters.clear();
 }
 
 void Event::signal_count(usize count) {
 	IrqGuard irq_guard {};
-	auto guard = signaled_count.lock();
-	*guard += count;
+	auto guard = lock.lock();
+	signaled_count += count;
 
-	auto waiters_guard = waiters.lock();
-	for (auto& thread : *waiters_guard) {
-		auto thread_guard = thread.sched_lock.lock();
-		thread.cpu->scheduler.unblock(&thread, true, true);
+	for (auto& waitable : waiters) {
+		auto thread = waitable.thread;
+		auto thread_guard = thread->move_lock.lock();
+		thread->cpu->scheduler.unblock(thread, true, false);
+
+		if (--count == 0) {
+			break;
+		}
+
+		waiters.remove(&waitable);
+		waitable.in_list = false;
 	}
-	waiters_guard->clear();
 }
 
 usize CallbackProducer::add_callback(kstd::small_function<void()> callback) {

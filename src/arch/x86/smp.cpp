@@ -202,8 +202,7 @@ static void x86_init_cpu_common(Cpu* self, u8 lapic_id, bool bsp) {
 	}
 
 	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
-	auto state = cpu->scheduler.prepare_for_block();
-	cpu->scheduler.block(state);
+	cpu->scheduler.block();
 	panic("scheduler block returned");
 }
 
@@ -246,7 +245,7 @@ void x86_smp_init() {
 		prev += 1;
 	}
 
-	println("[kernel][smp]: init done");
+	println("[kernel][smp]: ap init done");
 
 	{
 		auto guard = SMP_LOCK.lock();
@@ -258,6 +257,7 @@ void x86_smp_init() {
 	}
 
 	CPUS[0]->cpu_tick_source->oneshot(50 * US_IN_MS);
+	println("[kernel][smp]: bsp init done");
 }
 
 usize arch_get_cpu_count() {
@@ -278,12 +278,25 @@ struct [[gnu::packed]] BootInfo {
 };
 
 extern char smp_trampoline_start[];
+extern char smp_trampoline_start32[];
 extern char smp_trampoline_end[];
 
 void arch_sleep_init() {
 	assert(acpi::SMP_TRAMPOLINE_PHYS_ADDR);
+
+	usize size = smp_trampoline_end - smp_trampoline_start;
+	u32 magic = 0xCAFEBABE;
+	for (usize i = 0; i < size; ++i) {
+		if (memcmp(smp_trampoline_start + i, &magic, 4) == 0) {
+			memcpy(smp_trampoline_start + i, &acpi::SMP_TRAMPOLINE_PHYS_ADDR, 4);
+			break;
+		}
+	}
+
 	auto virt = to_virt<void>(acpi::SMP_TRAMPOLINE_PHYS_ADDR);
-	memcpy(virt, smp_trampoline_start, smp_trampoline_end - smp_trampoline_start);
+	memcpy(virt, smp_trampoline_start, size);
+	acpi::SMP_TRAMPLINE_PHYS_ENTRY16 = acpi::SMP_TRAMPOLINE_PHYS_ADDR;
+	acpi::SMP_TRAMPLINE_PHYS_ENTRY32 = acpi::SMP_TRAMPOLINE_PHYS_ADDR + (smp_trampoline_start32 - smp_trampoline_start);
 }
 
 namespace acpi {
@@ -384,8 +397,7 @@ static void ap_wake_entry(void* arg) {
 		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(cpu->saved_halt_rsp), "r"(cpu->saved_halt_rip));
 	}
 	else {
-		auto state = cpu->scheduler.prepare_for_block();
-		cpu->scheduler.block(state);
+		cpu->scheduler.block();
 	}
 	panic("resumed in ap wake entry");
 }
@@ -432,8 +444,7 @@ static void bsp_wake_entry(void*) {
 		asm volatile("mov %0, %%rsp; jmp *%1" : : "r"(CPUS[0]->saved_halt_rsp), "r"(CPUS[0]->saved_halt_rip));
 	}
 	else {
-		auto state = CPUS[0]->scheduler.prepare_for_block();
-		CPUS[0]->scheduler.block(state);
+		CPUS[0]->scheduler.block();
 	}
 	panic("resumed in bsp wake entry");
 }

@@ -2,7 +2,7 @@
 #include "user_dev.hpp"
 
 ManuallyDestroy<Spinlock<kstd::vector<kstd::shared_ptr<UserDevice>>>> USER_DEVICES
-	[static_cast<int>(CrescentDeviceType::Max)] {};
+	[static_cast<int>(CrescentDeviceTypeMax)] {};
 
 usize user_dev_add(kstd::shared_ptr<UserDevice> device, CrescentDeviceType type) {
 	auto guard = USER_DEVICES[static_cast<int>(type)]->lock();

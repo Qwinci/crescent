@@ -42,7 +42,7 @@ struct Udp4Socket : public Socket {
 		return ERR_UNSUPPORTED;
 	}
 
-	int send(const void*, usize) override {
+	int send(const void*, usize&) override {
 		return ERR_UNSUPPORTED;
 	}
 

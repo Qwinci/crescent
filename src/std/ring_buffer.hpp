@@ -42,6 +42,58 @@ struct RingBuffer {
 		return orig_size;
 	}
 
+	usize read_some(void* data, usize min, usize max, Event& interrupt_event, bool& interrupted) {
+		usize size = max;
+
+		while (true) {
+			usize to_read;
+			bool wait = false;
+
+			{
+				IrqGuard irq_guard {};
+				auto guard = buffer.lock();
+
+				auto remaining_at_end = guard->size() - read_ptr;
+				to_read = kstd::min(kstd::min(buffer_size, size), remaining_at_end);
+				memcpy(data, guard->data() + read_ptr, to_read);
+				read_ptr += to_read;
+				buffer_size -= to_read;
+				size -= to_read;
+				if (read_ptr == guard->size()) {
+					read_ptr = 0;
+				}
+
+				if (size && !buffer_size) {
+					wait = true;
+				}
+			}
+
+			if (wait) {
+				if (max - size >= min) {
+					break;
+				}
+
+				write_event.signal_one();
+				Event* events[2] {&read_event, &interrupt_event};
+				auto index = Event::wait_any(events, 2, UINT64_MAX);
+				assert(index);
+				if (index == 2) {
+					// interrupt event
+					interrupted = true;
+					break;
+				}
+			}
+
+			if (!size) {
+				break;
+			}
+
+			data = offset(data, void*, to_read);
+		}
+
+		return max - size;
+	}
+
 	void read_block(void* data, usize size) {
 		while (true) {
 			usize to_read;

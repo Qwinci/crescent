@@ -9,6 +9,8 @@
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
 #include "stdio.hpp"
+#include "utils/kgdb.hpp"
+#include "sys/event_queue.hpp"
 
 #ifdef __x86_64__
 #include "acpi/acpi.hpp"
@@ -32,10 +34,123 @@ struct KernelStdoutVNode : public VNode {
 			return FsStatus::Unsupported;
 		}
 
-		print(kstd::string_view {static_cast<const char*>(data), size});
+		print(Color::White, kstd::string_view {static_cast<const char*>(data), size}, Color::Reset);
 
 		return FsStatus::Success;
 	}
+};
+
+struct KernelStdinVNode : public VNode {
+	KernelStdinVNode() : VNode {FileFlags::None, false} {
+		auto cpu = get_current_thread()->cpu;
+
+		struct Data {
+			KernelStdinVNode* file;
+		};
+
+		auto data = new Data {this};
+
+		auto stdio_poller = new Thread {
+			"stdio poller",
+			cpu,
+			&*KERNEL_PROCESS,
+			[](void* arg) {
+				auto* data = static_cast<Data*>(arg);
+				while (true) {
+					InputEvent event {};
+					if (!GLOBAL_EVENT_QUEUE.consume(event)) {
+						GLOBAL_EVENT_QUEUE.produce_event.wait();
+						continue;
+					}
+					if (event.type != EVENT_TYPE_KEY || !event.key.pressed) {
+						continue;
+					}
+
+					if (!data->file) {
+						IrqGuard irq_guard {};
+						get_current_thread()->cpu->scheduler.exit_thread(0);
+					}
+
+					data->file->input_events.push(event);
+					data->file->input_event.signal_one();
+					data->file->poll_event.signal_one_if_not_pending();
+				}
+			},
+			data};
+		node = &data->file;
+		stdio_poller->pin_level = true;
+		stdio_poller->pin_cpu = true;
+		cpu->scheduler.queue(stdio_poller);
+	}
+
+	~KernelStdinVNode() override {
+		*node = nullptr;
+	}
+
+	int index = 0;
+	KernelStdinVNode** node;
+
+	FsStatus read(void* data, usize& size, usize offset) override {
+		if (!size) {
+			return FsStatus::Success;
+		}
+
+		auto ptr = static_cast<char*>(data);
+
+		usize remaining = size;
+		while (true) {
+			if (input_events.is_empty()) {
+				input_event.wait();
+				continue;
+			}
+
+			auto event = input_events[0];
+			input_events.remove(0);
+
+			if (event.key.code >= SCANCODE_A && event.key.code <= SCANCODE_Z) {
+				char c = static_cast<char>('a' + (event.key.code - SCANCODE_A));
+				ptr[size - remaining] = c;
+
+				--remaining;
+				if (!remaining) {
+					break;
+				}
+			}
+			else if (event.key.code == SCANCODE_RETURN) {
+				ptr[size - remaining] = '\n';
+				--remaining;
+				if (!remaining) {
+					break;
+				}
+			}
+			else if (event.key.code == SCANCODE_SPACE && event.key.pressed) {
+				ptr[size - remaining] = ' ';
+				--remaining;
+				if (!remaining) {
+					break;
+				}
+			}
+			else {
+				ptr[size - remaining] = '?';
+				--remaining;
+				if (!remaining) {
+					break;
+				}
+			}
+		}
+
+		return FsStatus::Success;
+	}
+
+	FsStatus poll(PollEvent& events) override {
+		if (!input_events.is_empty()) {
+			events |= PollEvent::In;
+		}
+		return FsStatus::Success;
+	}
+
+	kstd::vector<InputEvent> input_events {};
+	Event input_event {};
 };
 
 struct NetworkLogSink : LogSink {
@@ -54,38 +169,40 @@ struct NetworkLogSink : LogSink {
 			sock = nullptr;
 			return;
 		}
-		assert(sock->send("network logging connected\n", sizeof("network logging connected\n") - 1) == 0);
+		usize size = sizeof("network logging connected\n") - 1;
+		assert(sock->send("network logging connected\n", size) == 0);
 
 		IrqGuard guard {};
 		LOG.lock()->register_sink(this);
 	}
 
 	void write(kstd::string_view str) override {
-		sock->send(str.data(), str.size());
+		usize size = str.size();
+		sock->send(str.data(), size);
 	}
 
 	kstd::shared_ptr<Socket> sock;
 };
 
 void print_mem() {
-	println("[kernel]: total memory: ", pmalloc_get_total_mem() / 1024 / 1024, "MB, reserved: ", pmalloc_get_reserved_mem() / 1024 / 1024, "MB");
-	println("[kernel]: used memory: ", pmalloc_get_used_mem() / 1024 / 1024, "MB (", pmalloc_get_used_mem() / 1024, "KB)");
+	//println("[kernel]: total memory: ", pmalloc_get_total_mem() / 1024 / 1024, "MB, reserved: ", pmalloc_get_reserved_mem() / 1024 / 1024, "MB");
+	//println("[kernel]: used memory: ", pmalloc_get_used_mem() / 1024 / 1024, "MB (", pmalloc_get_used_mem() / 1024, "KB)");
 }
 
 [[noreturn, gnu::used]] void kmain(const void* initrd, usize initrd_size) {
-    println("[kernel]: entered kmain");
+   // println("[kernel]: entered kmain");
 	print_mem();
 
 #if ARCH_X86_64
-	println("[kernel]: acpi init...");
+	//println("[kernel]: acpi init...");
 	pci::acpi_init();
-	println("[kernel]: qacpi init");
+	//println("[kernel]: qacpi init");
 	acpi::qacpi_init();
 	acpi::events_init();
 	qemu_fw_cfg_init();
-	println("[kernel]: pci acpi init");
+	//println("[kernel]: pci acpi init");
 	acpi::pci_init();
-	println("[kernel]: pci enumerate");
+	//println("[kernel]: pci enumerate");
 	pci::acpi_enumerate();
 
 	kstd::vector<qacpi::NamespaceNode*> nodes;
@@ -102,7 +219,9 @@ void print_mem() {
 					println("found battery");
 
 					auto ret = qacpi::ObjectRef::empty();
+					println("evaluating _BST");
 					auto status = acpi::GLOBAL_CTX->evaluate(node, "_BST", ret);
+					println("bst done");
 					if (status != qacpi::Status::Success) {
 						println("failed evaluate battery, status: ", qacpi::status_to_str(status));
 					}
@@ -133,35 +252,45 @@ void print_mem() {
 
 	fb_dev_register_boot_fb();
 
-	println("[kernel]: waiting for network");
+	//println("[kernel]: waiting for network");
 	nics_wait_ready();
 
 	// 192.168.1.102
-	//u32 log_ip = 192 | 168 << 8 | 1 << 16 | 102 << 24;
+	u32 log_ip = 192 | 168 << 8 | 1 << 16 | 102 << 24;
 	// 10.0.2.2
-	u32 log_ip = 10 | 0 << 8 | 2 << 16 | 2 << 24;
+	//u32 log_ip = 10 | 0 << 8 | 2 << 16 | 2 << 24;
 	auto netlog = new NetworkLogSink {log_ip};
 	if (!netlog->sock) {
 		delete netlog;
 	}
 
+	kgdb_init();
+
 	tar_initramfs_init(initrd, initrd_size);
 
 	IrqGuard guard {};
 	auto cpu = get_current_thread()->cpu;
-
+	//kstd::shared_ptr<VNode> stdin_vnode {kstd::make_shared<KernelStdinVNode>()};
 	kstd::shared_ptr<VNode> stdout_vnode {kstd::make_shared<KernelStdoutVNode>()};
 	auto stderr_vnode = stdout_vnode;
 
+	//auto stdin_file = kstd::make_shared<OpenFile>(std::move(stdin_vnode));
+	auto stdin_file = EmptyHandle {};
 	auto stdout_file = kstd::make_shared<OpenFile>(std::move(stdout_vnode));
 	auto stderr_file = kstd::make_shared<OpenFile>(std::move(stderr_vnode));
 
-	auto* user_process = new Process {"user process", true, EmptyHandle {}, std::move(stdout_file), std::move(stderr_file)};
+	auto* user_process = new Process {"user process", true, std::move(stdin_file), std::move(stdout_file), std::move(stderr_file)};
 
-	auto desktop_file = vfs_lookup(INITRD_VFS->get_root(), "bin/desktop");
-	assert(desktop_file);
+	//auto desktop_file = vfs_lookup(INITRD_VFS->get_root(), "bin/desktop");
+	//auto desktop_file = vfs_lookup(INITRD_VFS->get_root(), "usr/bin/bash");
+	//auto desktop_file = vfs_lookup(INITRD_VFS->get_root(), "bin/console");
 
-	auto elf_result = elf_load(user_process, desktop_file.data());
+	//auto init_file = vfs_lookup(INITRD_VFS->get_root(), "bin/desktop");
+
+	auto init_file = vfs_lookup(INITRD_VFS->get_root(), "bin/init");
+	assert(init_file);
+
+	auto elf_result = elf_load(user_process, init_file.data());
 	assert(elf_result);
 
 	auto ld_file = vfs_lookup(INITRD_VFS->get_root(), "usr/lib/libc.so");
@@ -179,13 +308,12 @@ void print_mem() {
 		.exe_phdr_size = elf_result.value().phdr_size
 	};
 
-	auto* user_thread = new Thread {"user thread", cpu, user_process, sysv_info};
+	auto* user_thread = new Thread {"init", cpu, user_process, sysv_info};
 
 	println("[kernel]: launching init");
 	print_mem();
 	cpu->scheduler.queue(user_thread);
 	cpu->thread_count.fetch_add(1, kstd::memory_order::seq_cst);
-	auto state = cpu->scheduler.prepare_for_block();
-	cpu->scheduler.block(state);
+	cpu->scheduler.block();
 	panic("returned to kmain");
 }

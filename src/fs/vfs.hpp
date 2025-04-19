@@ -2,6 +2,7 @@
 #include "string_view.hpp"
 #include "shared_ptr.hpp"
 #include "utils/flags_enum.hpp"
+#include "dev/event.hpp"
 
 enum class FsStatus {
 	Success,
@@ -32,6 +33,16 @@ struct DirEntry {
 	Type type;
 };
 
+enum class PollEvent {
+	None,
+	In = 1 << 0,
+	Out = 1 << 1,
+	Hup = 1 << 2,
+	Err = 1 << 3,
+	UrgentOut = 1 << 4
+};
+FLAGS_ENUM(PollEvent);
+
 struct VNode {
 	constexpr explicit VNode(FileFlags flags, bool seekable)
 		: seekable {seekable}, flags {flags} {}
@@ -58,6 +69,11 @@ struct VNode {
 		return FsStatus::Unsupported;
 	}
 
+	virtual FsStatus poll(PollEvent& events) {
+		return FsStatus::Unsupported;
+	}
+
+	Event poll_event {};
 	bool seekable {};
 
 protected:

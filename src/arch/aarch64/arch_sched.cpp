@@ -1,11 +1,15 @@
+#include "arch/arch_syscalls.hpp"
 #include "arch/cpu.hpp"
+#include "mem/mem.hpp"
 #include "mem/vspace.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
+#include "sys/user_access.hpp"
+#include "sys/posix/errno.hpp"
 
 asm(R"(
 .pushsection .text
-.arch armv8-a+fp-armv8
+.arch_extension fp
 .globl sched_switch_thread
 .type sched_switch_thread, @function
 
@@ -25,8 +29,8 @@ sched_switch_thread:
 	mov x2, sp
 	str x2, [x0]
 
-	// prev->sched_lock = false
-	strb wzr, [x0, #208]
+	// prev->move_lock = false
+	strb wzr, [x0, #200]
 
 	ldr x3, [x1]
 	mov sp, x3
@@ -131,6 +135,7 @@ extern "C" void restore_simd_regs(u8* regs);
 void sched_before_switch(Thread* prev, Thread* thread) {
 	if (prev->process->user) {
 		save_simd_regs(prev->simd);
+		asm volatile("mrs %0, tpidr_el0" : "=r"(prev->tpidr_el0));
 	}
 
 	if (thread->process->user) {
@@ -185,6 +190,17 @@ arch_on_first_switch_user:
 	mov x17, #0
 	mov x18, #0
 	mov x19, #0
+	mov x20, #0
+	mov x21, #0
+	mov x22, #0
+	mov x23, #0
+	mov x24, #0
+	mov x25, #0
+	mov x26, #0
+	mov x27, #0
+	mov x28, #0
+	mov x29, #0
+	mov x30, #0
 
 	eret
 .popsection
@@ -197,19 +213,28 @@ struct SimdRegisters {
 };
 static_assert(sizeof(SimdRegisters) == 528);
 
+static constexpr usize GUARD_SIZE = PAGE_SIZE;
+
 ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
-	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - sizeof(InitFrame);
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + GUARD_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE - sizeof(InitFrame);
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->x[0] = reinterpret_cast<u64>(arg);
 	frame->x[1] = reinterpret_cast<u64>(fn);
+
+	for (usize i = 0; i < GUARD_SIZE; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base) + i, PageFlags::Read, CacheMode::WriteBack);
+	}
+
 	if (process->user) {
 		user_stack_base = reinterpret_cast<u8*>(process->allocate(
 			nullptr,
 			USER_STACK_SIZE + PAGE_SIZE,
-			MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, nullptr));
+			PageFlags::Read | PageFlags::Write,
+			MemoryAllocFlags::Backed,
+			nullptr));
 		assert(user_stack_base);
 		process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
 		simd = static_cast<u8*>(ALLOCATOR.alloc(sizeof(SimdRegisters)));
@@ -232,17 +257,23 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
 ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
 	assert(process->user);
 
-	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - sizeof(InitFrame);
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + GUARD_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE - sizeof(InitFrame);
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->x[1] = sysv.ld_entry;
 
+	for (usize i = 0; i < GUARD_SIZE; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base) + i, PageFlags::Read, CacheMode::WriteBack);
+	}
+
 	user_stack_base = reinterpret_cast<u8*>(process->allocate(
 		nullptr,
 		USER_STACK_SIZE + PAGE_SIZE,
-		MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, nullptr));
+		PageFlags::Read | PageFlags::Write,
+		MemoryAllocFlags::Backed,
+		nullptr));
 	assert(user_stack_base);
 	process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
 
@@ -313,11 +344,100 @@ ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
 }
 
 ArchThread::~ArchThread() {
-	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE);
+	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE + GUARD_SIZE);
 	if (user_stack_base) {
-		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE);
+		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE + PAGE_SIZE);
 	}
 	if (simd) {
 		ALLOCATOR.free(simd, sizeof(SimdRegisters));
 	}
+}
+
+struct stack_t {
+	void* ss_sp;
+	int ss_flags;
+	size_t ss_size;
+};
+
+struct mcontext_t {
+	u64 fault_address;
+	u64 regs[31];
+	u64 sp;
+	u64 pc;
+	u64 pstate;
+	u8 reserved[4096];
+};
+
+struct ucontext_t {
+	unsigned long uc_flags;
+	ucontext_t* uc_link;
+	stack_t uc_stack;
+	mcontext_t uc_mcontext;
+	u64 uc_sigmask;
+	u8 unused[1024 / 8 - sizeof(uc_sigmask)];
+	usize old_sigmask;
+};
+
+bool arch_handle_signal(IrqFrame* frame, Thread* thread, SignalContext& sig_ctx, int sig) {
+	ucontext_t uctx {};
+	auto& ctx = uctx.uc_mcontext;
+
+	static_assert(sizeof(frame->x) == sizeof(ctx.regs));
+
+	memcpy(ctx.regs, frame->x, sizeof(frame->x));
+	ctx.fault_address = frame->far_el1;
+	ctx.sp = frame->sp;
+	ctx.pc = frame->elr_el1;
+	ctx.pstate = frame->spsr_el1;
+
+	memcpy(ctx.reserved, thread->simd, sizeof(SimdRegisters));
+
+	uctx.old_sigmask = thread->signal_ctx.blocked_signals;
+
+	auto& s = sig_ctx.signals[sig];
+
+	auto user_sp = s.flags & SignalFlags::AltStack ? (s.stack_base + s.stack_size) : frame->sp;
+	user_sp -= ALIGNUP(sizeof(ucontext_t), 16);
+	if (!UserAccessor(user_sp).store(uctx)) {
+		return false;
+	}
+
+	memset(frame->x, 0, sizeof(frame->x));
+	frame->x[0] = sig;
+	frame->x[2] = user_sp;
+	frame->x[30] = s.restorer;
+	// todo verify that this doesn't crash with invalid values
+	frame->elr_el1 = s.handler;
+	frame->sp = user_sp;
+
+	return true;
+}
+
+void arch_sigrestore(SyscallFrame* frame) {
+	ucontext_t uctx {};
+
+	auto thread = get_current_thread();
+
+	auto user_sp = reinterpret_cast<usize>(frame->sp);
+	if (!UserAccessor(user_sp).load(uctx)) {
+		*frame->error() = EFAULT;
+		return;
+	}
+
+	auto& ctx = uctx.uc_mcontext;
+
+	thread->signal_ctx.blocked_signals = uctx.old_sigmask;
+	if (!UserAccessor(ctx.reserved).load(thread->simd, sizeof(SimdRegisters))) {
+		*frame->error() = EFAULT;
+		return;
+	}
+
+	memcpy(frame->x, ctx.regs, sizeof(frame->x));
+	frame->sp = ctx.sp;
+	frame->elr_el1 = ctx.pc;
+
+	static constexpr u64 allowed_flags = 0b1111UL << 28 | 1U << 21;
+
+	frame->spsr_el1 &= ~allowed_flags;
+	frame->spsr_el1 |= ctx.pstate & allowed_flags;
 }

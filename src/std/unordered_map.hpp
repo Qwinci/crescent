@@ -4,7 +4,7 @@
 #include "optional.hpp"
 
 namespace kstd {
-	template<typename T, typename K>
+	template<typename K, typename T>
 	class unordered_map {
 	public:
 		void remove(K key) {
@@ -81,7 +81,8 @@ namespace kstd {
 			auto hash = fnv_hash(&key, sizeof(K));
 			if (table.is_empty()) {
 				table.resize(8);
-				table[hash % 8] = Element {.key {key}, .value {move(value)}};
+				table[hash % 8] = Element {.key {key}, .value {std::move(value)}};
+				++used;
 				return;
 			}
 
@@ -89,7 +90,7 @@ namespace kstd {
 			if (load_factor >= 70) {
 				kstd::vector<kstd::optional<Element>> new_table;
 				size_t new_table_size = table.size() * 2;
-				new_table.reserve(table.size() * 2);
+				new_table.resize(table.size() * 2);
 
 				for (auto& elem : table) {
 					if (!elem.has_value()) {
@@ -100,14 +101,14 @@ namespace kstd {
 					while (true) {
 						auto& bucket = new_table[bucket_index];
 						if (!bucket.has_value()) {
-							bucket = move(elem);
+							bucket = std::move(elem);
 							break;
 						}
 						bucket_index = (bucket_index + 1) % new_table_size;
 					}
 				}
 
-				table = move(new_table);
+				table = std::move(new_table);
 			}
 
 			size_t table_size = table.size();
@@ -115,7 +116,8 @@ namespace kstd {
 			while (true) {
 				auto& bucket = table[bucket_index];
 				if (!bucket.has_value() || bucket->key == key) {
-					bucket = Element {.key {key}, .value {move(value)}};
+					bucket = Element {.key {key}, .value {std::move(value)}};
+					++used;
 					break;
 				}
 				bucket_index = (bucket_index + 1) % table_size;

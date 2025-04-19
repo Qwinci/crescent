@@ -5,4 +5,5 @@ target_sources(crescent PRIVATE
 	thread.cpp
 	ipc.cpp
 	shared_mem.cpp
+	signal_ctx.cpp
 )

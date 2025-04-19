@@ -42,6 +42,8 @@ void x86_madt_parse() {
 			u8 polarity = flags & 0b11;
 			u8 trigger = flags >> 2 & 0b11;
 
+			char mode = flags >> 2 & 0b11 == 0b11 ? 1 : 0;
+
 			IO_APIC.register_override(irq_num, gsi, polarity == 0b11, trigger == 0b11);
 		}
 

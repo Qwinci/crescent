@@ -15,6 +15,8 @@ endmacro()
 
 add_subdirectory(desktop)
 add_subdirectory(console)
+add_subdirectory(init)
+add_subdirectory(qgbe)
 
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
 	add_subdirectory(evm)

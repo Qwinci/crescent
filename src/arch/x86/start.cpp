@@ -67,5 +67,6 @@ extern "C" [[noreturn, gnu::used]] void arch_start(BootInfo info) {
 		println("[kernel][x86]: initial entropy added from rdrand");
 	}
 
+	println("calling kmain");
 	kmain(initrd.data, initrd.size);
 }

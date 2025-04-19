@@ -1,7 +1,7 @@
 #include "vm.hpp"
-#include "sys.hpp"
 #include "chipset.hpp"
 #include "pci.hpp"
+#include "sys.h"
 #include <cassert>
 #include <stdio.h>
 
@@ -77,11 +77,11 @@ Vm::Vm(uint32_t* fb, uint32_t fb_size) {
 	});
 
 	CrescentHandle bios_handle;
-	auto err = sys_open(bios_handle, "/bios.bin", sizeof("/bios.bin") - 1, 0);
+	auto err = sys_open(&bios_handle, "/bios.bin", sizeof("/bios.bin") - 1, 0);
 	assert(err == 0);
 
 	CrescentStat bios_stat {};
-	err = sys_stat(bios_handle, bios_stat);
+	err = sys_stat(bios_handle, &bios_stat);
 	assert(err == 0);
 
 	void* bios_mem = nullptr;
@@ -92,11 +92,11 @@ Vm::Vm(uint32_t* fb, uint32_t fb_size) {
 	sys_close_handle(bios_handle);
 
 	CrescentHandle evm;
-	err = sys_evm_create(evm);
+	err = sys_evm_create(&evm);
 	assert(err == 0);
 	CrescentHandle vcpu;
 	EvmGuestState* state;
-	err = sys_evm_create_vcpu(evm, vcpu, &state);
+	err = sys_evm_create_vcpu(evm, &vcpu, &state);
 	assert(err == 0);
 
 	handle = evm;
@@ -159,13 +159,14 @@ void Vm::run() {
 		}
 	}
 
+	EvmIrqInfo irq_info {
+		.type = EVM_IRQ_TYPE_IRQ,
+		.irq = 8,
+		.error = 0
+	};
 	sys_evm_vcpu_trigger_irq(
 		vcpus[0].handle,
-		{
-			.type = EVM_IRQ_TYPE_IRQ,
-			.irq = 8,
-			.error = 0
-		});
+		&irq_info);
 
 	for (int i = 0; i < 1000; ++i) {
 		uint64_t start = __rdtsc();

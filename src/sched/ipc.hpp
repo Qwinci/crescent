@@ -13,7 +13,7 @@ struct IpcSocket final : public Socket {
 	int disconnect() override;
 	int listen(uint32_t port) override;
 	int accept(kstd::shared_ptr<Socket>& connection, int connection_flags) override;
-	int send(const void* data, usize size) override;
+	int send(const void* data, usize& size) override;
 	int receive(void* data, usize& size) override;
 
 	int get_peer_name(AnySocketAddress& address) override;
@@ -27,6 +27,7 @@ struct IpcSocket final : public Socket {
 	usize buf_read_ptr {};
 	usize buf_write_ptr {};
 	usize buf_size {};
-	Event buf_event {};
+	Event write_event {};
+	Event read_event {};
 	Spinlock<void> lock {};
 };

@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-typedef struct {
+typedef struct CrescentDateTime {
 	uint16_t year;
 	uint8_t month;
 	uint8_t day;

@@ -40,8 +40,15 @@ static usize socket_address_type_to_size(SocketAddressType type) {
 	}
 }
 
+void handle_posix_syscall(usize num, SyscallFrame* frame);
+
 extern "C" void syscall_handler(SyscallFrame* frame) {
 	auto num = *frame->num();
+	if (num >= SYS_POSIX_START) {
+		handle_posix_syscall(num, frame);
+		return;
+	}
+
 	auto thread = get_current_thread();
 
 	switch (static_cast<CrescentSyscall>(num)) {
@@ -62,6 +69,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 			auto fn = reinterpret_cast<void (*)(void*)>(*frame->arg3());
 			auto arg = reinterpret_cast<void*>(*frame->arg4());
+			auto user_tid = *frame->arg5();
 
 			Cpu* cpu;
 			{
@@ -75,7 +83,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			CrescentHandle handle = thread->process->handles.insert(descriptor);
 			new_thread->add_descriptor(descriptor.data());
 
-			if (!UserAccessor(*frame->arg0()).store(handle)) {
+			if (!UserAccessor(*frame->arg0()).store(handle) ||
+				!UserAccessor(user_tid).store(new_thread->thread_id)) {
 				thread->process->handles.remove(handle);
 				delete new_thread;
 				*frame->ret() = ERR_FAULT;
@@ -315,6 +324,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			*frame->ret() = thread->thread_id;
 			break;
 		}
+		case SYS_GET_PROCESS_ID:
+		{
+			*frame->ret() = thread->process->pid;
+			break;
+		}
 		case SYS_SLEEP:
 		{
 			auto ns = *frame->arg0();
@@ -376,7 +390,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
-			print(str);
+			print(Color::White, str, Color::Reset);
 
 			*frame->ret() = 0;
 			break;
@@ -392,17 +406,18 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			int protection = static_cast<int>(*frame->arg2());
 
 			MemoryAllocFlags flags = MemoryAllocFlags::Backed;
+			PageFlags prot {};
 			if (protection & CRESCENT_PROT_READ) {
-				flags |= MemoryAllocFlags::Read;
+				prot |= PageFlags::Read;
 			}
 			if (protection & CRESCENT_PROT_WRITE) {
-				flags |= MemoryAllocFlags::Write;
+				prot |= PageFlags::Write;
 			}
 			if (protection & CRESCENT_PROT_EXEC) {
-				flags |= MemoryAllocFlags::Execute;
+				prot |= PageFlags::Execute;
 			}
 
-			auto addr = thread->process->allocate(ptr, size, flags, nullptr);
+			auto addr = thread->process->allocate(ptr, size, prot, flags, nullptr);
 			if (!addr) {
 				*frame->ret() = ERR_NO_MEM;
 				break;
@@ -438,10 +453,10 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			switch (req.type) {
-				case DevLinkRequestType::GetDevices:
+				case DevLinkRequestGetDevices:
 				{
 					auto type = req.data.get_devices.type;
-					if (type >= CrescentDeviceType::Max) {
+					if (type >= CrescentDeviceTypeMax) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;
 						break;
 					}
@@ -502,7 +517,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 					break;
 				}
-				case DevLinkRequestType::OpenDevice:
+				case DevLinkRequestOpenDevice:
 				{
 					if (req.data.open_device.device_len > 1024) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;
@@ -554,7 +569,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 					break;
 				}
-				case DevLinkRequestType::Specific:
+				case DevLinkRequestSpecific:
 				{
 					if (req.size > DEVLINK_BUFFER_SIZE) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;
@@ -1011,6 +1026,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto socket = socket_ptr->data();
 			*frame->ret() = socket->send(data.data(), size);
 
+			if (!UserAccessor(*frame->arg3()).store(size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
 			break;
 		}
 		case SYS_SOCKET_SEND_TO:
@@ -1248,7 +1268,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto mem = thread->process->allocate(
 				nullptr,
 				shared_mem->pages.size() * PAGE_SIZE,
-				MemoryAllocFlags::Read | MemoryAllocFlags::Write,
+				PageFlags::Read | PageFlags::Write,
+				MemoryAllocFlags::None,
 				nullptr);
 			if (!mem) {
 				*frame->ret() = ERR_NO_MEM;
@@ -1729,24 +1750,27 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		}
 		case SYS_FUTEX_WAIT:
 		{
-			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
-			auto value = static_cast<int>(*frame->arg1());
+			auto ptr = *frame->arg0();
+			auto value = static_cast<u32>(*frame->arg1());
 			auto timeout_ns = *frame->arg2();
 
 			IrqGuard irq_guard {};
 
-			bool state;
 			{
 				auto guard = thread->process->futexes.lock();
 
-				// todo if this faults the process is killed
-				auto current_value = ptr->load(kstd::memory_order::seq_cst);
+				u32 current_value;
+				if (!atomic_load32_user(ptr, &current_value)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+
 				if (current_value != value) {
 					*frame->ret() = ERR_TRY_AGAIN;
 					break;
 				}
 
-				auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
+				auto entry = guard->find<usize, &Process::Futex::ptr>(ptr);
 				if (!entry) {
 					auto* new_entry = new Process::Futex {
 						.ptr = ptr
@@ -1756,29 +1780,41 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				}
 
 				entry->waiters.push(thread);
+				thread->in_futex_wait_list = true;
 				thread->sleep_interrupted = false;
-				if (timeout_ns == UINT64_MAX) {
-					state = thread->cpu->scheduler.prepare_for_block();
-				}
-				else {
-					if (timeout_ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
-						timeout_ns = SCHED_MAX_SLEEP_US * NS_IN_US;
-					}
-					state = thread->cpu->scheduler.prepare_for_sleep(timeout_ns);
-				}
 			}
 
 			if (timeout_ns == UINT64_MAX) {
-				thread->cpu->scheduler.block(state);
+				thread->cpu->scheduler.block();
+				*frame->ret() = 0;
 			}
 			else {
-				thread->cpu->scheduler.sleep(state);
+				if (timeout_ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
+					timeout_ns = SCHED_MAX_SLEEP_US * NS_IN_US;
+				}
+
+				thread->cpu->scheduler.sleep(timeout_ns);
 
 				if (thread->sleep_interrupted) {
-					*frame->ret() = ERR_TIMEOUT;
+					assert(!thread->in_futex_wait_list);
+					*frame->ret() = 0;
 				}
 				else {
-					*frame->ret() = 0;
+					auto guard = thread->process->futexes.lock();
+
+					if (thread->in_futex_wait_list) {
+						auto entry = guard->find<usize, &Process::Futex::ptr>(ptr);
+						assert(entry);
+						entry->waiters.remove(thread);
+						thread->in_futex_wait_list = false;
+
+						if (entry->waiters.is_empty()) {
+							guard->remove(entry);
+							delete entry;
+						}
+					}
+
+					*frame->ret() = ERR_TIMEOUT;
 				}
 			}
 
@@ -1786,13 +1822,13 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		}
 		case SYS_FUTEX_WAKE:
 		{
-			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
+			auto ptr = *frame->arg0();
 			auto count = static_cast<int>(*frame->arg1());
 
 			IrqGuard irq_guard {};
 			auto guard = thread->process->futexes.lock();
 
-			auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
+			auto entry = guard->find<usize, &Process::Futex::ptr>(ptr);
 			if (!entry) {
 				*frame->ret() = 0;
 				break;
@@ -1801,9 +1837,9 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			assert(!entry->waiters.is_empty());
 			for (; !entry->waiters.is_empty() && count > 0; --count) {
 				auto waiter = entry->waiters.pop_front();
-				auto thread_guard = waiter->sched_lock.lock();
-				assert(thread->status == Thread::Status::Sleeping);
-				thread->cpu->scheduler.unblock(thread, true, true);
+				auto thread_guard = waiter->move_lock.lock();
+				waiter->in_futex_wait_list = false;
+				waiter->cpu->scheduler.unblock(waiter, true, false);
 			}
 
 			if (entry->waiters.is_empty()) {
@@ -1931,7 +1967,12 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			auto state_addr = thread->process->allocate(nullptr, PAGE_SIZE, MemoryAllocFlags::Read | MemoryAllocFlags::Write, nullptr);
+			auto state_addr = thread->process->allocate(
+				nullptr,
+				PAGE_SIZE,
+				PageFlags::Read | PageFlags::Write,
+				MemoryAllocFlags::None,
+				nullptr);
 			if (!state_addr) {
 				thread->process->handles.remove(vcpu_handle);
 				*frame->ret() = ERR_NO_MEM;

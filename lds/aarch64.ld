@@ -47,10 +47,8 @@ SECTIONS {
 
 	.init_array : {
 		INIT_ARRAY_START = .;
-		crti.o(.init_array)
-		KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
-		KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
-		crtn.o(.init_array)
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP(*(.init_array))
 		INIT_ARRAY_END = .;
 	} :data
 

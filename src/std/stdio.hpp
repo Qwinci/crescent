@@ -8,6 +8,7 @@
 
 enum class Color {
 	Red,
+	White,
 	Reset
 };
 

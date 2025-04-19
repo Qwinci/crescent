@@ -20,5 +20,17 @@ if(CONFIG_PCI AND CONFIG_USB_XHCI)
 	option(CONFIG_XHCI_PCI "Enable xhci pci support" ON)
 endif()
 
+if(CONFIG_DTB AND CONFIG_USB_XHCI)
+	option(CONFIG_XHCI_DTB "Enable xhci dtb support" ON)
+endif()
+
+option(CONFIG_UFS "Enable ufs support" ON)
+if(CONFIG_PCI AND CONFIG_UFS)
+	option(CONFIG_UFS_PCI "Enable ufs pci support" ON)
+endif()
+if(CONFIG_DTB AND CONFIG_UFS)
+	option(CONFIG_UFS_DTB "Enable ufs dtb support" ON)
+endif()
+
 configure_file(config.hpp.in config.hpp @ONLY)
 target_include_directories(crescent PRIVATE "${CMAKE_BINARY_DIR}")

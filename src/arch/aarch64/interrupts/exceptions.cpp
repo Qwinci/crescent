@@ -2,6 +2,7 @@
 #include "sched/sched.hpp"
 #include "sys/syscalls.hpp"
 #include "arch/cpu.hpp"
+#include "sys/posix/signals.hpp"
 
 extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 	u8 exception_class = frame->esr_el1 >> 26 & 0b111111;
@@ -75,23 +76,34 @@ extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 	else if (exception_class == 0x24) {
 		reason = "EL0 data abort";
 
-		auto stack_base = reinterpret_cast<u64>(current->user_stack_base);
-		if (frame->far_el1 >= stack_base && frame->far_el1 < stack_base + PAGE_SIZE) {
-			println("[kernel][aarch64]: thread '", current->name, "' hit guard page!");
-		}
-		else if (current->process->handle_pagefault(frame->far_el1)) {
+		if (current->process->user) {
+			auto stack_base = reinterpret_cast<u64>(current->user_stack_base);
+			if (frame->far_el1 >= stack_base && frame->far_el1 < stack_base + PAGE_SIZE) {
+				println("[kernel][aarch64]: thread '", current->name, "' hit guard page!");
+			}
+			else if (current->process->handle_pagefault(frame->far_el1)) {
+				return;
+			}
+
+			println("[kernel][aarch64]: ", Color::Red, "EXCEPTION: ", reason, ", FAR: 0x", Fmt::Hex, frame->far_el1);
+			println("\tat 0x", frame->elr_el1, "\nESR: ", frame->esr_el1, Fmt::Reset, Color::Reset);
+			println("[kernel][x86]: sending SIGSEGV to ", current->process->name, " (thread ", current->name, ")");
+
+			auto guard = current->process->signal_ctx.lock();
+			guard->send_signal(current, SIGSEGV, false);
+			current->signal_ctx.check_signals(frame, current);
 			return;
 		}
 	}
 	else if (exception_class == 0x25) {
 		reason = "data abort";
 
-		if (current->handler_ip) {
-			frame->elr_el1 = current->handler_ip;
-			frame->sp = current->handler_sp;
+		if (current->process->handle_pagefault(frame->far_el1)) {
 			return;
 		}
-		else if (current->process->handle_pagefault(frame->far_el1)) {
+		else if (current->handler_ip) {
+			frame->elr_el1 = current->handler_ip;
+			frame->sp = current->handler_sp;
 			return;
 		}
 	}

@@ -227,10 +227,14 @@ void kernel_dtb_init(void* plain_dtb_void) {
 						}
 
 						flags &= 0xF;
-						if (flags == 1) {
+						if (flags == 1 || flags == 2) {
+							// flags 1 == active high edge triggered
+							// flags 2 == active low edge triggered
 							irq.mode = TriggerMode::Edge;
 						}
-						else if (flags == 4) {
+						else if (flags == 4 || flags == 8) {
+							// flags 4 == active high level triggered
+							// flags 8 == active low level triggered
 							irq.mode = TriggerMode::Level;
 						}
 						else {

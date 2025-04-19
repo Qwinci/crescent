@@ -38,8 +38,9 @@ static constexpr Driver DRIVER_ ## variable {.type = DriverType::Dt, .dt = &(var
 #include "dev/pci.hpp"
 
 struct PciDeviceMatch {
-	u16 vendor;
-	u16 device;
+	u16 vendor {};
+	u16 device {};
+	void* data {};
 };
 
 enum class PciMatch {

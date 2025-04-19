@@ -37,7 +37,7 @@
 				auto guard = max_cpu->scheduler.levels[i - 1].list.lock();
 
 				for (auto& thread : *guard) {
-					auto thread_guard = thread.sched_lock.lock();
+					auto thread_guard = thread.move_lock.lock();
 
 					if (!thread.pin_cpu && thread.status == Thread::Status::Waiting) {
 						println("[kernel][sched]: moving thread ", thread.name, " from cpu ", max_cpu_index, " to cpu ", min_cpu_index);
@@ -61,7 +61,7 @@
 			if (diff) {
 				auto guard = max_cpu->scheduler.sleeping_threads.lock();
 				for (auto& thread : *guard) {
-					if (!thread.sched_lock.try_lock()) {
+					if (!thread.status_lock.try_lock()) {
 						continue;
 					}
 
@@ -98,18 +98,17 @@
 						--diff;
 
 						if (!diff) {
-							thread.sched_lock.manual_unlock();
+							thread.status_lock.manual_unlock();
 							break;
 						}
 					}
 
-					thread.sched_lock.manual_unlock();
+					thread.status_lock.manual_unlock();
 				}
 			}
 		}
 
-		auto state = scheduler.prepare_for_sleep(NS_IN_S);
-		scheduler.sleep(state);
+		scheduler.sleep(NS_IN_S);
 	}
 }
 
@@ -253,8 +252,8 @@ void Scheduler::do_schedule() const {
 		return;
 	}
 
-	if (!prev->sched_lock.is_locked()) {
-		prev->sched_lock.manual_lock();
+	if (!prev->move_lock.is_locked()) {
+		prev->move_lock.manual_lock();
 	}
 
 	if (prev->process->killed || prev->exited) {
@@ -279,27 +278,32 @@ void Scheduler::do_schedule() const {
 	sched_switch_thread(prev, current);
 }
 
-bool Scheduler::prepare_for_block() {
+void Scheduler::block() {
 	auto state = arch_enable_irqs(false);
 
-	current->sched_lock.manual_lock();
-	current->status = Thread::Status::Blocked;
-	current->cpu->cpu_tick_source->reset();
+	auto move_guard = current->move_lock.lock();
+	{
+		auto status_guard = current->status_lock.lock();
 
-	if (!current->pin_level && current->level_index > 0) {
-		--current->level_index;
+		if (current->dont_block) {
+			arch_enable_irqs(state);
+			current->dont_block = false;
+			return;
+		}
+
+		current->status = Thread::Status::Blocked;
+		current->cpu->cpu_tick_source->reset();
+
+		if (!current->pin_level && current->level_index > 0) {
+			--current->level_index;
+		}
+		us_to_next_schedule = 0;
 	}
-	us_to_next_schedule = 0;
 
-	return state;
-}
-
-void Scheduler::block(bool prepare_state) {
 	update_schedule();
 	enable_preemption(current->cpu);
 	do_schedule();
-	current->sched_lock.manual_unlock();
-	arch_enable_irqs(prepare_state);
+	arch_enable_irqs(state);
 }
 
 void Scheduler::yield() {
@@ -318,7 +322,6 @@ void Scheduler::yield() {
 
 void Scheduler::exit_process(int status) {
 	IrqGuard irq_guard {};
-	auto current_guard = current->sched_lock.lock();
 
 	current->process->killed = true;
 	current->process->exit(status);
@@ -333,7 +336,6 @@ void Scheduler::exit_process(int status) {
 
 void Scheduler::exit_thread(int status) {
 	IrqGuard irq_guard {};
-	auto current_guard = current->sched_lock.lock();
 
 	current->exited = true;
 	current->exit(status);
@@ -348,32 +350,32 @@ void Scheduler::exit_thread(int status) {
 
 void Scheduler::unblock(Thread* thread, bool remove_sleeping, bool assert_not_sleeping) {
 	IrqGuard irq_guard {};
-	assert(thread->status == Thread::Status::Blocked ||
-		   thread->status == Thread::Status::Sleeping);
-	assert(thread->sched_lock.is_locked());
-	assert(thread != thread->cpu->scheduler.current);
+	assert(thread != current);
+
+	auto status_guard = thread->status_lock.lock();
+	if (thread->status != Thread::Status::Blocked && thread->status != Thread::Status::Sleeping) {
+		if (thread->status == Thread::Status::Running) {
+			thread->dont_block = true;
+		}
+		return;
+	}
 
 	if (remove_sleeping && thread->status == Thread::Status::Sleeping) {
-		/*
 		auto guard = thread->cpu->scheduler.sleeping_threads.lock();
 		guard->remove(thread);
 		thread->status = Thread::Status::Blocked;
 		thread->sleep_interrupted = true;
-		*/
-		thread->sleep_end = SIZE_MAX;
-		thread->sleep_interrupted = true;
 	}
-	else {
-		if (assert_not_sleeping) {
-			assert(thread->status == Thread::Status::Blocked);
-		}
 
-		auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
-
-		assert(thread != thread->cpu->scheduler.current);
-		thread->status = Thread::Status::Waiting;
-		guard->push(thread);
+	if (assert_not_sleeping) {
+		assert(thread->status == Thread::Status::Blocked);
 	}
+
+	auto guard = thread->cpu->scheduler.levels[thread->level_index].list.lock();
+
+	assert(thread != thread->cpu->scheduler.current);
+	thread->status = Thread::Status::Waiting;
+	guard->push(thread);
 }
 
 void Scheduler::on_timer(Cpu* cpu) {
@@ -393,45 +395,19 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	usize first_sleep_end = UINTPTR_MAX;
 	auto guard = sleeping_threads.lock();
 
-	/*
 	for (auto& thread : *guard) {
 		if (thread.sleep_end > now) {
 			first_sleep_end = thread.sleep_end;
 			break;
 		}
+
+		auto status_guard = thread.status_lock.lock();
+
 		guard->remove(&thread);
 
-		if (&thread != prev) {
-			auto thread_guard = thread.sched_lock.lock();
-			unblock(&thread, false, false);
-		}
-		else {
-			unblock(&thread, false, false);
-		}
-	}
-	*/
-
-	// todo this needs a better solution, sleeping threads can't
-	// be removed from the sleep list in unblock because it could create a deadlock
-	// with the thread lock being acquired before the sleeping threads lock.
-	// Looping through all threads here and setting the sleep end to SIZE_MAX works but is not ideal.
-	for (auto& thread : *guard) {
-		if (thread.sleep_end <= now || thread.sleep_end == SIZE_MAX) {
-			guard->remove(&thread);
-			if (&thread != prev) {
-				auto thread_guard = thread.sched_lock.lock();
-				unblock(&thread, false, false);
-			}
-			else {
-				unblock(&thread, false, false);
-			}
-
-			continue;
-		}
-
-		if (first_sleep_end == UINTPTR_MAX) {
-			first_sleep_end = thread.sleep_end;
-		}
+		thread.status = Thread::Status::Waiting;
+		assert(thread.cpu == cpu);
+		queue(&thread);
 	}
 
 	auto time_before_sleep_end = first_sleep_end - now;
@@ -441,55 +417,62 @@ void Scheduler::enable_preemption(Cpu* cpu) {
 	cpu->cpu_tick_source->oneshot(amount);
 }
 
-bool Scheduler::prepare_for_sleep(u64 ns) {
+void Scheduler::sleep(u64 ns) {
 	auto state = arch_enable_irqs(false);
-	current->cpu->cpu_tick_source->reset();
 
 	if (!ns) {
-		return state;
+		arch_enable_irqs(state);
+		return;
 	}
 
-	usize sleep_end;
+	auto move_guard = current->move_lock.lock();
 	{
-		auto guard = CLOCK_SOURCE.lock_read();
-		auto now = (*guard)->get_ns();
-		sleep_end = now + ns;
-	}
+		auto status_guard = current->status_lock.lock();
 
-	current->sched_lock.manual_lock();
-	{
-		Thread* next_sleeping = nullptr;
-		auto guard = sleeping_threads.lock();
-		for (auto& thread : *guard) {
-			if (thread.sleep_end > sleep_end) {
-				next_sleeping = &thread;
-				break;
+		if (current->dont_block) {
+			arch_enable_irqs(state);
+			current->dont_block = false;
+			return;
+		}
+
+		current->cpu->cpu_tick_source->reset();
+
+		usize sleep_end;
+		{
+			auto guard = CLOCK_SOURCE.lock_read();
+			auto now = (*guard)->get_ns();
+			sleep_end = now + ns;
+		}
+
+		{
+			Thread* next_sleeping = nullptr;
+			auto guard = sleeping_threads.lock();
+			for (auto& thread : *guard) {
+				if (thread.sleep_end > sleep_end) {
+					next_sleeping = &thread;
+					break;
+				}
 			}
+
+			current->sleep_end = sleep_end;
+
+			if (next_sleeping) {
+				guard->insert_before(next_sleeping, current);
+			}
+			else {
+				guard->push(current);
+			}
+
+			current->status = Thread::Status::Sleeping;
 		}
 
-		current->sleep_end = sleep_end;
-
-		if (next_sleeping) {
-			guard->insert_before(next_sleeping, current);
+		if (!current->pin_level && current->level_index > 0) {
+			--current->level_index;
 		}
-		else {
-			guard->push(current);
-		}
-
-		current->status = Thread::Status::Sleeping;
 	}
 
-	if (!current->pin_level && current->level_index > 0) {
-		--current->level_index;
-	}
-
-	return state;
-}
-
-void Scheduler::sleep(bool prepare_state) {
 	update_schedule();
 	enable_preemption(current->cpu);
 	do_schedule();
-	current->sched_lock.manual_unlock();
-	arch_enable_irqs(prepare_state);
+	arch_enable_irqs(state);
 }

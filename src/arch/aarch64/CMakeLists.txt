@@ -1,7 +1,9 @@
-set(BOARD "qemu_virt" CACHE STRING "Board to target")
-set_property(CACHE BOARD PROPERTY STRINGS qemu_virt msm)
+set(BOARD "virt" CACHE STRING "Board to target")
+set_property(CACHE BOARD PROPERTY STRINGS virt msm)
 
-if(BOARD STREQUAL "qemu_virt")
+message(STATUS "Targeting board '${BOARD}'")
+
+if(BOARD STREQUAL "virt")
 	target_compile_definitions(crescent PRIVATE BOARD_QEMU_VIRT)
 elseif(BOARD STREQUAL "msm")
 	target_compile_definitions(crescent PRIVATE BOARD_MSM)
@@ -24,6 +26,14 @@ target_sources(crescent PRIVATE
 	start.cpp
 )
 target_include_directories(crescent PRIVATE include)
+
+set_source_files_properties(
+	${CMAKE_CURRENT_LIST_DIR}/loader/start.cpp
+	${CMAKE_CURRENT_LIST_DIR}/loader/early_paging.cpp
+	${CMAKE_CURRENT_LIST_DIR}/dtb.cpp
+	TARGET_DIRECTORY crescent
+	PROPERTIES COMPILE_FLAGS -mno-unaligned-access
+)
 
 add_subdirectory(dev)
 add_subdirectory(interrupts)

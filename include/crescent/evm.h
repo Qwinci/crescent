@@ -72,6 +72,7 @@ typedef struct EvmGuestState {
 	uint64_t cr0;
 	uint64_t cr3;
 	uint64_t cr4;
+	uint64_t efer;
 
 	EvmSegmentRegister es;
 	EvmSegmentRegister cs;
@@ -96,7 +97,8 @@ typedef enum EvmStateBits {
 	EVM_STATE_BITS_RFLAGS = 1 << 3,
 	EVM_STATE_BITS_SEG_REGS = 1 << 4,
 	EVM_STATE_BITS_CONTROL_REGS = 1 << 5,
-	EVM_STATE_BITS_ALL = 1 << 0 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4 | 1 << 5
+	EVM_STATE_BITS_EFER = 1 << 6,
+	EVM_STATE_BITS_ALL = 1 << 0 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4 | 1 << 5 | 1 << 6
 } EvmStateBits;
 
 typedef enum EvmIrqType {
@@ -112,8 +114,8 @@ typedef struct EvmIrqInfo {
 
 #else
 
-struct EvmGuestState;
-typedef enum {
+typedef struct EvmGuestState EvmGuestState;
+typedef enum EvmStateBits {
 	EVM_STATE_BITS_NONE
 } EvmStateBits;
 typedef struct EvmIrqInfo EvmIrqInfo;

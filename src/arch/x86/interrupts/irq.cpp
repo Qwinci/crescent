@@ -83,6 +83,9 @@ namespace {
 extern "C" [[gnu::used]] void arch_irq_handler(IrqFrame* frame, u8 num) {
 	if (frame->cs == 0x2B) {
 		asm volatile("swapgs");
+
+		auto thread = get_current_thread();
+		thread->signal_ctx.check_signals(frame, thread);
 	}
 
 	u64 entropy_rip = frame->cs == 0x2B ? frame->rip : (frame->rip & 0xFFFFFFFF);

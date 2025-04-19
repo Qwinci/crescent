@@ -1,16 +1,31 @@
-#include <stdio.h>
-#include "windower/windower.hpp"
 #include "net/dns.hpp"
-#include "sys.hpp"
+#include "sys.h"
+#include "windower/windower.hpp"
 #include <cassert>
+#include <cstring>
+#include <stdio.h>
 #include <string>
 #include <vector>
-#include <cstring>
 
 namespace protocol = windower::protocol;
 using namespace std::literals;
 
 int main() {
+	CrescentHandle bash_stdout_read_handle;
+	CrescentHandle bash_stdout_write_handle;
+	sys_pipe_create(&bash_stdout_read_handle, &bash_stdout_write_handle, 0x1000, OPEN_NONBLOCK, 0);
+
+	CrescentHandle bash_handle;
+	ProcessCreateInfo bash_info {
+		.args = nullptr,
+		.arg_count = 0,
+		.stdin_handle = STDIN_HANDLE,
+		.stdout_handle = bash_stdout_write_handle,
+		.stderr_handle = STDERR_HANDLE,
+		.flags = PROCESS_STD_HANDLES
+	};
+	sys_process_create(&bash_handle, "/usr/bin/bash", sizeof("/usr/bin/bash") - 1, &bash_info);
+
 	uint32_t colors[] {
 		0xFF0000,
 		0x00FF00,
@@ -43,6 +58,13 @@ int main() {
 	window.redraw();
 
 	while (true) {
+		char buf[512] {};
+		size_t bash_read = 0;
+		sys_read(bash_stdout_read_handle, buf, sizeof(buf), &bash_read);
+		if (bash_read) {
+			printf("got bash stdout '%s'\n", buf);
+		}
+
 		auto event = window.wait_for_event();
 		if (event.type == protocol::WindowEvent::CloseRequested) {
 			window.close();

@@ -2,17 +2,6 @@
 #include "font.hpp"
 #include "cstring.hpp"
 
-namespace {
-	u32 column = 0;
-#if BOARD_MSM
-	u32 row = 4;
-	u32 scale = 4;
-#else
-	u32 row = 0;
-	u32 scale = 1;
-#endif
-}
-
 constexpr u32 FONT_WIDTH = 8;
 constexpr u32 FONT_HEIGHT = 8;
 constexpr u32 LINE_HEIGHT = 12;
@@ -65,6 +54,9 @@ void Framebuffer::set_color(Color color) {
 	switch (color) {
 		case Color::Red:
 			fg_color = 0xFF0000;
+			break;
+		case Color::White:
+			fg_color = 0xFFFFFF;
 			break;
 		case Color::Reset:
 			fg_color = 0x00FF00;

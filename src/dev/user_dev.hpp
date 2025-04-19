@@ -32,4 +32,4 @@ usize user_dev_add(kstd::shared_ptr<UserDevice> device, CrescentDeviceType type)
 void user_dev_remove(usize index, CrescentDeviceType type);
 
 extern ManuallyDestroy<Spinlock<kstd::vector<kstd::shared_ptr<UserDevice>>>> USER_DEVICES
-	[static_cast<int>(CrescentDeviceType::Max)];
+	[static_cast<int>(CrescentDeviceTypeMax)];

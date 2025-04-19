@@ -9,6 +9,8 @@ public:
 	void push(InputEvent event);
 	bool consume(InputEvent& res);
 
+	bool is_empty();
+
 	Event produce_event {};
 
 private:

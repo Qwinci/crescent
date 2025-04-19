@@ -1,6 +1,7 @@
 #pragma once
 #include "arch/arch_thread.hpp"
 #include "double_list.hpp"
+#include "signal_ctx.hpp"
 #include "string.hpp"
 #include "sysv.hpp"
 
@@ -53,15 +54,23 @@ struct Thread : public ArchThread {
 	bool exited {};
 	bool pin_level {};
 	bool pin_cpu {};
-	Spinlock<void> sched_lock {};
+	Spinlock<void> move_lock {};
+	Spinlock<void> status_lock {};
 	bool sleep_interrupted {};
+	bool dont_block {};
+	bool in_futex_wait_list {};
 	uint32_t thread_id {};
+	ThreadSignalContext signal_ctx {};
 };
 
 #ifdef __x86_64__
+// used by cpu_var.hpp
 static_assert(offsetof(Thread, cpu) == 160);
-static_assert(offsetof(Thread, sched_lock) == 223);
+// used by arch_sched.cpp
+static_assert(offsetof(Thread, move_lock) == 223);
 #elif defined(__aarch64__)
-static_assert(offsetof(Thread, cpu) == 144);
-static_assert(offsetof(Thread, sched_lock) == 208);
+// used by cpu_var.hpp
+static_assert(offsetof(Thread, cpu) == 136);
+// used by arch_sched.cpp
+static_assert(offsetof(Thread, move_lock) == 200);
 #endif

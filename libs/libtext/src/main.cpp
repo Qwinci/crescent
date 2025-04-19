@@ -1,5 +1,5 @@
 #include "libtext/libtext.hpp"
-#include "sys.hpp"
+#include "sys.h"
 #include <cassert>
 
 using namespace libtext;
@@ -21,13 +21,13 @@ std::optional<Context> Context::create(std::string_view font_path) {
 	}
 
 	CrescentHandle handle;
-	if (sys_open(handle, font_path.data(), font_path.size(), 0) != 0) {
+	if (sys_open(&handle, font_path.data(), font_path.size(), 0) != 0) {
 		assert(!"failed to open /usr/crescent/Tamsyn8x16r.psf");
 		return std::nullopt;
 	}
 
 	CrescentStat stat {};
-	if (sys_stat(handle, stat) != 0) {
+	if (sys_stat(handle, &stat) != 0) {
 		auto status = sys_close_handle(handle);
 		assert(status == 0);
 		return std::nullopt;

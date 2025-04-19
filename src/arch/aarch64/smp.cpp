@@ -50,6 +50,19 @@ aarch64_ap_entry_asm:
 	tlbi vmalle1
 	dsb nsh
 
+	adrp x0, AARCH64_IDENTITY_MAP
+	add x0, x0, :lo12:AARCH64_IDENTITY_MAP
+	ldr x0, [x0]
+
+	adrp x1, AARCH64_EARLY_PHYS_KERNEL_MAP
+	add x1, x1, :lo12:AARCH64_EARLY_PHYS_KERNEL_MAP
+	ldr x1, [x1]
+
+	msr ttbr0_el1, x0
+	msr ttbr1_el1, x1
+
+	mrs x0, id_aa64mmfr0_el1
+
 	adrp x0, aarch64_ap_entry_stage0
 	add x0, x0, :lo12:aarch64_ap_entry_stage0
 
@@ -200,9 +213,15 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 		asm volatile("sev");
 	}
 
+	// result is ignored because it doesn't need to be unregistered
+	(void) cpu->cpu_tick_source->callback_producer.add_callback([cpu]() {
+		cpu->scheduler.on_timer(cpu);
+	});
+
+	// bit0 == fiq, bit1 == irq, bit2 == SError, bit3 == Debug
+	asm volatile("msr daifclr, #0b1111");
 	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
-	auto state = cpu->scheduler.prepare_for_block();
-	cpu->scheduler.block(state);
+	cpu->scheduler.block();
 	panic("scheduler block returned");
 }
 
@@ -226,11 +245,7 @@ void aarch64_bsp_init() {
 	aarch64_common_cpu_init(&*CPUS[0], 0, true);
 }
 
-void aarch64_smp_init(dtb::Dtb& dtb) {
-	CPUS[0]->arm_tick_source.init_on_cpu(&*CPUS[0]);
-
-	auto root = dtb.get_root();
-
+static void smp_init(dtb::Node& root) {
 	auto cpus_opt = root.find_child("cpus");
 	if (!cpus_opt) {
 		return;
@@ -287,13 +302,22 @@ void aarch64_smp_init(dtb::Dtb& dtb) {
 			println("[kernel][aarch64]: init cpu ", Fmt::Hex, mpidr, Fmt::Reset);
 		}
 
-		psci_cpu_on(mpidr, phys_entry, to_phys(stack));
+		i32 res = psci_cpu_on(mpidr, phys_entry, to_phys(stack));
+		if (res < 0) {
+			panic("[kernel][aarch64]: psci ap boot failed with", res);
+		}
 
 		while (NUM_CPUS.load(kstd::memory_order::relaxed) != old + 1) {
 			asm volatile("wfe");
 		}
 	}
+}
 
+void aarch64_smp_init(dtb::Dtb& dtb) {
+	CPUS[0]->arm_tick_source.init_on_cpu(&*CPUS[0]);
+
+	auto root = dtb.get_root();
+	smp_init(root);
 	println("[kernel][aarch64]: smp init done");
 
 	// result is ignored because it doesn't need to be unregistered

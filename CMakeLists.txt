@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
-project(crescent CXX ASM)
+project(crescent C CXX ASM)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -61,8 +61,8 @@ if(ARCH STREQUAL "x86_64")
 
 	target_link_libraries(crescent PRIVATE qacpi::qacpi qacpi::events)
 elseif(ARCH STREQUAL "aarch64")
-	target_compile_options(crescent PRIVATE -fno-PIE -mno-unaligned-access)
-	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/aarch64.ld)
+	target_compile_options(crescent PRIVATE -fPIE)
+	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/aarch64.ld -static-pie)
 	target_compile_definitions(crescent PRIVATE ARCH_AARCH64)
 
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -87,13 +87,17 @@ target_sources(crescent PUBLIC FILE_SET HEADERS
 	FILES
 
 	include/crescent/aarch64/arch_syscall.h
+	include/crescent/aarch64/posix_arch_syscall.h
 	include/crescent/x86/arch_syscall.h
+	include/crescent/x86/posix_arch_syscall.h
 	include/crescent/devlink.h
 	include/crescent/event.h
 	include/crescent/evm.h
 	include/crescent/socket.h
 	include/crescent/syscall.h
 	include/crescent/syscalls.h
+	include/crescent/posix_syscall.h
+	include/crescent/posix_syscalls.h
 	include/crescent/time.h
 )
 

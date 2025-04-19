@@ -5,8 +5,10 @@ target_sources(crescent PRIVATE
 	gic_v3.cpp
 	psci.cpp
 	timer.cpp
+	qcom_reset.cpp
+	qcom_gcc_lagoon.cpp
+	qcom_geni_i2c.cpp
+	qcom_qusbv2_phy.cpp
+	qcom_spi_geni.cpp
+	ramfb.cpp
 )
-
-if(BOARD STREQUAL "qemu_virt")
-	target_sources(crescent PRIVATE ramfb.cpp)
-endif()

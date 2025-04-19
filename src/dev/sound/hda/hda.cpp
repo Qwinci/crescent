@@ -223,7 +223,7 @@ namespace {
 	struct PcmFormat {
 		BitValue<u16> value;
 
-		u32 set_sample_rate(u32 rate) {
+		constexpr u32 set_sample_rate(u32 rate) {
 			u8 base = 0;
 		    u8 mult = 0;
 			u8 div = 0;
@@ -479,7 +479,7 @@ namespace {
 			return real_rate;
 		}
 
-		u32 set_channels(u32 channels) {
+		constexpr u32 set_channels(u32 channels) {
 			if (channels == 0) {
 				channels = 1;
 			}
@@ -492,7 +492,7 @@ namespace {
 			return channels;
 		}
 
-		u32 set_bits_per_sample(u32 bits) {
+		constexpr u32 set_bits_per_sample(u32 bits) {
 			u8 bits_value = 0;
 			if (bits <= 8) {
 				bits = 8;
@@ -952,6 +952,224 @@ struct HdaCodec {
 		println("found ", audio_outputs.size(), " audio outputs and ", pin_complexes.size(), " pin complexes");
 
 		output_paths = find_paths();
+
+		kstd::vector<u8> visited_assocs;
+
+		for (auto pin_i : pin_complexes) {
+			auto pin = &widgets[pin_i];
+
+			u8 assoc = pin->default_config >> 4 & 0b1111;
+			u8 connection_type = pin->default_config >> 16 & 0b1111;
+			u8 default_dev = pin->default_config >> 20 & 0b1111;
+			u8 location = pin->default_config >> 24 & 0b111111;
+			u8 connectivity = pin->default_config >> 30;
+
+			if (default_dev == 0 &&
+				(connectivity == 0b10 || connectivity == 0b11)) {
+				default_dev = 1;
+			}
+
+			switch (default_dev) {
+				case 0:
+				case 1:
+				case 2:
+				case 4:
+				case 5:
+				{
+					if (!(pin->pin_caps & 1 << 4)) {
+						println("pin is not output capable");
+						continue;
+					}
+					break;
+				}
+				default:
+					break;
+			}
+
+			bool assoc_found = false;
+			for (auto visited_assoc : visited_assocs) {
+				if (visited_assoc == assoc) {
+					assoc_found = true;
+					break;
+				}
+			}
+
+			if (assoc_found) {
+				println("pin with same assoc");
+				continue;
+			}
+
+			if (!assoc) {
+				println("pin with no assoc");
+				continue;
+			}
+
+			visited_assocs.push(assoc);
+
+			const char* connectivity_str = "";
+			switch (connectivity) {
+				case 0:
+					connectivity_str = "jack";
+					break;
+				case 0b10:
+					connectivity_str = "integrated";
+					break;
+				case 0b11:
+					connectivity_str = "jack + integrated";
+					break;
+				default:
+					break;
+			}
+
+			u8 location_low = location & 0b1111;
+			u8 location_high = location >> 4 & 0b11;
+
+			const char* location_coarse = "";
+			switch (location_low) {
+				case 0:
+					location_coarse = "n/a";
+					break;
+				case 1:
+					location_coarse = "rear";
+					break;
+				case 2:
+					location_coarse = "front";
+					break;
+				case 3:
+					location_coarse = "left";
+					break;
+				case 4:
+					location_coarse = "right";
+					break;
+				case 5:
+					location_coarse = "top";
+					break;
+				case 6:
+					location_coarse = "bottom";
+					break;
+				case 7:
+				case 8:
+				case 9:
+					location_coarse = "special";
+					break;
+				default:
+					break;
+			}
+
+			const char* location_fine = "";
+			switch (location_high) {
+				case 0:
+					location_fine = "external";
+					break;
+				case 1:
+					location_fine = "internal";
+					break;
+				case 0b10:
+					location_fine = "separate chassis";
+					break;
+				case 0b11:
+					location_fine = "other";
+					break;
+				default:
+					break;
+			}
+
+			const char* device = "unknown";
+			switch (default_dev) {
+				case 0:
+					device = "line out";
+					break;
+				case 1:
+					device = "speaker";
+					break;
+				case 2:
+					device = "hp out";
+					break;
+				case 3:
+					device = "cd";
+					break;
+				case 4:
+					device = "spdif out";
+					break;
+				case 5:
+					device = "digital other out";
+					break;
+				case 6:
+					device = "modem line side";
+					break;
+				case 7:
+					device = "modem handset side";
+					break;
+				case 8:
+					device = "line in";
+					break;
+				case 9:
+					device = "aux";
+					break;
+				case 10:
+					device = "mic in";
+					break;
+				case 11:
+					device = "telephony";
+					break;
+				case 12:
+					device = "spdif in";
+					break;
+				case 13:
+					device = "digital other in";
+					break;
+				case 15:
+					device = "other";
+					break;
+				default:
+					break;
+			}
+
+			const char* connection_type_str = "";
+			switch (connection_type) {
+				case 0:
+					connection_type_str = "unknown";
+					break;
+				case 1:
+					connection_type_str = "1/8\" stereo/mono";
+					break;
+				case 2:
+					connection_type_str = "1/4\" stereo/mono";
+					break;
+				case 3:
+					connection_type_str = "atapi internal";
+					break;
+				case 4:
+					connection_type_str = "rca";
+					break;
+				case 5:
+					connection_type_str = "optical";
+					break;
+				case 6:
+					connection_type_str = "other digital";
+					break;
+				case 7:
+					connection_type_str = "other analog";
+					break;
+				case 8:
+					connection_type_str = "multichannel analog";
+					break;
+				case 9:
+					connection_type_str = "xlr/professional";
+					break;
+				case 10:
+					connection_type_str = "rj-11 modem";
+					break;
+				case 11:
+					connection_type_str = "combination";
+					break;
+				case 15:
+					connection_type_str = "other";
+					break;
+			}
+
+			println("[kernel][hda]: pin ", location_fine, " ", location_coarse, " ", connectivity_str, " ", device, " ", connection_type_str, device);
+		}
 	}
 
 	void set_active_path(const HdaPath& path) {
@@ -1038,6 +1256,7 @@ struct HdaCodec {
 		auto& output = path.nodes[path.nodes.size() - 1];
 		assert(output->type == widget_type::AUDIO_OUT);
 		set_converter_format(output->nid, fmt);
+		set_converter_channel_count(output->nid, fmt.value & pcm_format::CHAN);
 	}
 
 	[[nodiscard]] u32 get_parameter(u8 nid, u8 param) const {
@@ -1258,22 +1477,22 @@ struct HdaCodecDev : public SoundDevice {
 
 		u8 bits;
 		switch (params.fmt) {
-			case SoundFormat::None:
+			case SoundFormatNone:
 				bits = 0;
 				break;
-			case SoundFormat::PcmU8:
+			case SoundFormatPcmU8:
 				bits = 8;
 				break;
-			case SoundFormat::PcmU16:
+			case SoundFormatPcmU16:
 				bits = 16;
 				break;
-			case SoundFormat::PcmU20:
+			case SoundFormatPcmU20:
 				bits = 20;
 				break;
-			case SoundFormat::PcmU24:
+			case SoundFormatPcmU24:
 				bits = 24;
 				break;
-			case SoundFormat::PcmU32:
+			case SoundFormatPcmU32:
 				bits = 32;
 				break;
 		}
@@ -1282,27 +1501,30 @@ struct HdaCodecDev : public SoundDevice {
 		if (real_bits != bits) {
 			switch (real_bits) {
 				case 8:
-					params.fmt = SoundFormat::PcmU8;
+					params.fmt = SoundFormatPcmU8;
 					break;
 				case 16:
-					params.fmt = SoundFormat::PcmU16;
+					params.fmt = SoundFormatPcmU16;
 					break;
 				case 20:
-					params.fmt = SoundFormat::PcmU20;
+					params.fmt = SoundFormatPcmU20;
 					break;
 				case 24:
-					params.fmt = SoundFormat::PcmU24;
+					params.fmt = SoundFormatPcmU24;
 					break;
 				case 32:
-					params.fmt = SoundFormat::PcmU32;
+					params.fmt = SoundFormatPcmU32;
 					break;
 				default:
-					params.fmt = SoundFormat::None;
+					params.fmt = SoundFormatNone;
 					break;
 			}
 		}
 
 		codec->set_format(*active_output_path, fmt);
+
+		auto& stream_space = codec->controller->out_streams[0].space;
+		stream_space.store(regs::stream::FMT, fmt.value);
 
 		return 0;
 	}
@@ -1318,7 +1540,7 @@ struct HdaCodecDev : public SoundDevice {
 		return 0;
 	}
 
-	int queue_output(const void* buffer, usize size) override {
+	int queue_output(const void* buffer, usize& size) override {
 		auto& stream = codec->controller->out_streams[0];
 		for (usize i = 0; i < size;) {
 			auto stream_remaining = stream.remaining_data.load(kstd::memory_order::relaxed);
@@ -1399,13 +1621,6 @@ struct HdaCodecDev : public SoundDevice {
 			stream.event.wait();
 		}
 
-		return 0;
-	}
-
-	int reset() override {
-		play(false);
-		codec->controller->out_streams[0].write_ptr = 0;
-		codec->controller->out_streams[0].remaining_data.store(0, kstd::memory_order::relaxed);
 		return 0;
 	}
 
@@ -1556,7 +1771,7 @@ void HdaController::start() {
 			auto codec = new HdaCodec {this, static_cast<u8>(i)};
 
 			auto codec_dev = kstd::make_shared<HdaCodecDev>(codec);
-			user_dev_add(std::move(codec_dev), CrescentDeviceType::Sound);
+			user_dev_add(std::move(codec_dev), CrescentDeviceTypeSound);
 		}
 	}
 }

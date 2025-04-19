@@ -3,6 +3,7 @@
 #include "sched/sched.hpp"
 #include "sched/process.hpp"
 #include "arch/cpu.hpp"
+#include "sys/posix/signals.hpp"
 
 struct Frame {
 	Frame* rbp;
@@ -16,7 +17,7 @@ static void backtrace_display() {
 	int limit = 20;
 	while (limit--) {
 		if (reinterpret_cast<usize>(frame_ptr) < 0xFFFFFFFF80000000) {
-			return;
+			continue;
 		}
 		frame = *frame_ptr;
 
@@ -90,17 +91,7 @@ bool x86_gp_fault_handler(IrqFrame* frame) { \
 	}
 }
 
-bool x86_pagefault_handler(IrqFrame* frame) {
-	u64 cr2;
-	asm volatile("mov %%cr2, %0" : "=r"(cr2));
-
-	auto current = get_current_thread();
-	if (current->handler_ip) {
-		frame->rip = current->handler_ip;
-		frame->rsp = current->handler_sp;
-		return true;
-	}
-
+static void print_page_fault(IrqFrame* frame, u64 cr2) {
 	auto error = frame->error;
 
 	const char* who;
@@ -143,8 +134,15 @@ bool x86_pagefault_handler(IrqFrame* frame) {
 	println("\tat ", frame->rip, Fmt::Reset, Color::Reset);
 
 	backtrace_display();
+}
 
-	if ((error & 1U << 2) && current->process->user) {
+bool x86_pagefault_handler(IrqFrame* frame) {
+	u64 cr2;
+	asm volatile("mov %%cr2, %0" : "=r"(cr2));
+
+	auto current = get_current_thread();
+
+	if (current->process->user) {
 		auto stack_base = reinterpret_cast<u64>(current->user_stack_base);
 		if (cr2 >= stack_base && cr2 < stack_base + PAGE_SIZE) {
 			println("[kernel][x86]: thread '", current->name, "' hit guard page!");
@@ -153,14 +151,23 @@ bool x86_pagefault_handler(IrqFrame* frame) {
 			return true;
 		}
 
-		println("[kernel][x86]: killing user process ", current->process->name);
-		current->process->killed = true;
-		current->process->exit(-1);
-		auto& scheduler = current->cpu->scheduler;
-		scheduler.update_schedule();
-		current->cpu->deferred_work.push(&scheduler.irq_work);
+		if (current->handler_ip) {
+			frame->rip = current->handler_ip;
+			frame->rsp = current->handler_sp;
+			return true;
+		}
+
+		print_page_fault(frame, cr2);
+
+		println("[kernel][x86]: sending SIGSEGV to ", current->process->name, " (thread ", current->name, ")");
+
+		auto guard = current->process->signal_ctx.lock();
+		guard->send_signal(current, SIGSEGV, false);
+		current->signal_ctx.check_signals(frame, current);
 		return true;
 	}
+
+	print_page_fault(frame, cr2);
 
 	auto kernel_stack_base = reinterpret_cast<u64>(current->kernel_stack_base);
 	if (cr2 >= kernel_stack_base && cr2 < kernel_stack_base + PAGE_SIZE) {

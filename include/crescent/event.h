@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-typedef enum {
+typedef enum Scancode {
 	SCANCODE_A = 4,
 	SCANCODE_B = 5,
 	SCANCODE_C = 6,
@@ -239,17 +239,17 @@ typedef enum {
 	SCANCODE_MAX
 } Scancode;
 
-typedef enum {
+typedef enum EventType {
 	EVENT_TYPE_KEY,
 	EVENT_TYPE_MOUSE
 } EventType;
 
-typedef struct {
+typedef struct KeyEvent {
 	Scancode code;
 	bool pressed;
 } KeyEvent;
 
-typedef struct {
+typedef struct MouseEvent {
 	int32_t x_movement;
 	int32_t y_movement;
 	int32_t z_movement;
@@ -258,7 +258,7 @@ typedef struct {
 	bool middle_pressed;
 } MouseEvent;
 
-typedef struct {
+typedef struct InputEvent {
 	EventType type;
 	union {
 		KeyEvent key;

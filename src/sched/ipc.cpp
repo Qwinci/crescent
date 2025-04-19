@@ -105,7 +105,7 @@ int IpcSocket::accept(kstd::shared_ptr<Socket>& connection, int connection_flags
 	return 0;
 }
 
-int IpcSocket::send(const void* data, usize size) {
+int IpcSocket::send(const void* data, usize& size) {
 	IrqGuard irq_guard {};
 	auto guard = lock.lock();
 
@@ -113,42 +113,52 @@ int IpcSocket::send(const void* data, usize size) {
 		return ERR_INVALID_ARGUMENT;
 	}
 
+	usize orig_size = size;
+
 	while (true) {
-		bool wait;
 		{
 			auto target_guard = target->lock.lock();
-			wait = target->buf_size + size > IPC_BUFFER_SIZE;
+
+			if (!target->buf_size) {
+				target->write_event.signal_one();
+			}
+
+			usize to_write = kstd::min(IPC_BUFFER_SIZE - target->buf_size, size);
+
+			target->buf_size += to_write;
+
+			auto remaining_at_end = IPC_BUFFER_SIZE - target->buf_write_ptr;
+			auto copy = kstd::min(to_write, remaining_at_end);
+			memcpy(target->buf + target->buf_write_ptr, data, copy);
+			target->buf_write_ptr += copy;
+			size -= copy;
+
+			if (target->buf_write_ptr == IPC_BUFFER_SIZE) {
+				target->buf_write_ptr = 0;
+
+				if (copy != to_write) {
+					memcpy(target->buf, offset(data, void*, copy), to_write - copy);
+					target->buf_write_ptr += to_write - copy;
+					size -= to_write - copy;
+				}
+			}
+
+			data = offset(data, void*, to_write);
 		}
 
-		if (wait && (flags & SOCK_NONBLOCK)) {
+		if (!size) {
+			break;
+		}
+
+		if (flags & SOCK_NONBLOCK) {
+			size = orig_size - size;
 			return ERR_TRY_AGAIN;
 		}
 
-		if (wait) {
-			target->buf_event.wait();
-		}
-		else {
-			break;
-		}
+		target->read_event.wait();
 	}
 
-	auto target_guard = target->lock.lock();
-
-	target->buf_size += size;
-
-	auto remaining_at_end = IPC_BUFFER_SIZE - target->buf_write_ptr;
-	auto copy = kstd::min(size, remaining_at_end);
-	memcpy(target->buf + target->buf_write_ptr, data, copy);
-	target->buf_write_ptr += copy;
-	size -= copy;
-	if (target->buf_write_ptr == IPC_BUFFER_SIZE) {
-		target->buf_write_ptr = 0;
-		memcpy(target->buf, offset(data, void*, copy), size);
-		target->buf_write_ptr += size;
-	}
-
-	target->buf_event.signal_one();
-
+	size = orig_size;
 	return 0;
 }
 
@@ -177,7 +187,8 @@ int IpcSocket::receive(void* data, usize& size) {
 		}
 
 		if (wait) {
-			buf_event.wait();
+			read_event.signal_one();
+			write_event.wait();
 			continue;
 		}
 

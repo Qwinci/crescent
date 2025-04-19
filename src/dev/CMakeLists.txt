@@ -14,8 +14,10 @@ if(ARCH STREQUAL "x86_64")
 	add_subdirectory(gpu)
 endif()
 
+add_subdirectory(bus)
 add_subdirectory(qemu)
 
 add_subdirectory(fb)
 add_subdirectory(net)
 add_subdirectory(usb)
+add_subdirectory(storage)

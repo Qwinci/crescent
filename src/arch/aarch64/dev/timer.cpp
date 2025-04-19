@@ -8,16 +8,10 @@ static bool on_irq(IrqFrame*);
 namespace {
 	u64 TICKS_PER_SECOND = 0;
 	u64 TICKS_PER_MS = 0;
-	u32 VIRT_IRQ = 0;
+	DtbNode::Irq VIRT_IRQ;
 	ManuallyDestroy<IrqHandler> IRQ_HANDLER {{
 		.fn = on_irq
 	}};
-
-	u64 get_system_counter() {
-		u64 count;
-		asm volatile("mrs %0, cntpct_el0" : "=r"(count));
-		return count;
-	}
 
 	u64 get_virtual_system_counter() {
 		u64 count;
@@ -39,12 +33,15 @@ void ArmTickSource::reset() {
 void ArmTickSource::init_on_cpu(Cpu* cpu) {
 	cpu->cpu_tick_source = this;
 
-	GIC->mask_irq(VIRT_IRQ, false);
-	register_irq_handler(VIRT_IRQ, &*IRQ_HANDLER);
+	asm volatile("msr cntv_cval_el0, %0" : : "r"(0xFFFFFFFFFFFFFFFF));
+	asm volatile("msr cntv_ctl_el0, %0" : : "r"(u64 {1}));
+
+	GIC->set_mode(VIRT_IRQ.num, VIRT_IRQ.mode);
+	GIC->mask_irq(VIRT_IRQ.num, false);
 }
 
 u64 ArmClockSource::get_ns() {
-	return get_system_counter() * (US_IN_MS * NS_IN_US) / TICKS_PER_MS;
+	return get_virtual_system_counter() * (US_IN_MS * NS_IN_US) / TICKS_PER_MS;
 }
 
 static bool on_irq(IrqFrame*) {
@@ -59,10 +56,7 @@ static InitStatus arm_timer_init(DtbNode& node) {
 
 	assert(node.irqs.size() >= 3);
 
-	auto virt_irq = node.irqs[2];
-	VIRT_IRQ = virt_irq.num;
-
-	GIC->set_mode(virt_irq.num, virt_irq.mode);
+	VIRT_IRQ = node.irqs[2];
 
 	if (auto freq_opt = node.prop("clock-frequency")) {
 		TICKS_PER_SECOND = freq_opt->read<u32>(0);
@@ -74,6 +68,8 @@ static InitStatus arm_timer_init(DtbNode& node) {
 
 	ARM_CLOCK_SOURCE.frequency = TICKS_PER_SECOND;
 	clock_source_register(&ARM_CLOCK_SOURCE);
+
+	register_irq_handler(VIRT_IRQ.num, &*IRQ_HANDLER);
 
 	asm volatile("msr cntv_cval_el0, %0" : : "r"(0xFFFFFFFFFFFFFFFF));
 	asm volatile("msr cntv_ctl_el0, %0" : : "r"(u64 {1}));

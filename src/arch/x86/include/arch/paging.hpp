@@ -7,6 +7,7 @@
 constexpr usize PAGE_SIZE = 0x1000;
 
 enum class PageFlags {
+	None,
 	Read = 1 << 0,
 	Write = 1 << 1,
 	Execute = 1 << 2,

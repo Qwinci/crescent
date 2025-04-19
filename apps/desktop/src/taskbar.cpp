@@ -1,5 +1,5 @@
 #include "taskbar.hpp"
-#include "sys.hpp"
+#include "sys.h"
 #include <ui/button.hpp>
 #include <ui/text.hpp>
 
@@ -10,7 +10,7 @@ TaskbarWindow::TaskbarWindow(uint32_t width) : Window {true} {
 	internal = true;
 
 	CrescentDateTime date {};
-	if (sys_get_date_time(date) == 0) {
+	if (sys_get_date_time(&date) == 0) {
 		auto time_text_unique = std::make_unique<ui::TextWindow>();
 		auto date_text_unique = std::make_unique<ui::TextWindow>();
 
@@ -59,7 +59,7 @@ void TaskbarWindow::add_entry(std::unique_ptr<Window> entry) {
 
 void TaskbarWindow::update_time(ui::Context& ctx) {
 	CrescentDateTime date {};
-	if (sys_get_date_time(date) == 0 && time_text) {
+	if (sys_get_date_time(&date) == 0 && time_text) {
 		char buffer[64];
 		char* ptr = buffer + 64;
 		auto print_number = [&](uintptr_t value, uint32_t pad) {

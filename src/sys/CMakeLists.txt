@@ -3,3 +3,5 @@ target_sources(crescent PRIVATE
 	event_queue.cpp
 	service.cpp
 )
+
+add_subdirectory(posix)

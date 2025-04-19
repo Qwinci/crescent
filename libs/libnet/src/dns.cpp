@@ -1,10 +1,10 @@
 #include "net/dns.hpp"
-#include <sys.hpp>
-#include <cassert>
-#include <string>
-#include <cstring>
-#include <concepts>
 #include <bit>
+#include <cassert>
+#include <concepts>
+#include <cstring>
+#include <string>
+#include <sys.h>
 
 namespace {
 	struct Header {
@@ -138,7 +138,7 @@ namespace {
 			req += static_cast<char>(1);
 
 			CrescentHandle socket_handle;
-			auto res = sys_socket_create(socket_handle, SOCKET_TYPE_UDP, 0);
+			auto res = sys_socket_create(&socket_handle, SOCKET_TYPE_UDP, 0);
 			assert(res == 0);
 			Ipv4SocketAddress addr {
 				.generic {
@@ -147,14 +147,14 @@ namespace {
 				.ipv4 = 8 | 8 << 8 | 8 << 16 | 8 << 24,
 				.port = 53
 			};
-			res = sys_socket_send_to(socket_handle, req.data(), req.size(), addr.generic);
+			res = sys_socket_send_to(socket_handle, req.data(), req.size(), &addr.generic);
 			if (res != 0) {
 				return res;
 			}
 
 			char resp[256];
 			size_t received;
-			res = sys_socket_receive_from(socket_handle, resp, sizeof(resp), received, addr.generic);
+			res = sys_socket_receive_from(socket_handle, resp, sizeof(resp), &received, &addr.generic);
 			if (res != 0) {
 				return res;
 			}

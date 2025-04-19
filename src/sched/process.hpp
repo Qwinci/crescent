@@ -1,32 +1,26 @@
 #pragma once
 #include "arch/paging.hpp"
+#include "compare.hpp"
+#include "handle_table.hpp"
+#include "manually_init.hpp"
+#include "manually_destroy.hpp"
 #include "mem/vmem.hpp"
 #include "rb_tree.hpp"
-#include "compare.hpp"
-#include "sched/sched.hpp"
-#include "manually_init.hpp"
-#include "handle_table.hpp"
 #include "sched/cpu_set.hpp"
+#include "sched/sched.hpp"
+#include "sched/mutex.hpp"
+#include "unordered_map.hpp"
+#include "utils/flags_enum.hpp"
 
 struct IpcSocket;
 
 enum class MemoryAllocFlags {
-	Read = 1 << 0,
-	Write = 1 << 1,
-	Execute = 1 << 2,
-	Backed = 1 << 3
+	None,
+	Backed = 1 << 3,
+	Demand = 1 << 4,
+	Fixed = 1 << 5
 };
-
-constexpr MemoryAllocFlags operator|(MemoryAllocFlags lhs, MemoryAllocFlags rhs) {
-	return static_cast<MemoryAllocFlags>(static_cast<int>(lhs) | static_cast<int>(rhs));
-}
-constexpr MemoryAllocFlags& operator|=(MemoryAllocFlags& lhs, MemoryAllocFlags rhs) {
-	lhs = lhs | rhs;
-	return lhs;
-}
-constexpr bool operator&(MemoryAllocFlags lhs, MemoryAllocFlags rhs) {
-	return static_cast<int>(lhs) & static_cast<int>(rhs);
-}
+FLAGS_ENUM(MemoryAllocFlags);
 
 struct UniqueKernelMapping {
 	constexpr UniqueKernelMapping() = default;
@@ -81,8 +75,17 @@ struct Process {
 	explicit Process(kstd::string_view name, bool user, Handle&& stdin, Handle&& stdout, Handle&& stderr);
 	~Process();
 
-	usize allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKernelMapping* mapping, CacheMode cache_mode = CacheMode::WriteBack);
-	void free(usize ptr, usize size);
+	usize allocate(
+		void* base,
+		usize size,
+		PageFlags prot,
+		MemoryAllocFlags flags,
+		UniqueKernelMapping* mapping,
+		CacheMode cache_mode = CacheMode::WriteBack);
+	bool free(usize ptr, usize size);
+	bool protect(usize ptr, usize size, PageFlags prot);
+
+	Process* clone();
 
 	void add_thread(Thread* thread);
 	void remove_thread(Thread* thread);
@@ -105,12 +108,14 @@ struct Process {
 	Spinlock<kstd::shared_ptr<IpcSocket>> ipc_socket {nullptr};
 	bool user;
 	bool killed {};
+	int pid {};
 	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
 	Spinlock<CpuSet> cpu_set {};
+	Mutex<kstd::unordered_map<int, Thread*>> tid_to_thread {};
 
 	struct Futex {
 		RbTreeHook hook {};
-		kstd::atomic<int>* ptr {};
+		usize ptr {};
 		DoubleList<Thread, &Thread::misc_hook> waiters {};
 
 		constexpr int operator<=>(const Futex& other) const {
@@ -122,6 +127,7 @@ struct Process {
 		RbTreeHook hook {};
 		usize base {};
 		usize size {};
+		PageFlags prot {};
 		MemoryAllocFlags flags {};
 
 		constexpr int operator<=>(const Mapping& other) const {
@@ -130,7 +136,8 @@ struct Process {
 	};
 
 	Spinlock<RbTree<Futex, &Futex::hook>> futexes {};
-	IrqSpinlock<RbTree<Mapping, &Mapping::hook>> mappings {};
+	Mutex<RbTree<Mapping, &Mapping::hook>> mappings {};
+	Mutex<SignalContext> signal_ctx {};
 
 private:
 	VMem vmem {};
@@ -139,3 +146,4 @@ private:
 };
 
 extern ManuallyInit<Process> KERNEL_PROCESS;
+extern ManuallyDestroy<Mutex<kstd::unordered_map<int, Process*>>> PID_TO_PROC;

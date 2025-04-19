@@ -21,12 +21,10 @@ struct Scheduler {
 	void update_schedule();
 	void do_schedule() const;
 
-	bool prepare_for_sleep(u64 ns);
-	void sleep(bool prepare_state);
+	void sleep(u64 ns);
 	void yield();
 
-	bool prepare_for_block();
-	void block(bool prepare_state);
+	void block();
 	void unblock(Thread* thread, bool remove_sleeping, bool assert_not_sleeping);
 
 	[[noreturn]] void exit_process(int status);
