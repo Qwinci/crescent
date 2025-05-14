@@ -32,6 +32,8 @@ namespace kstd {
 	class numeric_limits<int> {
 	public:
 		static constexpr int digits = 8 * sizeof(int) - 1;
+
+		static constexpr int max = __INT_MAX__;
 	};
 	template<>
 	class numeric_limits<unsigned int> {

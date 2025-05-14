@@ -9,7 +9,7 @@
 #include "unordered_map.hpp"
 
 namespace {
-	ManuallyDestroy<kstd::unordered_map<Mac, u32>> IP_TABLE;
+	ManuallyDestroy<kstd::unordered_map<u32, Mac>> IP_TABLE;
 	Event new_ip_event {};
 }
 

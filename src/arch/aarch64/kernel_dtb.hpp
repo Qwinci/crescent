@@ -135,7 +135,7 @@ private:
 
 struct Dtb {
 	DtbNode* root {};
-	kstd::unordered_map<DtbNode*, u32> handle_map;
+	kstd::unordered_map<u32, DtbNode*> handle_map;
 
 	template<typename C, typename F> requires requires(C c, F f, DtbNode& node) {
 		{c(node)} -> kstd::same_as<bool>;
