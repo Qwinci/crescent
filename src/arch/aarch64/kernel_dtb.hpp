@@ -61,6 +61,13 @@ struct DtbNode {
 	};
 	kstd::vector<Reg> regs {};
 
+	kstd::optional<Reg> reg_by_index(usize index) {
+		if (index >= regs.size()) {
+			return {};
+		}
+		return regs[index];
+	}
+
 	kstd::optional<Reg> reg_by_name(kstd::string_view reg_name) {
 		for (usize i = 0; i < reg_names.size(); ++i) {
 			if (reg_names[i] == reg_name) {
@@ -76,8 +83,7 @@ struct DtbNode {
 			return reg;
 		}
 		else {
-			assert(fallback_index < regs.size());
-			return regs[fallback_index];
+			return reg_by_index(fallback_index);
 		}
 	}
 
