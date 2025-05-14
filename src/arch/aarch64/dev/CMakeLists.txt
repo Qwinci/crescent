@@ -5,8 +5,5 @@ target_sources(crescent PRIVATE
 	gic_v3.cpp
 	psci.cpp
 	timer.cpp
+	ramfb.cpp
 )
-
-if(BOARD STREQUAL "qemu_virt")
-	target_sources(crescent PRIVATE ramfb.cpp)
-endif()

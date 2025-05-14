@@ -9,31 +9,24 @@
 #include "smp.hpp"
 #include "stdio.hpp"
 
-#if BOARD_MSM
 #include "dev/fb/fb.hpp"
-#elif BOARD_QEMU_VIRT
 #include "dev/ramfb.hpp"
-#endif
 
-#ifdef BOARD_QEMU_VIRT
 volatile uint8_t* qemu_uart = reinterpret_cast<uint8_t*>(0xFFFF000009000000);
-void uart_puts(kstd::string_view str) {
+void qemu_uart_puts(kstd::string_view str) {
 	for (auto c : str) {
 		*qemu_uart = c;
 	}
 }
-#elif defined(BOARD_MSM)
-void uart_puts(kstd::string_view str) {}
-#endif
 
-void uart_puts(usize num) {
+void qemu_uart_puts(usize num) {
 	char buf[20];
 	char* ptr = buf + 20;
 	do {
 		*--ptr = '0' + (num % 10);
 		num /= 10;
 	} while (num);
-	uart_puts(kstd::string_view {ptr, static_cast<size_t>(buf + 20 - ptr)});
+	qemu_uart_puts(kstd::string_view {ptr, static_cast<size_t>(buf + 20 - ptr)});
 }
 
 void uart_hex(usize num) {
@@ -44,19 +37,19 @@ void uart_hex(usize num) {
 		*--ptr = HEX_CHARS[num % 16];
 		num /= 16;
 	} while (num);
-	uart_puts(kstd::string_view {ptr, static_cast<size_t>(buf + 16 - ptr)});
+	qemu_uart_puts(kstd::string_view {ptr, static_cast<size_t>(buf + 16 - ptr)});
 }
 
 [[gnu::visibility("hidden")]] extern char KERNEL_START[];
 [[gnu::visibility("hidden")]] extern char KERNEL_END[];
 
-struct UartSink : LogSink {
+struct QemuUartSink : LogSink {
 	void write(kstd::string_view str) override {
-		uart_puts(str);
+		qemu_uart_puts(str);
 	}
 };
 
-static UartSink BOOT_SINK;
+static QemuUartSink VIRT_UART_BOOT_SINK;
 
 extern char EXCEPTION_HANDLERS_START[];
 extern usize HHDM_START;
@@ -86,8 +79,10 @@ u64 arch_get_random_seed() {
 	return count;
 }
 
-extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_phys) {
+extern "C" [[noreturn, gnu::used]] void arch_start(usize dtb_phys, usize kernel_phys) {
 	run_constructors();
+
+	auto dtb_ptr = to_virt<void>(dtb_phys);
 
 	println("arch start begin");
 	asm volatile("msr vbar_el1, %0" : : "r"(EXCEPTION_HANDLERS_START));
@@ -160,21 +155,22 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 		}
 	}
 
-	if (auto res_mem_opt = root.find_child("reserved-memory")) {
+	auto res_mem_opt = root.find_child("reserved-memory");
+	dtb::SizeAddrCells res_mem_cells = dtb.size_cells;
+	if (res_mem_opt) {
 		auto res_mem = res_mem_opt.value();
-		dtb::SizeAddrCells cells = dtb.size_cells;
 		if (auto p = res_mem.prop("#size-cells")) {
-			cells.size_cells = p.value().read<u32>(0);
+			res_mem_cells.size_cells = p.value().read<u32>(0);
 		}
 		if (auto p = res_mem.prop("#address-cells")) {
-			cells.addr_cells = p.value().read<u32>(0);
+			res_mem_cells.addr_cells = p.value().read<u32>(0);
 		}
 
 		for (auto child_opt = res_mem.child(); child_opt; child_opt = child_opt.value().next()) {
 			auto child = child_opt.value();
 			u32 index = 0;
 			while (true) {
-				if (auto reg_opt = child.reg(cells, index++)) {
+				if (auto reg_opt = child.reg(res_mem_cells, index++)) {
 					auto reg = reg_opt.value();
 					mem_reserve[mem_reserve_count++] = {
 						.base = reg.addr & ~0xFFF,
@@ -218,15 +214,58 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 	KERNEL_PROCESS->page_map = PageMap {AARCH64_EARLY_KERNEL_MAP->level0};
 	KERNEL_PROCESS->page_map.fill_high_half();
 
-#ifdef BOARD_MSM
-	BOOT_FB.initialize(
-		0xA0000000,
-		1080U,
-		2400U - 48,
-		1080U * 4,
-		32U);
-#endif
-	LOG.lock()->register_sink(&BOOT_SINK);
+	usize fb_addr = 0;
+	if (res_mem_opt) {
+		for (auto& child : res_mem_opt->child_iter()) {
+			if (auto label = child.prop("label")) {
+				kstd::string_view str {static_cast<const char*>(label->ptr), label->len - 1};
+				if (str == "cont_splash_region" || str == "cont_splash_memory") {
+					if (auto reg_opt = child.reg(res_mem_cells, 0)) {
+						fb_addr = reg_opt->addr;
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	if (fb_addr) {
+		BOOT_FB.initialize(
+			fb_addr,
+			1080U,
+			2400U - 48,
+			1080U * 4,
+			32U);
+		BOOT_FB->row = 4;
+		BOOT_FB->scale = 4;
+	}
+
+	bool is_virt = false;
+	if (auto compatible_opt = dtb.get_root().compatible()) {
+		usize offset = 0;
+		auto compatible = compatible_opt.value();
+		while (true) {
+			auto end = compatible.find(' ', offset);
+			if (end == kstd::string_view::npos) {
+				auto str = compatible.substr(offset);
+				if (str == "linux,dummy-virt") {
+					is_virt = true;
+				}
+				break;
+			}
+
+			auto str = compatible.substr(offset, end - offset);
+			if (str == "linux,dummy-virt") {
+				is_virt = true;
+				break;
+			}
+			offset = end + 1;
+		}
+	}
+
+	if (is_virt) {
+		LOG.lock()->register_sink(&VIRT_UART_BOOT_SINK);
+	}
 
 	println("total memory: ", pmalloc_get_total_mem(), " MB: ", pmalloc_get_total_mem() / 1024 / 1024);
 
@@ -237,9 +276,9 @@ extern "C" [[noreturn, gnu::used]] void arch_start(void* dtb_ptr, usize kernel_p
 	dtb_discover_devices();
 	println("dtb device discovery end");
 
-#if BOARD_QEMU_VIRT
-	ramfb_init();
-#endif
+	if (is_virt) {
+		ramfb_init();
+	}
 
 	aarch64_smp_init(dtb);
 
