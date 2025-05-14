@@ -35,7 +35,7 @@ private:
 	usize _base {};
 	usize _size {};
 	usize _quantum {};
-	Spinlock<void> lock {};
+	IrqSpinlock<void> lock {};
 
 	Segment* seg_alloc();
 	void seg_free(Segment* seg);

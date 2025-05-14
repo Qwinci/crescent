@@ -150,9 +150,91 @@ usize VMem::xalloc(usize size, usize min, usize max) {
 
 	auto index = size_to_index(size);
 
-	if (!kstd::has_single_bit(size)) {
-		index += 1;
+	bool has_min_max = min || max;
+	if (!has_min_max) {
+		if (!kstd::has_single_bit(size)) {
+			index += 1;
+		}
 	}
+
+	auto seg_fit = [&](Segment* seg, DoubleList<Segment, &Segment::list_hook>& list, bool popped) {
+		usize start = kstd::max(seg->base, min);
+		usize end = kstd::min(seg->base + seg->size, max);
+		if (start > end || end - start < size) {
+			if (popped) {
+				list.push_front(seg);
+			}
+			return usize {0};
+		}
+
+		if (seg->size == size) {
+			if (!popped) {
+				list.remove(seg);
+			}
+			hashtab_insert(seg);
+			return seg->base;
+		}
+
+		auto* alloc_seg = seg_alloc();
+		if (!alloc_seg) {
+			if (popped) {
+				list.push_front(seg);
+			}
+			return usize {0};
+		}
+
+		if (start != seg->base) {
+			auto* new_seg = seg_alloc();
+			if (!new_seg) {
+				if (popped) {
+					list.push_front(seg);
+				}
+				seg_free(alloc_seg);
+				return usize {0};
+			}
+
+			new (new_seg) Segment {
+				.base = seg->base,
+				.size = start - seg->base,
+				.type = Segment::Type::Free
+			};
+
+			seg_list.insert_before(seg, new_seg);
+			seg->base = start;
+			seg->size -= new_seg->size;
+
+			freelist_insert_no_merge(new_seg);
+		}
+
+		if (!popped) {
+			list.remove(seg);
+		}
+
+		if (seg->size == size) {
+			seg_free(alloc_seg);
+			hashtab_insert(seg);
+			return seg->base;
+		}
+
+		new (alloc_seg) Segment {
+			.seg_list_hook {
+				.prev = seg->seg_list_hook.prev,
+				.next = seg
+			},
+			.base = seg->base,
+			.size = size,
+			.type = Segment::Type::Used
+		};
+		static_cast<Segment*>(seg->seg_list_hook.prev)->seg_list_hook.next = alloc_seg;
+		seg->seg_list_hook.prev = alloc_seg;
+		seg->base += size;
+		seg->size -= size;
+
+		freelist_insert(seg);
+		hashtab_insert(alloc_seg);
+
+		return alloc_seg->base;
+	};
 
 	auto guard = lock.lock();
 
@@ -163,63 +245,22 @@ usize VMem::xalloc(usize size, usize min, usize max) {
 			continue;
 		}
 
-		if (seg->size > size) {
-			usize start = kstd::max(seg->base, min);
-			usize end = kstd::min(seg->base + seg->size, max);
-			if (start > end || end - start < size) {
-				list.push_front(seg);
-				continue;
+		if (seg->size >= size) {
+			if (auto addr = seg_fit(seg, list, true)) {
+				return addr;
 			}
-
-			auto* alloc_seg = seg_alloc();
-			if (!alloc_seg) {
-				list.push_front(seg);
-				return 0;
-			}
-
-			if (start != seg->base) {
-				auto* new_seg = seg_alloc();
-				if (!new_seg) {
-					list.push_front(seg);
-					seg_free(alloc_seg);
-					return 0;
-				}
-
-				new (new_seg) Segment {
-					.base = seg->base,
-					.size = start - seg->base,
-					.type = Segment::Type::Free
-				};
-
-				seg_list.insert_before(seg, new_seg);
-				seg->base = start;
-				seg->size -= new_seg->size;
-
-				freelist_insert_no_merge(new_seg);
-			}
-
-			new (alloc_seg) Segment {
-				.seg_list_hook {
-					.prev = seg->seg_list_hook.prev,
-					.next = seg
-				},
-				.base = seg->base,
-				.size = size,
-				.type = Segment::Type::Used
-			};
-			static_cast<Segment*>(seg->seg_list_hook.prev)->seg_list_hook.next = alloc_seg;
-			seg->seg_list_hook.prev = alloc_seg;
-			seg->base += size;
-			seg->size -= size;
-
-			freelist_insert(seg);
-			hashtab_insert(alloc_seg);
-
-			return alloc_seg->base;
 		}
-		else {
-			hashtab_insert(seg);
-			return seg->base;
+		else if (has_min_max) {
+			list.push_front(seg);
+			for (auto& other_seg : list) {
+				if (other_seg.size >= size) {
+					if (auto addr = seg_fit(&other_seg, list, false)) {
+						return addr;
+					}
+				}
+			}
+
+			continue;
 		}
 	}
 
@@ -235,11 +276,14 @@ void VMem::freelist_insert_no_merge(VMem::Segment* seg) {
 	usize index = size_to_index(seg->size);
 	auto& list = freelists[index];
 
+	assert(seg->size);
 	seg->type = Segment::Type::Free;
 	list.push_front(seg);
 }
 
 void VMem::freelist_insert(VMem::Segment* seg) {
+	assert(seg->size);
+
 	while (true) {
 		if (auto prev = static_cast<Segment*>(seg->seg_list_hook.prev);
 			prev && prev->type == Segment::Type::Free &&
