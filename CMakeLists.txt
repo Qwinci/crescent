@@ -61,8 +61,8 @@ if(ARCH STREQUAL "x86_64")
 
 	target_link_libraries(crescent PRIVATE qacpi::qacpi qacpi::events)
 elseif(ARCH STREQUAL "aarch64")
-	target_compile_options(crescent PRIVATE -fno-PIE -mno-unaligned-access)
-	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/aarch64.ld)
+	target_compile_options(crescent PRIVATE -fPIE)
+	target_link_options(crescent PRIVATE -T ${PROJECT_SOURCE_DIR}/lds/aarch64.ld -static-pie)
 	target_compile_definitions(crescent PRIVATE ARCH_AARCH64)
 
 	if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")

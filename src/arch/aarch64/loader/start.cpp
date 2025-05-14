@@ -4,7 +4,6 @@
 #include "early_paging.hpp"
 #include "mem/mem.hpp"
 #include "new.hpp"
-#include "sched/process.hpp"
 
 [[gnu::visibility("hidden")]] extern char TEXT_START[];
 [[gnu::visibility("hidden")]] extern char TEXT_END[];
@@ -127,7 +126,7 @@ EarlyPageMap* AARCH64_EARLY_PHYS_KERNEL_MAP;
 	AARCH64_EARLY_PHYS_KERNEL_MAP = kernel_map;
 }
 
-extern "C" [[gnu::used]] void early_start(usize dtb_phys) {
+extern "C" [[gnu::used]] usize early_start(usize dtb_phys) {
 	dtb::Dtb dtb {reinterpret_cast<void*>(dtb_phys)};
 	auto root = dtb.get_root();
 
@@ -155,17 +154,5 @@ extern "C" [[gnu::used]] void early_start(usize dtb_phys) {
 
 	setup_memory(max_addr);
 
-	register void* x0 asm("x0") = to_virt<void>(dtb_phys);
-	register auto x1 asm("x1") = reinterpret_cast<usize>(KERNEL_START);
-	asm volatile(
-		"sub sp, sp, %0\n"
-		"add sp, sp, %1\n"
-
-		"adrp x2, arch_start\n"
-		"add x2, x2, :lo12:arch_start\n"
-		"sub x2, x2, %0\n"
-		"add x2, x2, %1\n"
-		"br x2\n"
-		: : "r"(KERNEL_START), "r"(KERNEL_OFFSET), "r"(x0), "r"(x1) : "x2");
-	__builtin_unreachable();
+	return KERNEL_OFFSET;
 }
