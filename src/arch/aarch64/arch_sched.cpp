@@ -5,7 +5,7 @@
 
 asm(R"(
 .pushsection .text
-.arch armv8-a+fp-armv8
+.arch_extension fp
 .globl sched_switch_thread
 .type sched_switch_thread, @function
 
@@ -131,6 +131,7 @@ extern "C" void restore_simd_regs(u8* regs);
 void sched_before_switch(Thread* prev, Thread* thread) {
 	if (prev->process->user) {
 		save_simd_regs(prev->simd);
+		asm volatile("mrs %0, tpidr_el0" : "=r"(prev->tpidr_el0));
 	}
 
 	if (thread->process->user) {
@@ -185,6 +186,17 @@ arch_on_first_switch_user:
 	mov x17, #0
 	mov x18, #0
 	mov x19, #0
+	mov x20, #0
+	mov x21, #0
+	mov x22, #0
+	mov x23, #0
+	mov x24, #0
+	mov x25, #0
+	mov x26, #0
+	mov x27, #0
+	mov x28, #0
+	mov x29, #0
+	mov x30, #0
 
 	eret
 .popsection
@@ -197,14 +209,21 @@ struct SimdRegisters {
 };
 static_assert(sizeof(SimdRegisters) == 528);
 
+static constexpr usize GUARD_SIZE = PAGE_SIZE;
+
 ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
-	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - sizeof(InitFrame);
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + GUARD_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE - sizeof(InitFrame);
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->x[0] = reinterpret_cast<u64>(arg);
 	frame->x[1] = reinterpret_cast<u64>(fn);
+
+	for (usize i = 0; i < GUARD_SIZE; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base) + i, PageFlags::Read, CacheMode::WriteBack);
+	}
+
 	if (process->user) {
 		user_stack_base = reinterpret_cast<u8*>(process->allocate(
 			nullptr,
@@ -234,12 +253,16 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
 ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
 	assert(process->user);
 
-	kernel_stack_base = new usize[KERNEL_STACK_SIZE / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE - sizeof(InitFrame);
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + GUARD_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE - sizeof(InitFrame);
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->x[1] = sysv.ld_entry;
+
+	for (usize i = 0; i < GUARD_SIZE; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base) + i, PageFlags::Read, CacheMode::WriteBack);
+	}
 
 	user_stack_base = reinterpret_cast<u8*>(process->allocate(
 		nullptr,

@@ -4,34 +4,38 @@
 
 struct SyscallFrame : ExceptionFrame {
 	constexpr u64* num() {
-		return &x0;
+		return &x[0];
 	}
 
 	constexpr u64* ret() {
-		return &x0;
+		return &x[0];
+	}
+
+	constexpr u64* error() {
+		return &x[1];
 	}
 
 	constexpr u64* arg0() {
-		return &x1;
+		return &x[1];
 	}
 
 	constexpr u64* arg1() {
-		return &x2;
+		return &x[2];
 	}
 
 	constexpr u64* arg2() {
-		return &x3;
+		return &x[3];
 	}
 
 	constexpr u64* arg3() {
-		return &x4;
+		return &x[4];
 	}
 
 	constexpr u64* arg4() {
-		return &x5;
+		return &x[5];
 	}
 
 	constexpr u64* arg5() {
-		return &x6;
+		return &x[6];
 	}
 };
