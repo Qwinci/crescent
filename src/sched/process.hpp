@@ -106,8 +106,10 @@ struct Process {
 	Spinlock<kstd::shared_ptr<IpcSocket>> ipc_socket {nullptr};
 	bool user;
 	bool killed {};
+	int pid {};
 	Spinlock<DoubleList<Thread, &Thread::process_hook>> threads {};
 	Spinlock<CpuSet> cpu_set {};
+	Mutex<kstd::unordered_map<int, Thread*>> tid_to_thread {};
 
 	struct Futex {
 		RbTreeHook hook {};
@@ -141,3 +143,4 @@ private:
 };
 
 extern ManuallyInit<Process> KERNEL_PROCESS;
+extern ManuallyDestroy<Mutex<kstd::unordered_map<int, Process*>>> PID_TO_PROC;

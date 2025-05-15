@@ -3,7 +3,14 @@
 #include "mem/pmalloc.hpp"
 #include "mem/vspace.hpp"
 #include "sys/service.hpp"
+#include "arch/cpu.hpp"
 #include "ipc.hpp"
+#include "limits.hpp"
+
+ManuallyDestroy<Mutex<kstd::unordered_map<int, Process*>>> PID_TO_PROC;
+static ManuallyDestroy<kstd::vector<int>> FREE_PIDS;
+static bool USE_FREE_PIDS = false;
+static int PID_COUNTER = 1;
 
 Process::Process(kstd::string_view name, bool user, Handle&& stdin, Handle&& stdout, Handle&& stderr)
 	: name {name}, page_map {user ? &KERNEL_PROCESS->page_map : nullptr}, user {user} {
@@ -13,11 +20,40 @@ Process::Process(kstd::string_view name, bool user, Handle&& stdin, Handle&& std
 	handles.insert(std::move(stdin));
 	handles.insert(std::move(stdout));
 	handles.insert(std::move(stderr));
+
+	if (user) {
+		auto guard = PID_TO_PROC->lock();
+		if (USE_FREE_PIDS && !FREE_PIDS->is_empty()) {
+			pid = FREE_PIDS->pop().value();
+		}
+		else if (PID_COUNTER == kstd::numeric_limits<int>::max) {
+			IrqGuard irq_guard {};
+			println("[kernel][sched]: maximum number of processes reached");
+			auto* cpu = get_current_thread()->cpu;
+			cpu->scheduler.exit_process(-1);
+		}
+		else {
+			pid = PID_COUNTER++;
+			if (PID_COUNTER == kstd::numeric_limits<int>::max) {
+				USE_FREE_PIDS = true;
+			}
+		}
+
+		assert(!guard->get(pid));
+		guard->insert(pid, this);
+	}
 }
 
 Process::~Process() {
 	if (service) {
 		service_remove(this);
+	}
+
+	{
+		auto pid_guard = PID_TO_PROC->lock();
+		assert(pid_guard->get(pid));
+		pid_guard->remove(pid);
+		FREE_PIDS->push(pid);
 	}
 
 	auto guard = mappings.lock();
@@ -325,15 +361,31 @@ bool Process::protect(usize ptr, usize size, PageFlags prot) {
 }
 
 void Process::add_thread(Thread* thread) {
-	IrqGuard irq_guard {};
-	auto guard = threads.lock();
-	thread->thread_id = ++max_thread_id;
-	guard->push(thread);
+	int tid;
+	{
+		IrqGuard irq_guard {};
+		auto guard = threads.lock();
+		thread->thread_id = ++max_thread_id;
+		guard->push(thread);
+		assert(thread->thread_id <= kstd::numeric_limits<int>::max);
+		tid = static_cast<int>(thread->thread_id);
+	}
+
+	auto guard = tid_to_thread.lock();
+	// todo fix
+	assert(!guard->get(tid));
+	guard->insert(tid, thread);
 }
 
 void Process::remove_thread(Thread* thread) {
-	IrqGuard irq_guard {};
-	threads.lock()->remove(thread);
+	{
+		IrqGuard irq_guard {};
+		threads.lock()->remove(thread);
+	}
+
+	auto guard = tid_to_thread.lock();
+	assert(guard->get(static_cast<int>(thread->thread_id)));
+	guard->remove(static_cast<int>(thread->thread_id));
 }
 
 void Process::add_descriptor(ProcessDescriptor* descriptor) {
