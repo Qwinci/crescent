@@ -18,6 +18,10 @@ struct Framebuffer final : LogSink {
 	u32 height;
 	u32 bpp;
 	u32 fg_color {0x00FF00};
+
+	u32 column = 0;
+	u32 row = 0;
+	u32 scale = 1;
 };
 
 extern ManuallyInit<Framebuffer> BOOT_FB;

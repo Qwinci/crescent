@@ -381,7 +381,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				*frame->ret() = ERR_FAULT;
 				break;
 			}
-			print(str);
+			print(Color::White, str, Color::Reset);
 
 			*frame->ret() = 0;
 			break;
