@@ -2,7 +2,8 @@
 #include "crescent/syscall.h"
 
 int sys_thread_create(CrescentHandle* handle, const char* name, size_t name_len, void (*fn)(void* arg), void* arg) {
-	return static_cast<int>(syscall(SYS_THREAD_CREATE, handle, name, name_len, fn, arg));
+	int tid;
+	return static_cast<int>(syscall(SYS_THREAD_CREATE, handle, name, name_len, fn, arg, &tid));
 }
 
 [[noreturn]] void sys_thread_exit(int status) {

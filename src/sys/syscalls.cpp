@@ -62,6 +62,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 			auto fn = reinterpret_cast<void (*)(void*)>(*frame->arg3());
 			auto arg = reinterpret_cast<void*>(*frame->arg4());
+			auto user_tid = *frame->arg5();
 
 			Cpu* cpu;
 			{
@@ -75,7 +76,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			CrescentHandle handle = thread->process->handles.insert(descriptor);
 			new_thread->add_descriptor(descriptor.data());
 
-			if (!UserAccessor(*frame->arg0()).store(handle)) {
+			if (!UserAccessor(*frame->arg0()).store(handle) ||
+				!UserAccessor(user_tid).store(new_thread->thread_id)) {
 				thread->process->handles.remove(handle);
 				delete new_thread;
 				*frame->ret() = ERR_FAULT;
