@@ -6,7 +6,6 @@ PHDRS {
 	text	PT_LOAD	 FLAGS(1 << 0 | 1 << 2);
 	rodata  PT_LOAD	 FLAGS(1 << 2);
 	data	PT_LOAD	 FLAGS(1 << 1 | 1 << 2);
-	cpu_local PT_NOTE FLAGS(1 << 2);
 	dynamic PT_DYNAMIC  FLAGS(1 << 1 | 1 << 2);
 }
 
@@ -46,8 +45,8 @@ SECTIONS {
 
 	.init_array : {
 		INIT_ARRAY_START = .;
-		KEEP(*(SORT(EXCLUDE_FILE(crti.o crtn.o) .init_array.*)))
-		KEEP(*(EXCLUDE_FILE(crti.o crtn.o) .init_array))
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP(*(.init_array))
 		INIT_ARRAY_END = .;
 	} :data
 
