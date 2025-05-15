@@ -38,9 +38,9 @@ jobs:
 
       - name: Build (x86_64)
         run: |
-          make
+          make ci
 
       - name: Build (Aarch64)
         run: |
-          make ARCH=aarch64
+          make ARCH=aarch64 ci
 
