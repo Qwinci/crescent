@@ -111,7 +111,7 @@ struct Process {
 
 	struct Futex {
 		RbTreeHook hook {};
-		kstd::atomic<int>* ptr {};
+		usize ptr {};
 		DoubleList<Thread, &Thread::misc_hook> waiters {};
 
 		constexpr int operator<=>(const Futex& other) const {

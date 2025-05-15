@@ -57,6 +57,7 @@ struct Thread : public ArchThread {
 	Spinlock<void> status_lock {};
 	bool sleep_interrupted {};
 	bool dont_block {};
+	bool in_futex_wait_list {};
 	uint32_t thread_id {};
 };
 

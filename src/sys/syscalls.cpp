@@ -1736,24 +1736,27 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		}
 		case SYS_FUTEX_WAIT:
 		{
-			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
-			auto value = static_cast<int>(*frame->arg1());
+			auto ptr = *frame->arg0();
+			auto value = static_cast<u32>(*frame->arg1());
 			auto timeout_ns = *frame->arg2();
 
 			IrqGuard irq_guard {};
 
-			bool state;
 			{
 				auto guard = thread->process->futexes.lock();
 
-				// todo if this faults the process is killed
-				auto current_value = ptr->load(kstd::memory_order::seq_cst);
+				u32 current_value;
+				if (!atomic_load32_user(ptr, &current_value)) {
+					*frame->ret() = ERR_FAULT;
+					break;
+				}
+
 				if (current_value != value) {
 					*frame->ret() = ERR_TRY_AGAIN;
 					break;
 				}
 
-				auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
+				auto entry = guard->find<usize, &Process::Futex::ptr>(ptr);
 				if (!entry) {
 					auto* new_entry = new Process::Futex {
 						.ptr = ptr
@@ -1763,6 +1766,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				}
 
 				entry->waiters.push(thread);
+				thread->in_futex_wait_list = true;
 				thread->sleep_interrupted = false;
 			}
 
@@ -1778,10 +1782,25 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				thread->cpu->scheduler.sleep(timeout_ns);
 
 				if (thread->sleep_interrupted) {
-					*frame->ret() = ERR_TIMEOUT;
+					assert(!thread->in_futex_wait_list);
+					*frame->ret() = 0;
 				}
 				else {
-					*frame->ret() = 0;
+					auto guard = thread->process->futexes.lock();
+
+					if (thread->in_futex_wait_list) {
+						auto entry = guard->find<usize, &Process::Futex::ptr>(ptr);
+						assert(entry);
+						entry->waiters.remove(thread);
+						thread->in_futex_wait_list = false;
+
+						if (entry->waiters.is_empty()) {
+							guard->remove(entry);
+							delete entry;
+						}
+					}
+
+					*frame->ret() = ERR_TIMEOUT;
 				}
 			}
 
@@ -1789,13 +1808,13 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 		}
 		case SYS_FUTEX_WAKE:
 		{
-			auto* ptr = reinterpret_cast<kstd::atomic<int>*>(*frame->arg0());
+			auto ptr = *frame->arg0();
 			auto count = static_cast<int>(*frame->arg1());
 
 			IrqGuard irq_guard {};
 			auto guard = thread->process->futexes.lock();
 
-			auto entry = guard->find<kstd::atomic<int>*, &Process::Futex::ptr>(ptr);
+			auto entry = guard->find<usize, &Process::Futex::ptr>(ptr);
 			if (!entry) {
 				*frame->ret() = 0;
 				break;
@@ -1805,8 +1824,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			for (; !entry->waiters.is_empty() && count > 0; --count) {
 				auto waiter = entry->waiters.pop_front();
 				auto thread_guard = waiter->move_lock.lock();
-				assert(thread->status == Thread::Status::Sleeping);
-				thread->cpu->scheduler.unblock(thread, true, true);
+				waiter->in_futex_wait_list = false;
+				waiter->cpu->scheduler.unblock(waiter, true, false);
 			}
 
 			if (entry->waiters.is_empty()) {

@@ -3,6 +3,7 @@
 
 extern "C" bool mem_copy_to_user(usize user, const void* kernel, usize size);
 extern "C" bool mem_copy_to_kernel(void* kernel, usize user, usize size);
+extern "C" bool atomic_load32_user(usize user, u32* ret);
 
 struct UserAccessor {
 	inline constexpr explicit UserAccessor(usize addr) : addr {addr} {}
