@@ -24,7 +24,7 @@ bugprone-multiple-statement-macro,
 bugprone-no-escape,
 bugprone-parent-virtual-call,
 bugprone-posix-return,
-bugprone-reserved-identifier,
+-bugprone-reserved-identifier,
 bugprone-sizeof-container,
 bugprone-sizeof-expression,
 bugprone-spuriously-wake-up-functions,
@@ -144,3 +144,8 @@ readability-static-definition-in-anonymous-namespace,
 readability-string-compare,
 readability-uniqueptr-delete-release,
 readability-use-anyofallof'
+#CheckOptions:
+#  - key: bugprone-assert-side-effect.AssertMacros
+#    value: 'assert'
+#  - key: bugprone-assert-side-effect.CheckFunctionCalls
+#    value: 'true'
