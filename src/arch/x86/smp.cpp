@@ -277,12 +277,25 @@ struct [[gnu::packed]] BootInfo {
 };
 
 extern char smp_trampoline_start[];
+extern char smp_trampoline_start32[];
 extern char smp_trampoline_end[];
 
 void arch_sleep_init() {
 	assert(acpi::SMP_TRAMPOLINE_PHYS_ADDR);
+
+	usize size = smp_trampoline_end - smp_trampoline_start;
+	u32 magic = 0xCAFEBABE;
+	for (usize i = 0; i < size; ++i) {
+		if (memcmp(smp_trampoline_start + i, &magic, 4) == 0) {
+			memcpy(smp_trampoline_start + i, &acpi::SMP_TRAMPOLINE_PHYS_ADDR, 4);
+			break;
+		}
+	}
+
 	auto virt = to_virt<void>(acpi::SMP_TRAMPOLINE_PHYS_ADDR);
-	memcpy(virt, smp_trampoline_start, smp_trampoline_end - smp_trampoline_start);
+	memcpy(virt, smp_trampoline_start, size);
+	acpi::SMP_TRAMPLINE_PHYS_ENTRY16 = acpi::SMP_TRAMPOLINE_PHYS_ADDR;
+	acpi::SMP_TRAMPLINE_PHYS_ENTRY32 = acpi::SMP_TRAMPOLINE_PHYS_ADDR + (smp_trampoline_start32 - smp_trampoline_start);
 }
 
 namespace acpi {

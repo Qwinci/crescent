@@ -2,10 +2,11 @@
 asm(R"(
 .pushsection .text
 .globl smp_trampoline_start
+.globl smp_trampoline_start32
 .globl smp_trampoline_end
 
+.section .data
 .code16
-.section .rodata
 smp_trampoline_start:
 	cli
 	cld
@@ -44,6 +45,44 @@ smp_trampoline_start:
 farjmp:
 	.long 0
 	.word 0x8
+
+.align 8
+.code32
+smp_trampoline_start32:
+	cli
+	cld
+
+	// this gets patched at runtime to the address of the trampoline
+	mov $0xCAFEBABE, %ebx
+
+	mov (boot_info.page_map - smp_trampoline_start)(%ebx), %eax
+	mov %eax, %cr3
+
+	mov %cr4, %eax
+	// enable pae
+	or $(1 << 5), %eax
+	mov %eax, %cr4
+
+	// enable long mode and nx
+	mov $0xC0000080, %ecx
+	rdmsr
+	or $(1 << 8 | 1 << 11), %eax
+	wrmsr
+
+	mov %cr0, %eax
+	// enable paging and protected mode
+	or $(1 << 31 | 1 << 0), %eax
+	mov %eax, %cr0
+
+	lea (gdt - smp_trampoline_start)(%ebx), %eax
+	mov %eax, (gdtr - smp_trampoline_start + 2)(%ebx)
+
+	lgdt (gdtr - smp_trampoline_start)(%ebx)
+
+	lea (long_mode - smp_trampoline_start)(%ebx), %eax
+	mov %eax, (farjmp - smp_trampoline_start)(%ebx)
+
+	ljmpl *(farjmp - smp_trampoline_start)(%ebx)
 
 .align 8
 .code64

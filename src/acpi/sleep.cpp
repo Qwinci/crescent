@@ -59,6 +59,8 @@ namespace acpi {
 	};
 
 	usize SMP_TRAMPOLINE_PHYS_ADDR = 0;
+	usize SMP_TRAMPLINE_PHYS_ENTRY16 = 0;
+	usize SMP_TRAMPLINE_PHYS_ENTRY32 = 0;
 	static Facs* FACS;
 
 	static void enable_power_res(qacpi::NamespaceNode* node, bool enable) {
@@ -207,13 +209,13 @@ namespace acpi {
 	static void set_wake_addr() {
 		IrqGuard irq_guard {};
 
-		FACS->fw_waking_vector = SMP_TRAMPOLINE_PHYS_ADDR;
+		FACS->fw_waking_vector = SMP_TRAMPLINE_PHYS_ENTRY16;
 		if (FACS->length < offsetof(Facs, x_fw_waking_vector) + 8) {
 			return;
 		}
 
 		if (FACS->version >= 1) {
-			FACS->x_fw_waking_vector = SMP_TRAMPOLINE_PHYS_ADDR;
+			FACS->x_fw_waking_vector = SMP_TRAMPLINE_PHYS_ENTRY32;
 		}
 		else {
 			FACS->x_fw_waking_vector = 0;
