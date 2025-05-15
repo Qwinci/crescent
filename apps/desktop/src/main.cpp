@@ -1,13 +1,14 @@
 #include "desktop.hpp"
-#include "sys.hpp"
-#include "windower/protocol.hpp"
+#include "sys.h"
 #include "window.hpp"
+#include "windower/protocol.hpp"
+#include <cassert>
+#include <mutex>
+#include <stdio.h>
+#include <string.h>
 #include <ui/button.hpp>
 #include <ui/context.hpp>
 #include <ui/text.hpp>
-#include <cassert>
-#include <stdio.h>
-#include <string.h>
 
 static constexpr size_t NS_IN_US = 1000;
 static constexpr size_t US_IN_MS = 1000;
@@ -17,7 +18,7 @@ static constexpr size_t NS_IN_S = NS_IN_MS * 1000;
 [[noreturn]] void dumb_loop() {
 	while (true) {
 		InputEvent event;
-		sys_poll_event(event, SIZE_MAX);
+		sys_poll_event(&event, SIZE_MAX);
 		if (event.type == EVENT_TYPE_KEY) {
 			if (event.key.code == SCANCODE_F1) {
 				sys_shutdown(SHUTDOWN_TYPE_POWER_OFF);
@@ -62,8 +63,8 @@ struct Connection {
 	CrescentHandle event;
 };
 
-// todo mutex
-static NoDestroy<std::vector<std::unique_ptr<Connection>>> CONNECTIONS {};
+static std::vector<std::unique_ptr<Connection>> CONNECTIONS {};
+static std::mutex CONNECTIONS_MUTEX;
 
 struct WindowInfo {
 	ui::Window* window;
@@ -97,7 +98,7 @@ void listener_thread(void* arg) {
 	};
 
 	CrescentHandle ipc_listen_socket;
-	res = sys_socket_create(ipc_listen_socket, SOCKET_TYPE_IPC, SOCK_NONE);
+	res = sys_socket_create(&ipc_listen_socket, SOCKET_TYPE_IPC, SOCK_NONE);
 	if (res != 0) {
 		puts("failed to create ipc socket");
 		sys_thread_exit(1);
@@ -111,7 +112,7 @@ void listener_thread(void* arg) {
 		}
 		puts("[desktop]: got a connection");
 		CrescentHandle connection_socket;
-		res = sys_socket_accept(ipc_listen_socket, connection_socket, SOCK_NONBLOCK);
+		res = sys_socket_accept(ipc_listen_socket, &connection_socket, SOCK_NONBLOCK);
 		if (res != 0) {
 			puts("failed to accept connection");
 			sys_thread_exit(1);
@@ -119,7 +120,7 @@ void listener_thread(void* arg) {
 		puts("[desktop]: connection accepted");
 
 		IpcSocketAddress peer_addr {};
-		res = sys_socket_get_peer_name(connection_socket, peer_addr.generic);
+		res = sys_socket_get_peer_name(connection_socket, &peer_addr.generic);
 		if (res != 0) {
 			puts("failed to get peer address");
 			sys_thread_exit(1);
@@ -128,22 +129,24 @@ void listener_thread(void* arg) {
 		CrescentHandle event_read_handle;
 		CrescentHandle event_write_handle;
 		auto status = sys_pipe_create(
-			event_read_handle,
-			event_write_handle,
+			&event_read_handle,
+			&event_write_handle,
 			64 * sizeof(protocol::WindowEvent),
 			0,
 			OPEN_NONBLOCK);
 		assert(status == 0);
-		status = sys_move_handle(event_read_handle, peer_addr.target);
+		status = sys_move_handle(&event_read_handle, peer_addr.target);
 		assert(status == 0);
 
 		protocol::Response resp {};
 		resp.type = protocol::Response::Connected;
 		resp.connected.event_handle = event_read_handle;
 		// todo check status
-		while (sys_socket_send(connection_socket, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+		size_t actual;
+		while (sys_socket_send(connection_socket, &resp, sizeof(resp), &actual) == ERR_TRY_AGAIN);
 
-		CONNECTIONS->push_back(std::make_unique<Connection>(Connection {
+		std::unique_lock guard {CONNECTIONS_MUTEX};
+		CONNECTIONS.push_back(std::make_unique<Connection>(Connection {
 			.process = peer_addr.target,
 			.control = connection_socket,
 			.event = event_write_handle
@@ -187,10 +190,10 @@ static void destroy_window(Desktop& desktop, ui::Window* window) {
 int main() {
 	while (false) {
 		DevLinkRequest request {
-			.type = DevLinkRequestType::GetDevices,
+			.type = DevLinkRequestGetDevices,
 			.data {
 				.get_devices {
-					.type = CrescentDeviceType::Sound
+					.type = CrescentDeviceTypeSound
 				}
 			}
 		};
@@ -200,15 +203,15 @@ int main() {
 			.response_buffer = response,
 			.response_buf_size = DEVLINK_BUFFER_SIZE
 		};
-		auto status = sys_devlink(link);
+		auto status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to get sound devices");
 			return 1;
 		}
-		request.type = DevLinkRequestType::OpenDevice;
+		request.type = DevLinkRequestOpenDevice;
 		request.data.open_device.device = link.response->get_devices.names[0];
 		request.data.open_device.device_len = link.response->get_devices.name_sizes[0];
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to open sound device");
 			return 1;
@@ -216,13 +219,13 @@ int main() {
 		auto handle = link.response->open_device.handle;
 
 		SoundLink sound_link {
-			.op = SoundLinkOp::GetInfo,
+			.op = SoundLinkOpGetInfo,
 			.dummy {}
 		};
 
 		link.request = &sound_link.request;
 		sound_link.request.handle = handle;
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to get sound info");
 			return 1;
@@ -230,9 +233,9 @@ int main() {
 		auto* sound_resp = static_cast<SoundLinkResponse*>(link.response->specific);
 		printf("%d outputs\n", (int) sound_resp->info.output_count);
 
-		sound_link.op = SoundLinkOp::GetOutputInfo;
+		sound_link.op = SoundLinkOpGetOutputInfo;
 		sound_link.get_output_info.index = 4;
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to get output info");
 			return 1;
@@ -240,32 +243,32 @@ int main() {
 
 		auto buffer_size = sound_resp->output_info.buffer_size;
 
-		sound_link.op = SoundLinkOp::SetActiveOutput;
+		sound_link.op = SoundLinkOpSetActiveOutput;
 		sound_link.set_active_output.id = sound_resp->output_info.id;
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to set active output");
 			return 1;
 		}
 
-		sound_link.op = SoundLinkOp::SetOutputParams;
+		sound_link.op = SoundLinkOpSetOutputParams;
 		sound_link.set_output_params.params = {
 			.sample_rate = 44100,
 			.channels = 2,
-			.fmt = SoundFormat::PcmU16
+			.fmt = SoundFormatPcmU16
 		};
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to set output params");
 			return 1;
 		}
 
 		CrescentHandle file_handle;
-		status = sys_open(file_handle, "/output.raw", sizeof("/output.raw") - 1, 0);
+		status = sys_open(&file_handle, "/output.raw", sizeof("/output.raw") - 1, 0);
 		assert(status == 0);
 
 		CrescentStat stat {};
-		status = sys_stat(file_handle, stat);
+		status = sys_stat(file_handle, &stat);
 		assert(status == 0);
 
 		std::vector<uint8_t> file_data;
@@ -273,18 +276,18 @@ int main() {
 		assert(sys_read(file_handle, file_data.data(), stat.size, nullptr) == 0);
 		assert(sys_close_handle(file_handle) == 0);
 
-		sound_link.op = SoundLinkOp::QueueOutput;
+		sound_link.op = SoundLinkOpQueueOutput;
 		sound_link.queue_output.buffer = file_data.data();
 		sound_link.queue_output.len = std::min(buffer_size, stat.size);
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to queue data");
 			return 1;
 		}
 
-		sound_link.op = SoundLinkOp::Play;
+		sound_link.op = SoundLinkOpPlay;
 		sound_link.play.play = true;
-		status = sys_devlink(link);
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to play");
 			return 1;
@@ -294,10 +297,10 @@ int main() {
 	//dumb_loop();
 
 	DevLinkRequest request {
-		.type = DevLinkRequestType::GetDevices,
+		.type = DevLinkRequestGetDevices,
 		.data {
 			.get_devices {
-				.type = CrescentDeviceType::Fb
+				.type = CrescentDeviceTypeFb
 			}
 		}
 	};
@@ -307,15 +310,15 @@ int main() {
 		.response_buffer = response,
 		.response_buf_size = DEVLINK_BUFFER_SIZE
 	};
-	auto status = sys_devlink(link);
+	auto status = sys_devlink(&link);
 	if (status != 0) {
 		puts("failed to get devices");
 		return 1;
 	}
-	request.type = DevLinkRequestType::OpenDevice;
+	request.type = DevLinkRequestOpenDevice;
 	request.data.open_device.device = link.response->get_devices.names[0];
 	request.data.open_device.device_len = link.response->get_devices.name_sizes[0];
-	status = sys_devlink(link);
+	status = sys_devlink(&link);
 	if (status != 0) {
 		puts("failed to open device");
 		return 1;
@@ -323,20 +326,20 @@ int main() {
 	auto handle = link.response->open_device.handle;
 
 	FbLink fb_link {
-		.op = FbLinkOp::GetInfo
+		.op = FbLinkOpGetInfo
 	};
 
 	link.request = &fb_link.request;
 	fb_link.request.handle = handle;
-	status = sys_devlink(link);
+	status = sys_devlink(&link);
 	if (status != 0) {
 		puts("failed to get fb info");
 		return 1;
 	}
 	auto* fb_resp = static_cast<FbLinkResponse*>(link.response->specific);
 	auto info = fb_resp->info;
-	fb_link.op = FbLinkOp::Map;
-	status = sys_devlink(link);
+	fb_link.op = FbLinkOpMap;
+	status = sys_devlink(&link);
 	if (status != 0) {
 		puts("failed to map fb");
 		return 1;
@@ -349,23 +352,23 @@ int main() {
 	if (double_buffer) {
 		puts("[desktop]: using double buffering");
 
-		fb_link.op = FbLinkOp::Flip;
-		status = sys_devlink(link);
+		fb_link.op = FbLinkOpFlip;
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to flip fb");
 			return 1;
 		}
 
-		fb_link.op = FbLinkOp::Map;
-		status = sys_devlink(link);
+		fb_link.op = FbLinkOpMap;
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to map fb");
 			return 1;
 		}
 		front_mapping = fb_resp->map.mapping;
 
-		fb_link.op = FbLinkOp::Flip;
-		status = sys_devlink(link);
+		fb_link.op = FbLinkOpFlip;
+		status = sys_devlink(&link);
 		if (status != 0) {
 			puts("failed to flip fb");
 			return 1;
@@ -383,7 +386,7 @@ int main() {
 	Desktop desktop {ctx};
 
 	CrescentHandle listener_thread_handle;
-	status = sys_thread_create(listener_thread_handle, "listener", sizeof("listener") - 1, listener_thread, &desktop);
+	status = sys_thread_create(&listener_thread_handle, "listener", sizeof("listener") - 1, listener_thread, &desktop);
 	if (status != 0) {
 		puts("[desktop]: failed to create listener thread");
 		return 1;
@@ -457,7 +460,7 @@ int main() {
 		desktop->start_menu = menu_window.get();
 
 		CrescentHandle bin_dir_handle;
-		auto status = sys_open(bin_dir_handle, "/bin", sizeof("/bin") - 1, 0);
+		auto status = sys_open(&bin_dir_handle, "/bin", sizeof("/bin") - 1, 0);
 		assert(status == 0);
 
 		size_t file_count = 0;
@@ -511,7 +514,7 @@ int main() {
 				};
 
 				CrescentHandle proc_handle;
-				auto res = sys_process_create(proc_handle, text->text.data(), text->text.size(), proc_info);
+				auto res = sys_process_create(&proc_handle, text->text.data(), text->text.size(), &proc_info);
 				if (res != 0) {
 					printf("desktop: failed to create process %s\n", text->text.c_str());
 					return;
@@ -624,17 +627,19 @@ int main() {
 	uint64_t last_time_update_ns;
 	status = sys_get_time(&last_time_update_ns);
 	assert(status == 0);
+	//uint64_t last_fps = last_time_update_ns;
 
 	while (true) {
 		uint64_t start_time_ns;
 		sys_get_time(&start_time_ns);
 
-		for (size_t i = 0; i < CONNECTIONS->size();) {
-			auto& connection = (*CONNECTIONS)[i];
+		CONNECTIONS_MUTEX.lock();
+		for (size_t i = 0; i < CONNECTIONS.size();) {
+			auto& connection = CONNECTIONS[i];
 
 			protocol::Request req {};
 			size_t received;
-			auto req_status = sys_socket_receive(connection->control, &req, sizeof(req), received);
+			auto req_status = sys_socket_receive(connection->control, &req, sizeof(req), &received);
 			if (req_status == ERR_TRY_AGAIN) {
 				++i;
 				continue;
@@ -657,7 +662,7 @@ int main() {
 					}
 				}
 
-				CONNECTIONS->erase(CONNECTIONS->begin() + (&connection - CONNECTIONS->data()));
+				CONNECTIONS.erase(CONNECTIONS.begin() + (&connection - CONNECTIONS.data()));
 				continue;
 			}
 
@@ -674,9 +679,9 @@ int main() {
 
 					// todo check errors
 					CrescentHandle fb_shared_mem_handle;
-					sys_shared_mem_alloc(fb_shared_mem_handle, window->rect.width * window->rect.height * 4);
+					sys_shared_mem_alloc(&fb_shared_mem_handle, window->rect.width * window->rect.height * 4);
 					CrescentHandle fb_shareable_handle;
-					sys_shared_mem_share(fb_shared_mem_handle, connection->process, fb_shareable_handle);
+					sys_shared_mem_share(fb_shared_mem_handle, connection->process, &fb_shareable_handle);
 					sys_shared_mem_map(fb_shared_mem_handle, reinterpret_cast<void**>(&window->fb));
 					memset(window->fb, 0, window->rect.width * window->rect.height * 4);
 					sys_close_handle(fb_shared_mem_handle);
@@ -704,7 +709,8 @@ int main() {
 					});
 
 					// todo check status
-					while (sys_socket_send(connection->control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					size_t actual;
+					while (sys_socket_send(connection->control, &resp, sizeof(resp), &actual) == ERR_TRY_AGAIN);
 
 					break;
 				}
@@ -714,18 +720,23 @@ int main() {
 					destroy_window(desktop, window);
 
 					// todo check status
-					while (sys_socket_send(connection->control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					size_t actual;
+					while (sys_socket_send(connection->control, &resp, sizeof(resp), &actual) == ERR_TRY_AGAIN);
 
 					break;
 				}
 				case protocol::Request::Redraw:
 				{
 					auto* window = static_cast<DesktopWindow*>(req.close_window.window_handle);
-					ctx.dirty_rects.push_back(window->get_abs_rect());
+					auto window_rect = window->get_abs_rect();
+					window_rect.x += BORDER_WIDTH;
+					window_rect.y += TITLEBAR_HEIGHT;
+					ctx.dirty_rects.push_back(window_rect);
 
 					resp.ack.window_handle = window;
 					// todo check status
-					while (sys_socket_send(connection->control, &resp, sizeof(resp)) == ERR_TRY_AGAIN);
+					size_t actual;
+					while (sys_socket_send(connection->control, &resp, sizeof(resp), &actual) == ERR_TRY_AGAIN);
 
 					break;
 				}
@@ -733,10 +744,11 @@ int main() {
 
 			++i;
 		}
+		CONNECTIONS_MUTEX.unlock();
 
 		while (true) {
 			InputEvent event;
-			if (sys_poll_event(event, 0) == ERR_TRY_AGAIN) {
+			if (sys_poll_event(&event, 0) == ERR_TRY_AGAIN) {
 				break;
 			}
 			else if (event.type == EVENT_TYPE_MOUSE) {
@@ -795,8 +807,8 @@ int main() {
 
 			desktop.draw();
 
-			fb_link.op = FbLinkOp::Flip;
-			status = sys_devlink(link);
+			fb_link.op = FbLinkOpFlip;
+			status = sys_devlink(&link);
 			if (status != 0) {
 				puts("failed to flip fb");
 				return 1;

@@ -10,7 +10,7 @@ int SoundDevice::handle_request(const kstd::vector<u8>& data, kstd::vector<u8>& 
 	auto* resp = reinterpret_cast<SoundLinkResponse*>(res.data());
 
 	switch (link->op) {
-		case SoundLinkOp::GetInfo:
+		case SoundLinkOpGetInfo:
 		{
 			SoundDeviceInfo info {};
 			if (auto err = get_info(info)) {
@@ -19,19 +19,19 @@ int SoundDevice::handle_request(const kstd::vector<u8>& data, kstd::vector<u8>& 
 			resp->info.output_count = info.output_count;
 			break;
 		}
-		case SoundLinkOp::GetOutputInfo:
+		case SoundLinkOpGetOutputInfo:
 		{
 			if (auto err = get_output_info(link->get_output_info.index, resp->output_info)) {
 				return err;
 			}
 			break;
 		}
-		case SoundLinkOp::SetActiveOutput:
+		case SoundLinkOpSetActiveOutput:
 			if (auto err = set_active_output(link->set_active_output.id)) {
 				return err;
 			}
 			break;
-		case SoundLinkOp::SetOutputParams:
+		case SoundLinkOpSetOutputParams:
 		{
 			SoundOutputParams params = link->set_output_params.params;
 			if (auto err = set_output_params(params)) {
@@ -40,7 +40,7 @@ int SoundDevice::handle_request(const kstd::vector<u8>& data, kstd::vector<u8>& 
 			resp->set_output_params.actual = params;
 			break;
 		}
-		case SoundLinkOp::QueueOutput:
+		case SoundLinkOpQueueOutput:
 		{
 			auto size = link->queue_output.len;
 
@@ -55,17 +55,12 @@ int SoundDevice::handle_request(const kstd::vector<u8>& data, kstd::vector<u8>& 
 			}
 			break;
 		}
-		case SoundLinkOp::Play:
+		case SoundLinkOpPlay:
 			if (auto err = play(link->play.play)) {
 				return err;
 			}
 			break;
-		case SoundLinkOp::Reset:
-			if (auto err = reset()) {
-				return err;
-			}
-			break;
-		case SoundLinkOp::WaitUntilConsumed:
+		case SoundLinkOpWaitUntilConsumed:
 			if (auto err = wait_until_consumed(link->wait_until_consumed.trip_size, resp->wait_until_consumed.remaining)) {
 				return err;
 			}

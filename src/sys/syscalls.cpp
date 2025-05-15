@@ -439,10 +439,10 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			}
 
 			switch (req.type) {
-				case DevLinkRequestType::GetDevices:
+				case DevLinkRequestGetDevices:
 				{
 					auto type = req.data.get_devices.type;
-					if (type >= CrescentDeviceType::Max) {
+					if (type >= CrescentDeviceTypeMax) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;
 						break;
 					}
@@ -503,7 +503,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 					break;
 				}
-				case DevLinkRequestType::OpenDevice:
+				case DevLinkRequestOpenDevice:
 				{
 					if (req.data.open_device.device_len > 1024) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;
@@ -555,7 +555,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 					break;
 				}
-				case DevLinkRequestType::Specific:
+				case DevLinkRequestSpecific:
 				{
 					if (req.size > DEVLINK_BUFFER_SIZE) {
 						*frame->ret() = ERR_INVALID_ARGUMENT;

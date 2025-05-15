@@ -4,23 +4,29 @@
 #include "syscalls.h"
 #include <stdint.h>
 
-enum class CrescentDeviceType {
-	Fb,
-	Gpu,
-	Sound,
-	Max
-};
+typedef enum CrescentDeviceType {
+	CrescentDeviceTypeFb,
+	CrescentDeviceTypeGpu,
+	CrescentDeviceTypeSound,
+	CrescentDeviceTypeMax
+} CrescentDeviceType;
 
-enum class DevLinkRequestType {
-	GetDevices,
-	OpenDevice,
-	Specific
-};
+typedef enum DevLinkRequestType {
+	DevLinkRequestGetDevices,
+	DevLinkRequestOpenDevice,
+	DevLinkRequestSpecific
+} DevLinkRequestType;
 
-struct DevLinkRequest {
+typedef struct DevLinkRequest {
+#ifdef __cplusplus
 	DevLinkRequestType type {};
 	size_t size {sizeof(DevLinkRequest)};
 	CrescentHandle handle {INVALID_CRESCENT_HANDLE};
+#else
+	DevLinkRequestType type;
+	size_t size;
+	CrescentHandle handle;
+#endif
 
 	union Data {
 		char dummy;
@@ -32,10 +38,15 @@ struct DevLinkRequest {
 			const char* device;
 			size_t device_len;
 		} open_device;
-	} data {.dummy {}};
-};
+	} data
+#ifdef __cplusplus
+	{.dummy {}};
+#else
+	;
+#endif
+} DevLinkRequest;
 
-struct DevLinkResponse {
+typedef struct DevLinkResponse {
 	size_t size;
 	union {
 		struct {
@@ -50,35 +61,42 @@ struct DevLinkResponse {
 
 		void* specific;
 	};
-};
+} DevLinkResponse;
 
-struct DevLink {
+typedef struct DevLink {
 	DevLinkRequest* request;
 	union {
 		char* response_buffer;
 		DevLinkResponse* response;
 	};
 	size_t response_buf_size;
-};
+} DevLink;
 
 #define DEVLINK_BUFFER_SIZE 1024
 
-enum class FbLinkOp {
-	GetInfo,
-	Map,
-	Flip
-};
+typedef enum FbLinkOp {
+	FbLinkOpGetInfo,
+	FbLinkOpMap,
+	FbLinkOpFlip
+} FbLinkOp;
 
-struct FbLink {
+typedef struct FbLink {
+#ifdef __cplusplus
 	DevLinkRequest request {
-		.type = DevLinkRequestType::Specific,
+		.type = DevLinkRequestSpecific,
 		.size = sizeof(FbLink)
 	};
-
 	FbLinkOp op {};
-};
+#else
+	DevLinkRequest request;
+	FbLinkOp op;
 
-struct FbLinkResponse {
+#define FB_LINK_INITIALIZER {.request = {.type = DevLinkRequestSpecific, .size = sizeof(FbLink)}}
+
+#endif
+} FbLink;
+
+typedef struct FbLinkResponse {
 	union {
 		struct {
 			uintptr_t pitch;
@@ -92,50 +110,65 @@ struct FbLinkResponse {
 			void* mapping;
 		} map;
 	};
-};
+} FbLinkResponse;
 
 #define FB_LINK_DOUBLE_BUFFER (1 << 0)
 
-enum class SoundLinkOp {
-	GetInfo,
-	GetOutputInfo,
-	SetActiveOutput,
-	SetOutputParams,
-	QueueOutput,
-	Play,
-	Reset,
-	WaitUntilConsumed
-};
+typedef enum SoundLinkOp {
+	SoundLinkOpGetInfo,
+	SoundLinkOpGetOutputInfo,
+	SoundLinkOpSetActiveOutput,
+	SoundLinkOpSetOutputParams,
+	SoundLinkOpQueueOutput,
+	SoundLinkOpPlay,
+	SoundLinkOpWaitUntilConsumed
+} SoundLinkOp;
 
-enum class SoundFormat {
-	None,
-	PcmU8,
-	PcmU16,
-	PcmU20,
-	PcmU24,
-	PcmU32
-};
+typedef enum SoundFormat {
+	SoundFormatNone,
+	SoundFormatPcmU8,
+	SoundFormatPcmU16,
+	SoundFormatPcmU20,
+	SoundFormatPcmU24,
+	SoundFormatPcmU32
+} SoundFormat;
 
-struct SoundOutputParams {
+typedef struct SoundOutputParams {
 	uint32_t sample_rate;
 	uint32_t channels;
 	SoundFormat fmt;
-};
+} SoundOutputParams;
 
-struct SoundOutputInfo {
+typedef enum SoundDeviceType {
+	SoundDeviceTypeHeadphone,
+	SoundDeviceTypeSpeaker,
+	SoundDeviceTypeLineOut,
+	SoundDeviceTypeUnknown
+} SoundDeviceType;
+
+typedef struct SoundOutputInfo {
 	char name[128];
 	size_t name_len;
 	size_t buffer_size;
 	void* id;
-};
+	SoundDeviceType type;
+} SoundOutputInfo;
 
-struct SoundLink {
+typedef struct SoundLink {
+#ifdef __cplusplus
 	DevLinkRequest request {
-		.type = DevLinkRequestType::Specific,
+		.type = DevLinkRequestSpecific,
 		.size = sizeof(SoundLink)
 	};
 
 	SoundLinkOp op {};
+#else
+	DevLinkRequest request;
+	SoundLinkOp op;
+
+#define SOUND_LINK_INITIALIZER {.request = {.type = DevLinkRequestSpecific, .size = sizeof(SoundLink)}}
+
+#endif
 
 	union {
 		struct {
@@ -163,11 +196,15 @@ struct SoundLink {
 			size_t trip_size;
 		} wait_until_consumed;
 
+#ifdef __cplusplus
 		char dummy {};
+#else
+		char dummy;
+#endif
 	};
-};
+} SoundLink;
 
-struct SoundLinkResponse {
+typedef struct SoundLinkResponse {
 	union {
 		struct {
 			size_t output_count;
@@ -183,6 +220,6 @@ struct SoundLinkResponse {
 			size_t remaining;
 		} wait_until_consumed;
 	};
-};
+} SoundLinkResponse;
 
 #endif

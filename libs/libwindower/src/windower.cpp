@@ -1,7 +1,8 @@
 #include "windower/windower.hpp"
+#include "sys.h"
 #include "windower/protocol.hpp"
-#include "sys.hpp"
 #include <cassert>
+#include <cstdio>
 
 namespace windower {
 	Window::~Window() {
@@ -12,11 +13,13 @@ namespace windower {
 					.window_handle = handle
 				}
 			};
-			auto status = sys_socket_send(owner->control_connection, &req, sizeof(req));
+			size_t actual;
+			auto status = sys_socket_send(owner->control_connection, &req, sizeof(req), &actual);
 			assert(status == 0);
+			assert(actual == sizeof(req));
 			protocol::Response resp {};
 			size_t received;
-			status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), received);
+			status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), &received);
 			assert(received == sizeof(resp));
 			assert(status == 0);
 			assert(resp.type == protocol::Response::Ack);
@@ -48,11 +51,16 @@ namespace windower {
 				.window_handle = handle
 			}
 		};
-		auto status = sys_socket_send(owner->control_connection, &req, sizeof(req));
+		size_t actual;
+		auto status = sys_socket_send(owner->control_connection, &req, sizeof(req), &actual);
+		if (status != 0) {
+			printf("windower: sys_socket_send failed with status %d\n", status);
+		}
 		assert(status == 0);
+		assert(actual == sizeof(req));
 		protocol::Response resp {};
 		size_t received;
-		status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), received);
+		status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), &received);
 		assert(received == sizeof(resp));
 		assert(status == 0);
 		assert(resp.type == protocol::Response::Ack);
@@ -66,11 +74,13 @@ namespace windower {
 					.window_handle = handle
 				}
 			};
-			auto status = sys_socket_send(owner->control_connection, &req, sizeof(req));
+			size_t actual;
+			auto status = sys_socket_send(owner->control_connection, &req, sizeof(req), &actual);
 			assert(status == 0);
+			assert(actual == sizeof(req));
 			protocol::Response resp {};
 			size_t received;
-			status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), received);
+			status = sys_socket_receive(owner->control_connection, &resp, sizeof(resp), &received);
 			assert(received == sizeof(resp));
 			assert(status == 0);
 			assert(resp.type == protocol::Response::Ack);
@@ -92,12 +102,12 @@ namespace windower {
 		CrescentStringView features[] {
 			{.str = "window_manager", .len = sizeof("window_manager") - 1}
 		};
-		auto ret = sys_service_get(desktop_handle, features, sizeof(features) / sizeof(*features));
+		auto ret = sys_service_get(&desktop_handle, features, sizeof(features) / sizeof(*features));
 		if (ret != 0) {
 			return ret;
 		}
 		CrescentHandle connection;
-		ret = sys_socket_create(connection, SOCKET_TYPE_IPC, SOCK_NONE);
+		ret = sys_socket_create(&connection, SOCKET_TYPE_IPC, SOCK_NONE);
 		if (ret != 0) {
 			sys_close_handle(desktop_handle);
 			return ret;
@@ -106,7 +116,7 @@ namespace windower {
 			.generic {.type = SOCKET_ADDRESS_TYPE_IPC},
 			.target = desktop_handle
 		};
-		ret = sys_socket_connect(connection, addr.generic);
+		ret = sys_socket_connect(connection, &addr.generic);
 		if (ret != 0) {
 			sys_close_handle(connection);
 			sys_close_handle(desktop_handle);
@@ -117,7 +127,7 @@ namespace windower {
 
 		protocol::Response resp {};
 		size_t received;
-		auto status = sys_socket_receive(connection, &resp, sizeof(resp), received);
+		auto status = sys_socket_receive(connection, &resp, sizeof(resp), &received);
 		assert(received == sizeof(resp));
 		assert(status == 0);
 		assert(resp.type == protocol::Response::Connected);
@@ -146,13 +156,15 @@ namespace windower {
 				.height = height
 			}
 		};
-		auto status = sys_socket_send(control_connection, &req, sizeof(req));
+		size_t actual;
+		auto status = sys_socket_send(control_connection, &req, sizeof(req), &actual);
 		if (status != 0) {
 			return status;
 		}
+		assert(actual == sizeof(req));
 		protocol::Response resp {};
 		size_t received;
-		status = sys_socket_receive(control_connection, &resp, sizeof(resp), received);
+		status = sys_socket_receive(control_connection, &resp, sizeof(resp), &received);
 		if (status != 0) {
 			return status;
 		}

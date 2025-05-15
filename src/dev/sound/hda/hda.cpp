@@ -1258,22 +1258,22 @@ struct HdaCodecDev : public SoundDevice {
 
 		u8 bits;
 		switch (params.fmt) {
-			case SoundFormat::None:
+			case SoundFormatNone:
 				bits = 0;
 				break;
-			case SoundFormat::PcmU8:
+			case SoundFormatPcmU8:
 				bits = 8;
 				break;
-			case SoundFormat::PcmU16:
+			case SoundFormatPcmU16:
 				bits = 16;
 				break;
-			case SoundFormat::PcmU20:
+			case SoundFormatPcmU20:
 				bits = 20;
 				break;
-			case SoundFormat::PcmU24:
+			case SoundFormatPcmU24:
 				bits = 24;
 				break;
-			case SoundFormat::PcmU32:
+			case SoundFormatPcmU32:
 				bits = 32;
 				break;
 		}
@@ -1282,22 +1282,22 @@ struct HdaCodecDev : public SoundDevice {
 		if (real_bits != bits) {
 			switch (real_bits) {
 				case 8:
-					params.fmt = SoundFormat::PcmU8;
+					params.fmt = SoundFormatPcmU8;
 					break;
 				case 16:
-					params.fmt = SoundFormat::PcmU16;
+					params.fmt = SoundFormatPcmU16;
 					break;
 				case 20:
-					params.fmt = SoundFormat::PcmU20;
+					params.fmt = SoundFormatPcmU20;
 					break;
 				case 24:
-					params.fmt = SoundFormat::PcmU24;
+					params.fmt = SoundFormatPcmU24;
 					break;
 				case 32:
-					params.fmt = SoundFormat::PcmU32;
+					params.fmt = SoundFormatPcmU32;
 					break;
 				default:
-					params.fmt = SoundFormat::None;
+					params.fmt = SoundFormatNone;
 					break;
 			}
 		}
@@ -1318,7 +1318,7 @@ struct HdaCodecDev : public SoundDevice {
 		return 0;
 	}
 
-	int queue_output(const void* buffer, usize size) override {
+	int queue_output(const void* buffer, usize& size) override {
 		auto& stream = codec->controller->out_streams[0];
 		for (usize i = 0; i < size;) {
 			auto stream_remaining = stream.remaining_data.load(kstd::memory_order::relaxed);
@@ -1399,13 +1399,6 @@ struct HdaCodecDev : public SoundDevice {
 			stream.event.wait();
 		}
 
-		return 0;
-	}
-
-	int reset() override {
-		play(false);
-		codec->controller->out_streams[0].write_ptr = 0;
-		codec->controller->out_streams[0].remaining_data.store(0, kstd::memory_order::relaxed);
 		return 0;
 	}
 
@@ -1556,7 +1549,7 @@ void HdaController::start() {
 			auto codec = new HdaCodec {this, static_cast<u8>(i)};
 
 			auto codec_dev = kstd::make_shared<HdaCodecDev>(codec);
-			user_dev_add(std::move(codec_dev), CrescentDeviceType::Sound);
+			user_dev_add(std::move(codec_dev), CrescentDeviceTypeSound);
 		}
 	}
 }

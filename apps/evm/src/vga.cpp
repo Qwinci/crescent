@@ -1,5 +1,5 @@
 #include "vga.hpp"
-#include "sys.hpp"
+#include "sys.h"
 #include <cassert>
 
 namespace {

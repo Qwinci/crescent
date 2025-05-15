@@ -112,8 +112,8 @@ typedef struct EvmIrqInfo {
 
 #else
 
-struct EvmGuestState;
-typedef enum {
+typedef struct EvmGuestState EvmGuestState;
+typedef enum EvmStateBits {
 	EVM_STATE_BITS_NONE
 } EvmStateBits;
 typedef struct EvmIrqInfo EvmIrqInfo;

@@ -6,14 +6,14 @@
 
 typedef size_t CrescentHandle;
 
-typedef struct {
+typedef struct CrescentStringView {
 	const char* str;
 	size_t len;
 } CrescentStringView;
 
 #define INVALID_CRESCENT_HANDLE ((CrescentHandle) -1)
 
-typedef enum {
+typedef enum CrescentSyscall {
 	SYS_THREAD_CREATE,
 	SYS_THREAD_EXIT,
 
@@ -88,7 +88,7 @@ typedef enum {
 	SYS_EVM_VCPU_TRIGGER_IRQ
 } CrescentSyscall;
 
-typedef enum {
+typedef enum CrescentError {
 	ERR_MAX = -0x1000,
 	ERR_INVALID_ARGUMENT,
 	ERR_UNSUPPORTED,
@@ -103,7 +103,7 @@ typedef enum {
 	ERR_CONNECTION_CLOSED
 } CrescentError;
 
-typedef enum {
+typedef enum ShutdownType {
 	SHUTDOWN_TYPE_POWER_OFF,
 	SHUTDOWN_TYPE_REBOOT,
 	SHUTDOWN_TYPE_SLEEP
@@ -113,7 +113,7 @@ typedef enum {
 #define CRESCENT_PROT_WRITE (1U << 1)
 #define CRESCENT_PROT_EXEC (1U << 2)
 
-typedef struct {
+typedef struct ProcessCreateInfo {
 	CrescentStringView* args;
 	size_t arg_count;
 	CrescentHandle stdin_handle;
@@ -128,16 +128,16 @@ typedef struct {
 #define STDOUT_HANDLE (CrescentHandle) (1)
 #define STDERR_HANDLE (CrescentHandle) (2)
 
-typedef struct {
+typedef struct CrescentStat {
 	size_t size;
 } CrescentStat;
 
-typedef enum {
+typedef enum CrescentFileType {
 	CRESCENT_FILE_TYPE_FILE,
 	CRESCENT_FILE_TYPE_DIRECTORY
 } CrescentFileType;
 
-typedef struct {
+typedef struct CrescentDirEntry {
 	char name[128];
 	size_t name_len;
 	CrescentFileType type;
@@ -150,7 +150,7 @@ typedef struct {
 #define SEEK_CURRENT 1
 #define SEEK_END 2
 
-typedef struct {
+typedef struct X86ArchInfo {
 	uint64_t tsc_frequency;
 } X86ArchInfo;
 
