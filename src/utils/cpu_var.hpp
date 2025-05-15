@@ -43,7 +43,7 @@ struct CpuVar {
 #elif defined(__aarch64__)
 		usize thread;
 		asm volatile("mrs %0, tpidr_el1" : "=r"(thread));
-		base = *reinterpret_cast<usize*>(thread + 144);
+		base = *reinterpret_cast<usize*>(thread + 136);
 #else
 #error missing architecture specific code
 #endif

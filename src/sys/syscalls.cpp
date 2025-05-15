@@ -1764,22 +1764,18 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 
 				entry->waiters.push(thread);
 				thread->sleep_interrupted = false;
-				if (timeout_ns == UINT64_MAX) {
-					state = thread->cpu->scheduler.prepare_for_block();
-				}
-				else {
-					if (timeout_ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
-						timeout_ns = SCHED_MAX_SLEEP_US * NS_IN_US;
-					}
-					state = thread->cpu->scheduler.prepare_for_sleep(timeout_ns);
-				}
 			}
 
 			if (timeout_ns == UINT64_MAX) {
-				thread->cpu->scheduler.block(state);
+				thread->cpu->scheduler.block();
+				*frame->ret() = 0;
 			}
 			else {
-				thread->cpu->scheduler.sleep(state);
+				if (timeout_ns > SCHED_MAX_SLEEP_US * NS_IN_US) {
+					timeout_ns = SCHED_MAX_SLEEP_US * NS_IN_US;
+				}
+
+				thread->cpu->scheduler.sleep(timeout_ns);
 
 				if (thread->sleep_interrupted) {
 					*frame->ret() = ERR_TIMEOUT;
@@ -1808,7 +1804,7 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			assert(!entry->waiters.is_empty());
 			for (; !entry->waiters.is_empty() && count > 0; --count) {
 				auto waiter = entry->waiters.pop_front();
-				auto thread_guard = waiter->sched_lock.lock();
+				auto thread_guard = waiter->move_lock.lock();
 				assert(thread->status == Thread::Status::Sleeping);
 				thread->cpu->scheduler.unblock(thread, true, true);
 			}

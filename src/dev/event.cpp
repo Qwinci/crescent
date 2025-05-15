@@ -151,7 +151,7 @@ void Event::signal_one() {
 		auto waitable = waiters.pop_front();
 		waitable->in_list = false;
 		auto thread = waitable->thread;
-		auto thread_guard = thread->sched_lock.lock();
+		auto thread_guard = thread->move_lock.lock();
 		thread->cpu->scheduler.unblock(thread, true, false);
 	}
 }
@@ -168,7 +168,7 @@ void Event::signal_one_if_not_pending() {
 		auto waitable = waiters.pop_front();
 		waitable->in_list = false;
 		auto thread = waitable->thread;
-		auto thread_guard = thread->sched_lock.lock();
+		auto thread_guard = thread->move_lock.lock();
 		thread->cpu->scheduler.unblock(thread, true, false);
 	}
 }
@@ -180,7 +180,7 @@ void Event::signal_all() {
 
 	for (auto& waitable : waiters) {
 		auto thread = waitable.thread;
-		auto thread_guard = thread->sched_lock.lock();
+		auto thread_guard = thread->move_lock.lock();
 		thread->cpu->scheduler.unblock(thread, true, false);
 		waitable.in_list = false;
 	}
@@ -194,7 +194,7 @@ void Event::signal_count(usize count) {
 
 	for (auto& waitable : waiters) {
 		auto thread = waitable.thread;
-		auto thread_guard = thread->sched_lock.lock();
+		auto thread_guard = thread->move_lock.lock();
 		thread->cpu->scheduler.unblock(thread, true, false);
 
 		if (--count == 0) {

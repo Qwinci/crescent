@@ -25,8 +25,8 @@ sched_switch_thread:
 	mov x2, sp
 	str x2, [x0]
 
-	// prev->sched_lock = false
-	strb wzr, [x0, #208]
+	// prev->move_lock = false
+	strb wzr, [x0, #200]
 
 	ldr x3, [x1]
 	mov sp, x3

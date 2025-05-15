@@ -208,8 +208,7 @@ extern "C" [[noreturn, gnu::used]] void aarch64_ap_entry() {
 	// bit0 == fiq, bit1 == irq, bit2 == SError, bit3 == Debug
 	asm volatile("msr daifclr, #0b1111");
 	cpu->cpu_tick_source->oneshot(50 * US_IN_MS);
-	auto state = cpu->scheduler.prepare_for_block();
-	cpu->scheduler.block(state);
+	cpu->scheduler.block();
 	panic("scheduler block returned");
 }
 

@@ -1,11 +1,14 @@
 .globl mem_copy_to_user
 .globl mem_copy_to_kernel
 
+#define HANDLER_IP_OFF 16
+#define HANDLER_SP_OFF 24
+
 mem_copy_safe:
 // x4 == tpidr_el1
 	adrp x3, 1f
 	add x3, x3, :lo12:1f
-	str x3, [x4, #24]
+	str x3, [x4, HANDLER_IP_OFF]
 
 	// msr pan, #0
 	msr s0_0_c4_c0_4, xzr
@@ -21,8 +24,8 @@ mem_copy_safe:
 	msr s0_0_c4_c1_4, xzr
 
 	mrs x1, tpidr_el1
-	str xzr, [x1, #24]
-	ldr x2, [x1, #32]
+	str xzr, [x1, HANDLER_IP_OFF]
+	ldr x2, [x1, HANDLER_SP_OFF]
 	mov sp, x2
 
 	mov x0, #0
@@ -33,7 +36,7 @@ mem_copy_unsafe:
 // x4 == tpidr_el1
 	adrp x3, 1f
 	add x3, x3, :lo12:1f
-	str x3, [x4, #24]
+	str x3, [x4, HANDLER_IP_OFF]
 
 	bl memcpy
 
@@ -42,8 +45,8 @@ mem_copy_unsafe:
 	ret
 1:
 	mrs x1, tpidr_el1
-	str xzr, [x1, #24]
-	ldr x2, [x1, #32]
+	str xzr, [x1, HANDLER_IP_OFF]
+	ldr x2, [x1, HANDLER_SP_OFF]
 	mov sp, x2
 
 	mov x0, #0
@@ -65,7 +68,7 @@ mem_copy_to_user:
 
 	mov x6, sp
 	mrs x4, tpidr_el1
-	str x6, [x4, #32]
+	str x6, [x4, HANDLER_SP_OFF]
 
 	adrp x3, CPU_FEATURES
 	add x3, x3, :lo12:CPU_FEATURES
@@ -93,7 +96,7 @@ mem_copy_to_kernel:
 
 	mov x6, sp
 	mrs x4, tpidr_el1
-	str x6, [x4, #32]
+	str x6, [x4, HANDLER_SP_OFF]
 
 	adrp x3, CPU_FEATURES
 	add x3, x3, :lo12:CPU_FEATURES

@@ -24,7 +24,7 @@ sched_switch_thread:
 
 	mov %rsp, 8(%rdi)
 
-	// prev->sched_lock = false
+	// prev->move_lock = false
 	movb $0, 223(%rdi)
 
 	mov 8(%rsi), %rsp
