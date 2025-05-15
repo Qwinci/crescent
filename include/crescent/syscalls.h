@@ -24,6 +24,7 @@ typedef enum CrescentSyscall {
 	SYS_GET_STATUS,
 
 	SYS_GET_THREAD_ID,
+	SYS_GET_PROCESS_ID,
 
 	SYS_SLEEP,
 	SYS_GET_TIME,

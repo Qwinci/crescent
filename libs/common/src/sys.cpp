@@ -31,6 +31,10 @@ int sys_get_thread_id() {
 	return static_cast<int>(syscall(SYS_GET_THREAD_ID));
 }
 
+int sys_get_process_id() {
+	return static_cast<int>(syscall(SYS_GET_PROCESS_ID));
+}
+
 int sys_sleep(uint64_t ns) {
 	return static_cast<int>(syscall(SYS_SLEEP, ns));
 }

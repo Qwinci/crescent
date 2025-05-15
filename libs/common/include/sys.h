@@ -20,6 +20,7 @@ __noreturn void sys_process_exit(int status);
 int sys_kill(CrescentHandle handle);
 int sys_get_status(CrescentHandle handle);
 int sys_get_thread_id();
+int sys_get_process_id();
 int sys_sleep(uint64_t ns);
 int sys_get_time(uint64_t* ns);
 int sys_get_date_time(CrescentDateTime* time);

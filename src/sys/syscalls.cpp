@@ -315,6 +315,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			*frame->ret() = thread->thread_id;
 			break;
 		}
+		case SYS_GET_PROCESS_ID:
+		{
+			*frame->ret() = thread->process->pid;
+			break;
+		}
 		case SYS_SLEEP:
 		{
 			auto ns = *frame->arg0();
