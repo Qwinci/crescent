@@ -3,9 +3,17 @@
 #include "functional.hpp"
 #include "vector.hpp"
 
+struct Waitable {
+	DoubleListHook hook {};
+	Thread* thread {};
+	bool in_list {};
+};
+
 struct Event {
+	static usize wait_any(Event** events, usize count, u64 max_ns);
+
 	void reset();
-	void wait();
+	void wait(bool consume = true);
 	bool wait_with_timeout(u64 max_ns);
 
 	void signal_one();
@@ -16,17 +24,20 @@ struct Event {
 
 	inline bool is_being_waited() {
 		IrqGuard irq_guard {};
-		return !waiters.lock()->is_empty();
+		auto guard = lock.lock();
+		return !waiters.is_empty();
 	}
 
 	[[nodiscard]] bool is_pending() {
 		IrqGuard irq_guard {};
-		return *signaled_count.lock() > 0;
+		auto guard = lock.lock();
+		return signaled_count > 0;
 	}
 
 private:
-	Spinlock<DoubleList<Thread, &Thread::misc_hook>> waiters {};
-	Spinlock<usize> signaled_count {};
+	DoubleList<Waitable, &Waitable::hook> waiters {};
+	usize signaled_count {};
+	Spinlock<void> lock {};
 };
 
 struct CallbackProducer {
