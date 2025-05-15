@@ -312,6 +312,7 @@ namespace pci {
 		u16 vendor_id;
 		u16 device_id;
 		u32 raw_bars[6] {};
+		void* driver_data {};
 
 	private:
 		u32 msi_cap_offset;
