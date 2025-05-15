@@ -94,6 +94,8 @@ struct Process {
 
 	[[nodiscard]] bool handle_pagefault(usize addr);
 
+	Process* clone();
+
 	[[nodiscard]] inline bool is_empty() {
 		return threads.lock()->is_empty();
 	}

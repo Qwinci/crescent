@@ -463,6 +463,101 @@ bool Process::handle_pagefault(usize addr) {
 	return false;
 }
 
+Process* Process::clone() {
+	kstd::optional<Handle> old_std_handles[3] {
+		handles.get(STDIN_HANDLE),
+		handles.get(STDOUT_HANDLE),
+		handles.get(STDERR_HANDLE)
+	};
+
+	Handle std_handles[3] {EmptyHandle {}, EmptyHandle {}, EmptyHandle {}};
+	for (u32 i = 0; i < 3; ++i) {
+		auto& handle = old_std_handles[i];
+
+		kstd::shared_ptr<OpenFile>* ptr;
+		if (!handle || !(ptr = handle->get<kstd::shared_ptr<OpenFile>>())) {
+			continue;
+		}
+
+		auto cursor = (*ptr)->cursor;
+		auto node = (*ptr)->node;
+
+		auto new_node = kstd::make_shared<OpenFile>(node);
+		new_node->cursor = cursor;
+
+		std_handles[i] = std::move(new_node);
+	}
+
+	auto new_process = new Process {name, true, std::move(std_handles[0]), std::move(std_handles[1]), std::move(std_handles[2])};
+
+	auto guard = mappings.lock();
+	auto new_guard = new_process->mappings.lock();
+
+	auto node = guard->get_first();
+	while (node) {
+		auto new_addr = new_process->vmem.xalloc(node->size, node->base, node->base);
+		assert(new_addr);
+
+		if (node->flags & MemoryAllocFlags::Backed) {
+			if (node->flags & MemoryAllocFlags::Backed) {
+				for (usize i = 0; i < node->size; i += PAGE_SIZE) {
+					auto page_phys = page_map.get_phys(node->base + i);
+					assert(page_phys);
+
+					auto new_page = pmalloc(1);
+					if (!new_page) {
+						new_process->vmem.xfree(new_addr, node->size);
+						delete new_process;
+						return nullptr;
+					}
+
+					memcpy(to_virt<void>(new_page), to_virt<void>(page_phys), PAGE_SIZE);
+
+					if (!new_process->page_map.map(node->base + i, new_page, node->prot, CacheMode::WriteBack)) {
+						new_process->vmem.xfree(new_addr, node->size);
+						pfree(new_page, 1);
+						delete new_process;
+						return nullptr;
+					}
+				}
+			}
+			else if (node->flags & MemoryAllocFlags::Demand) {
+				for (usize i = 0; i < node->size; i += PAGE_SIZE) {
+					auto page_phys = page_map.get_phys(node->base + i);
+					if (!page_phys) {
+						continue;
+					}
+
+					auto new_page = pmalloc(1);
+					if (!new_page) {
+						new_process->vmem.xfree(new_addr, node->size);
+						delete new_process;
+						return nullptr;
+					}
+
+					memcpy(to_virt<void>(new_page), to_virt<void>(page_phys), PAGE_SIZE);
+
+					if (!new_process->page_map.map(node->base + i, new_page, node->prot, CacheMode::WriteBack)) {
+						new_process->vmem.xfree(new_addr, node->size);
+						pfree(new_page, 1);
+						delete new_process;
+						return nullptr;
+					}
+				}
+			}
+		}
+
+		auto new_mapping = new Mapping {*node};
+
+		new_guard->insert(new_mapping);
+
+		// NOLINTNEXTLINE
+		node = guard->get_successor(node);
+	}
+
+	return new_process;
+}
+
 UniqueKernelMapping::~UniqueKernelMapping() {
 	if (ptr) {
 		auto& KERNEL_MAP = KERNEL_PROCESS->page_map;
