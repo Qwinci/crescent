@@ -28,5 +28,12 @@ bool EventQueue::consume(InputEvent& res) {
 	return true;
 }
 
+bool EventQueue::is_empty() {
+	IrqGuard irq_guard {};
+	auto guard = lock.lock();
+
+	return consumer_ptr == producer_ptr;
+}
+
 EventQueue GLOBAL_EVENT_QUEUE {};
 
