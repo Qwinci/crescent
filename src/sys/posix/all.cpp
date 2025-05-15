@@ -14,6 +14,10 @@ void posix_sigrestore(SyscallFrame* frame);
 void posix_tgkill(SyscallFrame* frame);
 void posix_kill(SyscallFrame* frame);
 
+void posix_ppoll(SyscallFrame* frame);
+void posix_ioctl(SyscallFrame* frame);
+void posix_fcntl(SyscallFrame* frame);
+
 using Fn = void (*)(SyscallFrame* frame);
 
 #define E(num) ((num) - static_cast<CrescentPosixSyscall>(SYS_POSIX_START))
@@ -28,6 +32,9 @@ static constexpr auto generate_syscall_array() {
 	arr[E(SYS_POSIX_SIGRESTORE)] = posix_sigrestore;
 	arr[E(SYS_POSIX_TGKILL)] = posix_tgkill;
 	arr[E(SYS_POSIX_KILL)] = posix_kill;
+	arr[E(SYS_POSIX_PPOLL)] = posix_ppoll;
+	arr[E(SYS_POSIX_IOCTL)] = posix_ioctl;
+	arr[E(SYS_POSIX_FCNTL)] = posix_fcntl;
 
 	return arr;
 }

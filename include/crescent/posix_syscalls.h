@@ -10,7 +10,11 @@ typedef enum CrescentPosixSyscall {
 	SYS_POSIX_SIGACTION,
 	SYS_POSIX_SIGRESTORE,
 	SYS_POSIX_TGKILL,
-	SYS_POSIX_KILL
+	SYS_POSIX_KILL,
+
+	SYS_POSIX_PPOLL,
+	SYS_POSIX_IOCTL,
+	SYS_POSIX_FCNTL
 } CrescentPosixSyscall;
 
 #endif
