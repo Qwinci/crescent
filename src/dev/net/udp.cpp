@@ -42,7 +42,7 @@ struct Udp4Socket : public Socket {
 		return ERR_UNSUPPORTED;
 	}
 
-	int send(const void*, usize) override {
+	int send(const void*, usize&) override {
 		return ERR_UNSUPPORTED;
 	}
 
@@ -50,7 +50,7 @@ struct Udp4Socket : public Socket {
 		return ERR_UNSUPPORTED;
 	}
 
-	int send_to(const void* data, usize size, const AnySocketAddress& dest) override {
+	int send_to(const void* data, usize& size, const AnySocketAddress& dest) override {
 		if (dest.generic.type != SOCKET_ADDRESS_TYPE_IPV4) {
 			return ERR_INVALID_ARGUMENT;
 		}

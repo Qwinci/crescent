@@ -242,18 +242,34 @@ struct Tcp4Socket : public Socket {
 		return 0;
 	}
 
-	int send(const void* data, usize size) override {
+	int send(const void* data, usize& size) override {
 		if (state != State::Connected) {
 			return ERR_CONNECTION_CLOSED;
 		}
-		send_buffer.write_block(data, size);
+
+		if (flags & SOCK_NONBLOCK) {
+			size = send_buffer.write(data, size);
+		}
+		else {
+			send_buffer.write_block(data, size);
+		}
+
 		send_event.signal_one();
-		// todo on non-blocking socket this should return the amount of bytes actually written
 		return 0;
 	}
 
 	int receive(void* data, usize& size) override {
-		size = receive_buffer.read(data, size);
+		if (flags & OPEN_NONBLOCK) {
+			size = receive_buffer.read(data, size);
+			if (!size && state == State::Connected) {
+				return ERR_TRY_AGAIN;
+			}
+		}
+		else {
+			bool interrupted = false;
+			size = receive_buffer.read_some(data, 1, size, state_change_event, interrupted);
+		}
+
 		if (!size && state != State::Connected) {
 			return ERR_CONNECTION_CLOSED;
 		}
@@ -368,7 +384,7 @@ struct Tcp4Socket : public Socket {
 			if (hdr.flags & flags::FIN) {
 				state = State::ReceivedFin;
 				send_event.signal_one();
-				++data_len;
+				++received_sequence;
 			}
 
 			received_sequence += data_len;
@@ -693,6 +709,7 @@ struct Tcp4Socket : public Socket {
 	u32 sequence {};
 	u32 received_sequence {};
 	u32 acked_sequence {};
+
 	enum class State {
 		None,
 		SynAck,

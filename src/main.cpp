@@ -54,14 +54,16 @@ struct NetworkLogSink : LogSink {
 			sock = nullptr;
 			return;
 		}
-		assert(sock->send("network logging connected\n", sizeof("network logging connected\n") - 1) == 0);
+		usize size = sizeof("network logging connected\n") - 1;
+		assert(sock->send("network logging connected\n", size) == 0);
 
 		IrqGuard guard {};
 		LOG.lock()->register_sink(this);
 	}
 
 	void write(kstd::string_view str) override {
-		sock->send(str.data(), str.size());
+		usize size = str.size();
+		sock->send(str.data(), size);
 	}
 
 	kstd::shared_ptr<Socket> sock;

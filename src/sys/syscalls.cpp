@@ -1012,6 +1012,11 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto socket = socket_ptr->data();
 			*frame->ret() = socket->send(data.data(), size);
 
+			if (!UserAccessor(*frame->arg3()).store(size)) {
+				*frame->ret() = ERR_FAULT;
+				break;
+			}
+
 			break;
 		}
 		case SYS_SOCKET_SEND_TO:
