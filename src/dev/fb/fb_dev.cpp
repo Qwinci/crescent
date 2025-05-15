@@ -42,7 +42,7 @@ struct GpuFbDev : public UserDevice {
 			{
 				auto process = get_current_thread()->process;
 				usize size = fb->height * fb->pitch;
-				auto mem = process->allocate(nullptr, size, MemoryAllocFlags::Read | MemoryAllocFlags::Write, nullptr);
+				auto mem = process->allocate(nullptr, size, PageFlags::Read | PageFlags::Write, MemoryAllocFlags::None, nullptr);
 				if (size && !mem) {
 					return ERR_NO_MEM;
 				}

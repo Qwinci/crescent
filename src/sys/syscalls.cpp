@@ -392,17 +392,18 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			int protection = static_cast<int>(*frame->arg2());
 
 			MemoryAllocFlags flags = MemoryAllocFlags::Backed;
+			PageFlags prot {};
 			if (protection & CRESCENT_PROT_READ) {
-				flags |= MemoryAllocFlags::Read;
+				prot |= PageFlags::Read;
 			}
 			if (protection & CRESCENT_PROT_WRITE) {
-				flags |= MemoryAllocFlags::Write;
+				prot |= PageFlags::Write;
 			}
 			if (protection & CRESCENT_PROT_EXEC) {
-				flags |= MemoryAllocFlags::Execute;
+				prot |= PageFlags::Execute;
 			}
 
-			auto addr = thread->process->allocate(ptr, size, flags, nullptr);
+			auto addr = thread->process->allocate(ptr, size, prot, flags, nullptr);
 			if (!addr) {
 				*frame->ret() = ERR_NO_MEM;
 				break;
@@ -1248,7 +1249,8 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 			auto mem = thread->process->allocate(
 				nullptr,
 				shared_mem->pages.size() * PAGE_SIZE,
-				MemoryAllocFlags::Read | MemoryAllocFlags::Write,
+				PageFlags::Read | PageFlags::Write,
+				MemoryAllocFlags::None,
 				nullptr);
 			if (!mem) {
 				*frame->ret() = ERR_NO_MEM;
@@ -1931,7 +1933,12 @@ extern "C" void syscall_handler(SyscallFrame* frame) {
 				break;
 			}
 
-			auto state_addr = thread->process->allocate(nullptr, PAGE_SIZE, MemoryAllocFlags::Read | MemoryAllocFlags::Write, nullptr);
+			auto state_addr = thread->process->allocate(
+				nullptr,
+				PAGE_SIZE,
+				PageFlags::Read | PageFlags::Write,
+				MemoryAllocFlags::None,
+				nullptr);
 			if (!state_addr) {
 				thread->process->handles.remove(vcpu_handle);
 				*frame->ret() = ERR_NO_MEM;

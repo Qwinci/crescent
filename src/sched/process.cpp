@@ -30,7 +30,8 @@ Process::~Process() {
 		for (usize i = 0; i < mapping->size; i += PAGE_SIZE) {
 			auto page_phys = page_map.get_phys(base + i);
 			page_map.unmap(base + i);
-			if (mapping->flags & MemoryAllocFlags::Backed) {
+			if ((mapping->flags & MemoryAllocFlags::Backed) ||
+				(mapping->flags & MemoryAllocFlags::Demand && page_phys)) {
 				pfree(page_phys, 1);
 			}
 		}
@@ -43,12 +44,96 @@ Process::~Process() {
 	vmem.destroy(true);
 }
 
-usize Process::allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKernelMapping* kernel_mapping, CacheMode cache_mode) {
+usize Process::allocate(
+	void* base,
+	usize size,
+	PageFlags prot,
+	MemoryAllocFlags flags,
+	UniqueKernelMapping* kernel_mapping,
+	CacheMode cache_mode) {
 	auto real_base = ALIGNDOWN(reinterpret_cast<usize>(base), PAGE_SIZE);
 	size = ALIGNUP(size, PAGE_SIZE);
 
 	if (!size) {
 		return 0;
+	}
+
+	prot |= PageFlags::User;
+
+	if (flags & MemoryAllocFlags::Fixed) {
+		auto guard = mappings.lock();
+
+		usize i = 0;
+		while (i < size) {
+			auto node = guard->get_root();
+			while (node) {
+				auto addr = real_base + i;
+
+				if (addr < node->base) {
+					// NOLINTNEXTLINE
+					node = guard->get_left(node);
+				}
+				else if (addr >= node->base + node->size) {
+					// NOLINTNEXTLINE
+					node = guard->get_right(node);
+				}
+				else {
+					guard->remove(node);
+					vmem.xfree(node->base, node->size);
+
+					auto at_start = addr - node->base;
+					if (at_start) {
+						auto a = vmem.xalloc(at_start, node->base, node->base);
+						assert(a);
+						auto mapping = new Mapping {
+							.base = node->base,
+							.size = at_start,
+							.prot = node->prot,
+							.flags = node->flags
+						};
+						guard->insert(mapping);
+					}
+
+					auto range_end = real_base + size;
+					auto node_end = node->base + node->size;
+
+					if (range_end < node_end) {
+						auto a = vmem.xalloc(node_end - range_end, range_end, range_end);
+						assert(a);
+						auto mapping = new Mapping {
+							.base = range_end,
+							.size = node_end - range_end,
+							.prot = node->prot,
+							.flags = node->flags
+						};
+						guard->insert(mapping);
+					}
+
+					usize to_unmap = kstd::min(node->size - at_start, size - i);
+					if (node->flags & MemoryAllocFlags::Backed) {
+						for (usize j = 0; j < to_unmap; j += PAGE_SIZE) {
+							auto page_phys = page_map.get_phys(addr + j);
+							page_map.unmap(addr + j);
+							pfree(page_phys, 1);
+						}
+					}
+					else if (node->flags & MemoryAllocFlags::Demand) {
+						for (usize j = 0; j < to_unmap; j += PAGE_SIZE) {
+							auto page_phys = page_map.get_phys(addr + j);
+							page_map.unmap(addr + j);
+
+							if (page_phys) {
+								pfree(page_phys, 1);
+							}
+						}
+					}
+
+					i += node->size - at_start;
+					delete node;
+					break;
+				}
+			}
+		}
 	}
 
 	auto virt = vmem.xalloc(size, real_base, real_base);
@@ -73,16 +158,7 @@ usize Process::allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKe
 	}
 
 	if (flags & MemoryAllocFlags::Backed) {
-		auto page_flags = PageFlags::User;
-		if (flags & MemoryAllocFlags::Read) {
-			page_flags |= PageFlags::Read;
-		}
-		if (flags & MemoryAllocFlags::Write) {
-			page_flags |= PageFlags::Write;
-		}
-		if (flags & MemoryAllocFlags::Execute) {
-			page_flags |= PageFlags::Execute;
-		}
+		auto page_flags = PageFlags::User | prot;
 
 		for (usize i = 0; i < size; i += PAGE_SIZE) {
 			auto phys = pmalloc(1);
@@ -109,6 +185,7 @@ usize Process::allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKe
 	auto mapping = new Mapping {
 		.base = virt,
 		.size = size,
+		.prot = prot,
 		.flags = flags
 	};
 	mappings.lock()->insert(mapping);
@@ -120,20 +197,33 @@ usize Process::allocate(void* base, usize size, MemoryAllocFlags flags, UniqueKe
 	return virt;
 }
 
-void Process::free(usize ptr, usize) {
+bool Process::free(usize ptr, usize size) {
+	size = ALIGNUP(size, PAGE_SIZE);
+
 	auto guard = mappings.lock();
 
 	auto mapping = guard->find<usize, &Mapping::base>(ptr);
 	if (!mapping) {
-		return;
+		return false;
 	}
 	auto base = mapping->base;
+	//assert(size == mapping->size);
 
 	if (mapping->flags & MemoryAllocFlags::Backed) {
 		for (usize i = 0; i < mapping->size; i += PAGE_SIZE) {
 			auto page_phys = page_map.get_phys(base + i);
 			page_map.unmap(base + i);
 			pfree(page_phys, 1);
+		}
+	}
+	else if (mapping->flags & MemoryAllocFlags::Demand) {
+		for (usize i = 0; i < mapping->size; i += PAGE_SIZE) {
+			auto page_phys = page_map.get_phys(base + i);
+			page_map.unmap(base + i);
+
+			if (page_phys) {
+				pfree(page_phys, 1);
+			}
 		}
 	}
 	else {
@@ -145,6 +235,93 @@ void Process::free(usize ptr, usize) {
 
 	guard->remove(mapping);
 	delete mapping;
+	return true;
+}
+
+bool Process::protect(usize ptr, usize size, PageFlags prot) {
+	if (ptr & (PAGE_SIZE - 1) || (size & (PAGE_SIZE - 1))) {
+		return false;
+	}
+
+	prot |= PageFlags::User;
+
+	auto guard = mappings.lock();
+
+	usize i = 0;
+	while (i < size) {
+		auto node = guard->get_root();
+		while (node) {
+			auto addr = ptr + i;
+
+			if (addr < node->base) {
+				// NOLINTNEXTLINE
+				node = guard->get_left(node);
+			}
+			else if (addr >= node->base + node->size) {
+				// NOLINTNEXTLINE
+				node = guard->get_right(node);
+			}
+			else {
+				if (node->base == addr && node->base + node->size == ptr + size && node->prot == prot) {
+					i += node->size;
+					break;
+				}
+
+				guard->remove(node);
+				vmem.xfree(node->base, node->size);
+
+				auto at_start = addr - node->base;
+				if (at_start) {
+					auto a = vmem.xalloc(at_start, node->base, node->base);
+					assert(a);
+					auto mapping = new Mapping {
+						.base = node->base,
+						.size = at_start,
+						.prot = node->prot,
+						.flags = node->flags
+					};
+					guard->insert(mapping);
+				}
+
+				auto range_end = ptr + size;
+				auto node_end = node->base + node->size;
+
+				if (range_end < node_end) {
+					auto a = vmem.xalloc(node_end - range_end, range_end, range_end);
+					assert(a);
+					auto mapping = new Mapping {
+						.base = range_end,
+						.size = node_end - range_end,
+						.prot = node->prot,
+						.flags = node->flags
+					};
+					guard->insert(mapping);
+				}
+
+				usize to_protect = kstd::min(node->size - at_start, size - i);
+
+				auto a = vmem.xalloc(to_protect, addr, addr);
+				assert(a);
+
+				node->base = addr;
+				node->size = to_protect;
+				node->prot = prot;
+				for (usize j = 0; j < to_protect; j += PAGE_SIZE) {
+					page_map.protect(addr + j, prot, CacheMode::WriteBack);
+				}
+				guard->insert(node);
+
+				i += node->size - at_start;
+				break;
+			}
+		}
+
+		if (!node) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void Process::add_thread(Thread* thread) {
@@ -190,14 +367,45 @@ void Process::exit(int status, ProcessDescriptor* skip_lock) {
 
 bool Process::handle_pagefault(usize addr) {
 	auto guard = mappings.lock();
-	Mapping* next;
-	for (Mapping* mapping = guard->get_first(); mapping; mapping = next) {
-		if (addr >= mapping->base && addr < mapping->base + mapping->size) {
-			println("[kernel]: handled pagefault at ", Fmt::Hex, addr, Fmt::Reset, " in process ", name);
-			return true;
-		}
 
-		next = static_cast<Mapping*>(mapping->hook.successor);
+	addr = ALIGNDOWN(addr, PAGE_SIZE);
+
+	auto node = guard->get_root();
+	while (node) {
+		if (addr < node->base) {
+			// NOLINTNEXTLINE
+			node = guard->get_left(node);
+		}
+		else if (addr >= node->base + node->size) {
+			// NOLINTNEXTLINE
+			node = guard->get_right(node);
+		}
+		else {
+			if (node->flags & MemoryAllocFlags::Demand) {
+				auto phys = page_map.get_phys(addr);
+				if (phys) {
+					return false;
+				}
+
+				assert(!phys);
+
+				auto page = pmalloc(1);
+				if (!page) {
+					println("[kernel][sched]: failed to allocate demand-allocated page");
+					return false;
+				}
+
+				if (!page_map.map(addr, page, node->prot, CacheMode::WriteBack)) {
+					println("[kernel][sched]: failed to map demand-allocated page");
+					pfree(page, 1);
+					return false;
+				}
+
+				return true;
+			}
+
+			break;
+		}
 	}
 
 	return false;

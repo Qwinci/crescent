@@ -209,7 +209,9 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) {
 		user_stack_base = reinterpret_cast<u8*>(process->allocate(
 			nullptr,
 			USER_STACK_SIZE + PAGE_SIZE,
-			MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, nullptr));
+			PageFlags::Read | PageFlags::Write,
+			MemoryAllocFlags::Backed,
+			nullptr));
 		assert(user_stack_base);
 		process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
 		simd = static_cast<u8*>(ALLOCATOR.alloc(sizeof(SimdRegisters)));
@@ -242,7 +244,9 @@ ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
 	user_stack_base = reinterpret_cast<u8*>(process->allocate(
 		nullptr,
 		USER_STACK_SIZE + PAGE_SIZE,
-		MemoryAllocFlags::Read | MemoryAllocFlags::Write | MemoryAllocFlags::Backed, nullptr));
+		PageFlags::Read | PageFlags::Write,
+		MemoryAllocFlags::Backed,
+		nullptr));
 	assert(user_stack_base);
 	process->page_map.protect(reinterpret_cast<u64>(user_stack_base), PageFlags::User | PageFlags::Read, CacheMode::WriteBack);
 
