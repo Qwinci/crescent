@@ -86,7 +86,9 @@ typedef enum CrescentSyscall {
 	SYS_EVM_VCPU_RUN,
 	SYS_EVM_VCPU_WRITE_STATE,
 	SYS_EVM_VCPU_READ_STATE,
-	SYS_EVM_VCPU_TRIGGER_IRQ
+	SYS_EVM_VCPU_TRIGGER_IRQ,
+
+	SYS_POSIX_START = 0x1000
 } CrescentSyscall;
 
 typedef enum CrescentError {

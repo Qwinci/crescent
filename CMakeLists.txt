@@ -87,13 +87,17 @@ target_sources(crescent PUBLIC FILE_SET HEADERS
 	FILES
 
 	include/crescent/aarch64/arch_syscall.h
+	include/crescent/aarch64/posix_arch_syscall.h
 	include/crescent/x86/arch_syscall.h
+	include/crescent/x86/posix_arch_syscall.h
 	include/crescent/devlink.h
 	include/crescent/event.h
 	include/crescent/evm.h
 	include/crescent/socket.h
 	include/crescent/syscall.h
 	include/crescent/syscalls.h
+	include/crescent/posix_syscall.h
+	include/crescent/posix_syscalls.h
 	include/crescent/time.h
 )
 

@@ -40,8 +40,15 @@ static usize socket_address_type_to_size(SocketAddressType type) {
 	}
 }
 
+void handle_posix_syscall(usize num, SyscallFrame* frame);
+
 extern "C" void syscall_handler(SyscallFrame* frame) {
 	auto num = *frame->num();
+	if (num >= SYS_POSIX_START) {
+		handle_posix_syscall(num, frame);
+		return;
+	}
+
 	auto thread = get_current_thread();
 
 	switch (static_cast<CrescentSyscall>(num)) {
