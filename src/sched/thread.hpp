@@ -1,6 +1,7 @@
 #pragma once
 #include "arch/arch_thread.hpp"
 #include "double_list.hpp"
+#include "signal_ctx.hpp"
 #include "string.hpp"
 #include "sysv.hpp"
 
@@ -59,6 +60,7 @@ struct Thread : public ArchThread {
 	bool dont_block {};
 	bool in_futex_wait_list {};
 	uint32_t thread_id {};
+	ThreadSignalContext signal_ctx {};
 };
 
 #ifdef __x86_64__

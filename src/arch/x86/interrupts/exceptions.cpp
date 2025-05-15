@@ -3,6 +3,7 @@
 #include "sched/sched.hpp"
 #include "sched/process.hpp"
 #include "arch/cpu.hpp"
+#include "sys/posix/signals.hpp"
 
 struct Frame {
 	Frame* rbp;
@@ -158,12 +159,11 @@ bool x86_pagefault_handler(IrqFrame* frame) {
 
 		print_page_fault(frame, cr2);
 
-		println("[kernel][x86]: killing user process ", current->process->name);
-		current->process->killed = true;
-		current->process->exit(-1);
-		auto& scheduler = current->cpu->scheduler;
-		scheduler.update_schedule();
-		current->cpu->deferred_work.push(&scheduler.irq_work);
+		println("[kernel][x86]: sending SIGSEGV to ", current->process->name, " (thread ", current->name, ")");
+
+		auto guard = current->process->signal_ctx.lock();
+		guard->send_signal(current, SIGSEGV, false);
+		current->signal_ctx.check_signals(frame, current);
 		return true;
 	}
 

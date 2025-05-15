@@ -135,6 +135,7 @@ struct Process {
 
 	Spinlock<RbTree<Futex, &Futex::hook>> futexes {};
 	Mutex<RbTree<Mapping, &Mapping::hook>> mappings {};
+	Mutex<SignalContext> signal_ctx {};
 
 private:
 	VMem vmem {};

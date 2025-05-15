@@ -1,7 +1,11 @@
+#include "arch/arch_syscalls.hpp"
 #include "arch/cpu.hpp"
+#include "mem/mem.hpp"
 #include "mem/vspace.hpp"
 #include "sched/process.hpp"
 #include "sched/sched.hpp"
+#include "sys/user_access.hpp"
+#include "sys/posix/errno.hpp"
 
 asm(R"(
 .pushsection .text
@@ -340,11 +344,100 @@ ArchThread::ArchThread(const SysvInfo& sysv, Process* process) {
 }
 
 ArchThread::~ArchThread() {
-	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE);
+	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE + GUARD_SIZE);
 	if (user_stack_base) {
-		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE);
+		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE + PAGE_SIZE);
 	}
 	if (simd) {
 		ALLOCATOR.free(simd, sizeof(SimdRegisters));
 	}
+}
+
+struct stack_t {
+	void* ss_sp;
+	int ss_flags;
+	size_t ss_size;
+};
+
+struct mcontext_t {
+	u64 fault_address;
+	u64 regs[31];
+	u64 sp;
+	u64 pc;
+	u64 pstate;
+	u8 reserved[4096];
+};
+
+struct ucontext_t {
+	unsigned long uc_flags;
+	ucontext_t* uc_link;
+	stack_t uc_stack;
+	mcontext_t uc_mcontext;
+	u64 uc_sigmask;
+	u8 unused[1024 / 8 - sizeof(uc_sigmask)];
+	usize old_sigmask;
+};
+
+bool arch_handle_signal(IrqFrame* frame, Thread* thread, SignalContext& sig_ctx, int sig) {
+	ucontext_t uctx {};
+	auto& ctx = uctx.uc_mcontext;
+
+	static_assert(sizeof(frame->x) == sizeof(ctx.regs));
+
+	memcpy(ctx.regs, frame->x, sizeof(frame->x));
+	ctx.fault_address = frame->far_el1;
+	ctx.sp = frame->sp;
+	ctx.pc = frame->elr_el1;
+	ctx.pstate = frame->spsr_el1;
+
+	memcpy(ctx.reserved, thread->simd, sizeof(SimdRegisters));
+
+	uctx.old_sigmask = thread->signal_ctx.blocked_signals;
+
+	auto& s = sig_ctx.signals[sig];
+
+	auto user_sp = s.flags & SignalFlags::AltStack ? (s.stack_base + s.stack_size) : frame->sp;
+	user_sp -= ALIGNUP(sizeof(ucontext_t), 16);
+	if (!UserAccessor(user_sp).store(uctx)) {
+		return false;
+	}
+
+	memset(frame->x, 0, sizeof(frame->x));
+	frame->x[0] = sig;
+	frame->x[2] = user_sp;
+	frame->x[30] = s.restorer;
+	// todo verify that this doesn't crash with invalid values
+	frame->elr_el1 = s.handler;
+	frame->sp = user_sp;
+
+	return true;
+}
+
+void arch_sigrestore(SyscallFrame* frame) {
+	ucontext_t uctx {};
+
+	auto thread = get_current_thread();
+
+	auto user_sp = reinterpret_cast<usize>(frame->sp);
+	if (!UserAccessor(user_sp).load(uctx)) {
+		*frame->error() = EFAULT;
+		return;
+	}
+
+	auto& ctx = uctx.uc_mcontext;
+
+	thread->signal_ctx.blocked_signals = uctx.old_sigmask;
+	if (!UserAccessor(ctx.reserved).load(thread->simd, sizeof(SimdRegisters))) {
+		*frame->error() = EFAULT;
+		return;
+	}
+
+	memcpy(frame->x, ctx.regs, sizeof(frame->x));
+	frame->sp = ctx.sp;
+	frame->elr_el1 = ctx.pc;
+
+	static constexpr u64 allowed_flags = 0b1111UL << 28 | 1U << 21;
+
+	frame->spsr_el1 &= ~allowed_flags;
+	frame->spsr_el1 |= ctx.pstate & allowed_flags;
 }

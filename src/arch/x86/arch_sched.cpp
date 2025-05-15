@@ -1,10 +1,15 @@
+#include "arch/arch_irq.hpp"
+#include "arch/arch_syscalls.hpp"
 #include "arch/arch_thread.hpp"
 #include "arch/cpu.hpp"
 #include "assert.hpp"
 #include "cpu.hpp"
+#include "mem/mem.hpp"
 #include "mem/vspace.hpp"
 #include "sched/sched.hpp"
 #include "simd_state.hpp"
+#include "sys/user_access.hpp"
+#include "sys/posix/posix_sys.hpp"
 
 asm(R"(
 .pushsection .text
@@ -160,15 +165,19 @@ arch_on_first_switch_user:
 .popsection
 )");
 
+static constexpr usize GUARD_SIZE = PAGE_SIZE;
+
 ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : self {this} {
-	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + PAGE_SIZE) / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE - (process->user ? sizeof(UserInitFrame) : (sizeof(InitFrame) + 8));
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + GUARD_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE - (process->user ? sizeof(UserInitFrame) : (sizeof(InitFrame) + 8));
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 	frame->rdi = reinterpret_cast<u64>(arg);
 
-	KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base), PageFlags::Read, CacheMode::WriteBack);
+	for (usize i = 0; i < GUARD_SIZE; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base) + i, PageFlags::Read, CacheMode::WriteBack);
+	}
 
 	frame->rip = reinterpret_cast<u64>(fn);
 	frame->rflags = 2;
@@ -211,13 +220,15 @@ ArchThread::ArchThread(void (*fn)(void* arg), void* arg, Process* process) : sel
 ArchThread::ArchThread(const SysvInfo& sysv, Process* process) : self {this} {
 	assert(process->user);
 
-	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + PAGE_SIZE) / 8] {};
-	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE;
-	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + PAGE_SIZE - (process->user ? sizeof(UserInitFrame) : (sizeof(InitFrame) + 8));
+	kernel_stack_base = new usize[(KERNEL_STACK_SIZE + GUARD_SIZE) / 8] {};
+	syscall_sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE;
+	sp = reinterpret_cast<u8*>(kernel_stack_base) + KERNEL_STACK_SIZE + GUARD_SIZE - (process->user ? sizeof(UserInitFrame) : (sizeof(InitFrame) + 8));
 	auto* frame = reinterpret_cast<InitFrame*>(sp);
 	memset(frame, 0, sizeof(InitFrame));
 
-	KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base), PageFlags::Read, CacheMode::WriteBack);
+	for (usize i = 0; i < GUARD_SIZE; i += PAGE_SIZE) {
+		KERNEL_PROCESS->page_map.protect(reinterpret_cast<u64>(kernel_stack_base) + i, PageFlags::Read, CacheMode::WriteBack);
+	}
 
 	frame->rflags = 2;
 	frame->rip = sysv.ld_entry;
@@ -307,12 +318,160 @@ ArchThread::ArchThread(const SysvInfo& sysv, Process* process) : self {this} {
 }
 
 ArchThread::~ArchThread() {
-	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE + PAGE_SIZE);
+	ALLOCATOR.free(kernel_stack_base, KERNEL_STACK_SIZE + GUARD_SIZE);
 	if (user_stack_base) {
-		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE);
+		static_cast<Thread*>(this)->process->free(reinterpret_cast<usize>(user_stack_base), USER_STACK_SIZE + PAGE_SIZE);
 	}
 	if (simd) {
 		auto simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
 		KERNEL_VSPACE.free_backed(simd, simd_size);
 	}
+}
+
+struct stack_t {
+	void* ss_sp;
+	int ss_flags;
+	size_t ss_size;
+};
+
+#define REG_R8 0
+#define REG_R9 1
+#define REG_R10 2
+#define REG_R11 3
+#define REG_R12 4
+#define REG_R13 5
+#define REG_R14 6
+#define REG_R15 7
+#define REG_RDI 8
+#define REG_RSI 9
+#define REG_RBP 10
+#define REG_RBX 11
+#define REG_RDX 12
+#define REG_RAX 13
+#define REG_RCX 14
+#define REG_RSP 15
+#define REG_RIP 16
+#define REG_EFL 17
+#define REG_CSGSFS 18
+#define REG_ERR 19
+#define REG_TRAPNO 20
+#define REG_OLDMASK 21
+#define REG_CR2 22
+
+struct mcontext_t {
+	u64 gregs[23];
+	usize fpregs;
+	u64 unused[8];
+};
+
+struct ucontext_t {
+	unsigned long uc_flags;
+	ucontext_t* uc_link;
+	stack_t uc_stack;
+	mcontext_t uc_mcontext;
+	u64 uc_sigmask;
+	usize old_sigmask;
+};
+
+bool arch_handle_signal(IrqFrame* frame, Thread* thread, SignalContext& sig_ctx, int sig) {
+	ucontext_t uctx {};
+	auto& ctx = uctx.uc_mcontext;
+	ctx.gregs[REG_RAX] = frame->rax;
+	ctx.gregs[REG_RBX] = frame->rbx;
+	ctx.gregs[REG_RCX] = frame->rcx;
+	ctx.gregs[REG_RDX] = frame->rdx;
+	ctx.gregs[REG_RDI] = frame->rdi;
+	ctx.gregs[REG_RSI] = frame->rsi;
+	ctx.gregs[REG_RBP] = frame->rbp;
+	ctx.gregs[REG_RSP] = frame->rsp;
+	ctx.gregs[REG_R8] = frame->r8;
+	ctx.gregs[REG_R9] = frame->r9;
+	ctx.gregs[REG_R10] = frame->r10;
+	ctx.gregs[REG_R11] = frame->r11;
+	ctx.gregs[REG_R12] = frame->r12;
+	ctx.gregs[REG_R13] = frame->r13;
+	ctx.gregs[REG_R14] = frame->r14;
+	ctx.gregs[REG_R15] = frame->r15;
+	ctx.gregs[REG_RIP] = frame->rip;
+	ctx.gregs[REG_EFL] = frame->rflags;
+	ctx.gregs[REG_CSGSFS] = frame->cs;
+	ctx.gregs[REG_ERR] = frame->error;
+
+	auto simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
+
+	auto& s = sig_ctx.signals[sig];
+
+	auto user_sp = s.flags & SignalFlags::AltStack ? (s.stack_base + s.stack_size) : frame->rsp;
+	user_sp -= simd_size;
+	user_sp = ALIGNDOWN(user_sp, 64);
+
+	if (!UserAccessor(user_sp).store(thread->simd, simd_size)) {
+		return false;
+	}
+
+	ctx.fpregs = user_sp;
+
+	uctx.old_sigmask = thread->signal_ctx.blocked_signals;
+
+	user_sp -= ALIGNUP(sizeof(ucontext_t), 16);
+	if (!UserAccessor(user_sp).store(uctx)) {
+		return false;
+	}
+	auto arg_ptr = user_sp;
+
+	user_sp -= 8;
+	if (!UserAccessor(user_sp).store(s.restorer)) {
+		return false;
+	}
+
+	memset(&frame->r15, 0, 15 * 8);
+	frame->rdi = sig;
+	frame->rdx = arg_ptr;
+	frame->rip = s.handler;
+	frame->rsp = user_sp;
+
+	return true;
+}
+
+void arch_sigrestore(SyscallFrame* frame) {
+	ucontext_t uctx {};
+
+	auto thread = get_current_thread();
+
+	auto user_sp = reinterpret_cast<usize>(thread->saved_user_sp);
+	if (!UserAccessor(user_sp).load(uctx)) {
+		*frame->error() = EFAULT;
+		return;
+	}
+
+	auto simd_size = CPU_FEATURES.xsave ? CPU_FEATURES.xsave_area_size : sizeof(FxState);
+
+	auto& ctx = uctx.uc_mcontext;
+
+	thread->signal_ctx.blocked_signals = uctx.old_sigmask;
+	if (!UserAccessor(ctx.fpregs).load(thread->simd, simd_size)) {
+		*frame->error() = EFAULT;
+		return;
+	}
+
+	thread->saved_user_sp = reinterpret_cast<u8*>(ctx.gregs[REG_RSP]);
+
+	frame->rax = ctx.gregs[REG_RAX];
+	frame->rbx = ctx.gregs[REG_RBX];
+	frame->rcx = ctx.gregs[REG_RCX];
+	frame->rdx = ctx.gregs[REG_RDX];
+	frame->rdi = ctx.gregs[REG_RDI];
+	frame->rsi = ctx.gregs[REG_RSI];
+	frame->rbp = ctx.gregs[REG_RBP];
+	frame->r8 = ctx.gregs[REG_R8];
+	frame->r9 = ctx.gregs[REG_R9];
+	frame->r10 = ctx.gregs[REG_R10];
+	frame->r11 = ctx.gregs[REG_R11];
+	frame->r12 = ctx.gregs[REG_R12];
+	frame->r13 = ctx.gregs[REG_R13];
+	frame->r14 = ctx.gregs[REG_R14];
+	frame->r15 = ctx.gregs[REG_R15];
+	frame->r11 &= ~0b1000011000110111111111;
+	frame->r11 |= ctx.gregs[REG_EFL] & 0b1000011000110111111111;
+	frame->rcx = ctx.gregs[REG_RIP];
 }

@@ -248,7 +248,12 @@ void LapicTickSource::reset() {
 	SPACE.store(regs::INIT_COUNT, 0);
 }
 
-bool LapicTickSource::on_irq(struct IrqFrame*) {
+bool LapicTickSource::on_irq(IrqFrame* frame) {
+	if ((frame->cs & 3) == 3) {
+		auto thread = get_current_thread();
+		thread->signal_ctx.check_signals(frame, thread);
+	}
+
 	//println("[kernel][x86]: lapic irq on cpu ", get_current_thread()->cpu->number);
 	auto lapic = get_current_thread()->cpu->cpu_tick_source;
 	lapic->callback_producer.signal_all();

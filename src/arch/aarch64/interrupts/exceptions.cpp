@@ -2,6 +2,7 @@
 #include "sched/sched.hpp"
 #include "sys/syscalls.hpp"
 #include "arch/cpu.hpp"
+#include "sys/posix/signals.hpp"
 
 extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 	u8 exception_class = frame->esr_el1 >> 26 & 0b111111;
@@ -86,13 +87,11 @@ extern "C" [[gnu::used]] void arch_exception_handler(ExceptionFrame* frame) {
 
 			println("[kernel][aarch64]: ", Color::Red, "EXCEPTION: ", reason, ", FAR: 0x", Fmt::Hex, frame->far_el1);
 			println("\tat 0x", frame->elr_el1, "\nESR: ", frame->esr_el1, Fmt::Reset, Color::Reset);
+			println("[kernel][x86]: sending SIGSEGV to ", current->process->name, " (thread ", current->name, ")");
 
-			println("[kernel][x86]: killing user process ", current->process->name);
-			current->process->killed = true;
-			current->process->exit(-1);
-			auto& scheduler = current->cpu->scheduler;
-			scheduler.update_schedule();
-			current->cpu->deferred_work.push(&scheduler.irq_work);
+			auto guard = current->process->signal_ctx.lock();
+			guard->send_signal(current, SIGSEGV, false);
+			current->signal_ctx.check_signals(frame, current);
 			return;
 		}
 	}
