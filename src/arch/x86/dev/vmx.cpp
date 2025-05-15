@@ -266,6 +266,8 @@ struct VmxData {
 		default1_clear = info & 1UL << 55;
 	}
 
+	Mutex<usize> active_vmcs {};
+	u64 entry_exit_tsc_ticks {};
 	u32 vmcs_rev {};
 	u32 vmcs_size {};
 	bool default1_clear {};
@@ -541,10 +543,26 @@ static bool vmclear(u64 phys) {
 }
 
 static bool vmptrld(u64 phys) {
+	auto guard = VMX_DATA.get();
+	auto active = guard->active_vmcs.lock();
+
+	if (*active == phys) {
+		return true;
+	}
+
 	bool success;
 	asm volatile("vmptrld %1" : "=@ccnc"(success) : "m"(phys) : "memory");
+
+	if (success) {
+		*active = phys;
+	}
+
 	return success;
 }
+
+struct VmxVmData {
+	Mutex<Ept> ept {};
+};
 
 struct VmxVm final : public evm::Evm {
 	VmxVm();
@@ -561,7 +579,9 @@ struct VmxVm final : public evm::Evm {
 		auto guard = page->lock.lock();
 		++page->ref_count;
 
-		if (!ept.map(guest, host)) {
+		auto ept_guard = ept->lock();
+
+		if (!ept_guard->map(guest, host)) {
 			return ERR_NO_MEM;
 		}
 
@@ -569,7 +589,9 @@ struct VmxVm final : public evm::Evm {
 	}
 
 	void unmap_page(u64 guest) override {
-		auto phys = ept.unmap(guest, false);
+		auto ept_guard = ept->lock();
+
+		auto phys = ept_guard->unmap(guest, false);
 		assert(phys);
 		auto page = Page::from_phys(phys);
 		assert(page);
@@ -579,8 +601,8 @@ struct VmxVm final : public evm::Evm {
 		}
 	}
 
-	Ept ept {};
-	u64 entry_exit_tsc_ticks {};
+	kstd::shared_ptr<VmxVmData> data;
+	Mutex<Ept>* ept {};
 };
 
 namespace {
@@ -605,7 +627,7 @@ namespace {
 }
 
 struct Vmcs : public evm::VirtualCpu {
-	explicit Vmcs(VmxVm* vm) : vm {vm} {
+	explicit Vmcs(kstd::shared_ptr<VmxVmData> new_vm) : vm {std::move(new_vm)} {
 		IrqGuard irq_guard {};
 		// todo support migration
 		get_current_thread()->pin_cpu = true;
@@ -798,7 +820,10 @@ struct Vmcs : public evm::VirtualCpu {
 
 		write(fields::VIRT_APIC_ADDR, virt_lapic_phys);
 
-		write(fields::EPT_PTR, to_phys(vm->ept.level0) | 6 | 3 << 3);
+		{
+			auto ept_guard = vm->ept.lock();
+			write(fields::EPT_PTR, to_phys(ept_guard->level0) | 6 | 3 << 3);
+		}
 
 		restrictions = msrs::IA32_VMX_EXIT_CTLS.read();
 		set = restrictions;
@@ -1027,13 +1052,15 @@ struct Vmcs : public evm::VirtualCpu {
 		}
 
 		auto fetch_at_ip = [&]() {
-			auto host = vm->ept.get_phys(ip++);
+			auto guard = vm->ept.lock();
+			auto host = guard->get_phys(ip++);
 			assert(host);
 			return *to_virt<u8>(host);
 		};
 
 		auto fetch_at_addr = [&](u64 guest, u8& ret) {
-			auto host = vm->ept.get_phys(guest);
+			auto guard = vm->ept.lock();
+			auto host = guard->get_phys(guest);
 			if (!host) {
 				return false;
 			}
@@ -1042,7 +1069,8 @@ struct Vmcs : public evm::VirtualCpu {
 		};
 
 		auto store_to_addr = [&](u64 guest, u8 byte) {
-			auto host = vm->ept.get_phys(guest);
+			auto guard = vm->ept.lock();
+			auto host = guard->get_phys(guest);
 			if (!host) {
 				return false;
 			}
@@ -1368,6 +1396,9 @@ struct Vmcs : public evm::VirtualCpu {
 	}
 
 	int run() override {
+		asm volatile("cli");
+		vmptrld(phys);
+
 		skip_exec = false;
 
 		switch (prev_reason) {
@@ -1417,6 +1448,7 @@ struct Vmcs : public evm::VirtualCpu {
 		}
 
 		if (skip_exec) {
+			asm volatile("sti");
 			return 0;
 		}
 
@@ -1469,8 +1501,6 @@ struct Vmcs : public evm::VirtualCpu {
 				asm volatile("fxrstorq %0" : : "m"(*host_simd_state));
 			}
 
-			asm volatile("sti");
-
 			switch (status) {
 				case VmError::Success:
 				{
@@ -1478,6 +1508,7 @@ struct Vmcs : public evm::VirtualCpu {
 
 					switch (reason) {
 						case exit_reason::EXT_INT:
+							asm volatile("sti");
 							continue;
 						case exit_reason::TRIPLE_FAULT:
 							state->exit_reason = EVM_EXIT_REASON_TRIPLE_FAULT;
@@ -1548,7 +1579,7 @@ struct Vmcs : public evm::VirtualCpu {
 						}
 						default:
 						{
-							println("[kernel][x86]: vmx exit reason: ", reason);
+							println("[kernel][x86]: vmx exit reason: ", Fmt::Hex, reason, Fmt::Reset);
 							auto qual = read(fields::EXIT_QUALIFICATION);
 							println("[kernel][x86]: vmx exit qualification: ", Fmt::Bin, qual, Fmt::Reset);
 							auto addr = read(fields::GUEST_PHYS_ADDR);
@@ -1579,10 +1610,15 @@ struct Vmcs : public evm::VirtualCpu {
 			break;
 		}
 
+		asm volatile("sti");
+
 		return 0;
 	}
 
 	int write_state(EvmStateBits changed_state) override {
+		IrqGuard irq_guard {};
+		vmptrld(phys);
+
 		if (changed_state & EVM_STATE_BITS_RIP) {
 			write(fields::GUEST_RIP, state->rip);
 		}
@@ -1598,11 +1634,25 @@ struct Vmcs : public evm::VirtualCpu {
 		if (changed_state & EVM_STATE_BITS_CONTROL_REGS) {
 			reload_control_regs();
 		}
+		if (changed_state & EVM_STATE_BITS_EFER) {
+			write(fields::GUEST_IA32_EFER, state->efer);
+			u64 vm_entry_controls = read(fields::VM_ENTRY_CONTROLS);
+			if (state->efer & 1 << 8) {
+				vm_entry_controls |= 1 << 9;
+			}
+			else {
+				vm_entry_controls &= ~(1 << 9);
+			}
+			write(fields::VM_ENTRY_CONTROLS, vm_entry_controls);
+		}
 
 		return 0;
 	}
 
 	int read_state(EvmStateBits wanted_state) override {
+		IrqGuard irq_guard {};
+		vmptrld(phys);
+
 		if (wanted_state & EVM_STATE_BITS_RIP) {
 			state->rip = read(fields::GUEST_RIP);
 		}
@@ -1649,6 +1699,9 @@ struct Vmcs : public evm::VirtualCpu {
 			state->cr3 = read(fields::GUEST_CR3);
 			state->cr4 = read(fields::GUEST_CR4);
 		}
+		if (wanted_state & EVM_STATE_BITS_EFER) {
+			state->efer = read(fields::GUEST_IA32_EFER);
+		}
 
 		return 0;
 	}
@@ -1661,6 +1714,8 @@ struct Vmcs : public evm::VirtualCpu {
 			return ERR_INVALID_ARGUMENT;
 		}
 
+		IrqGuard irq_guard {};
+
 		if (info.irq < 32) {
 			pending_irq.store(info.irq | info.type << 8 | info.error << 16, kstd::memory_order::relaxed);
 		}
@@ -1670,6 +1725,8 @@ struct Vmcs : public evm::VirtualCpu {
 			auto value = *reg;
 			value |= 1 << (info.irq % 32);
 			*reg = value;
+
+			vmptrld(phys);
 
 			auto status = read(fields::GUEST_INT_STATUS);
 			u8 rvi = status;
@@ -1683,6 +1740,17 @@ struct Vmcs : public evm::VirtualCpu {
 	}
 
 	~Vmcs() override {
+		{
+			IrqGuard irq_guard {};
+			auto guard = VMX_DATA.get();
+
+			vmclear(phys);
+			auto active = guard->active_vmcs.lock();
+			if (*active == phys) {
+				*active = 0;
+			}
+		}
+
 		pfree(phys, 1);
 		pfree(state_phys, 1);
 		pfree(virt_lapic_phys, 1);
@@ -1698,7 +1766,7 @@ struct Vmcs : public evm::VirtualCpu {
 	u8* guest_simd_state {};
 	u32* virt_lapic {};
 	usize virt_lapic_phys {};
-	VmxVm* vm;
+	kstd::shared_ptr<VmxVmData> vm;
 	u32 prev_reason {};
 	u32 prev_qual {};
 	bool launched {};
@@ -1708,13 +1776,21 @@ struct Vmcs : public evm::VirtualCpu {
 static_assert(offsetof(Vmcs, state) == 16);
 
 VmxVm::VmxVm() {
+	data = kstd::make_shared<VmxVmData>();
+	ept = &data->ept;
+
 	auto ept_pml4_phys = pmalloc(1);
 	assert(ept_pml4_phys);
-	ept.level0 = to_virt<u64>(ept_pml4_phys);
-	memset(ept.level0, 0, PAGE_SIZE);
 
-	auto lapic_map_result = ept.map(0xFEE00000, 0xFEE00000);
-	assert(lapic_map_result);
+	{
+		auto ept_guard = ept->lock();
+
+		ept_guard->level0 = to_virt<u64>(ept_pml4_phys);
+		memset(ept_guard->level0, 0, PAGE_SIZE);
+
+		auto lapic_map_result = ept_guard->map(0xFEE00000, 0xFEE00000);
+		assert(lapic_map_result);
+	}
 
 	auto guard = VMX_DATA.get();
 
@@ -1767,7 +1843,7 @@ VmxVm::VmxVm() {
 
 	guard->initialized = true;
 
-	Vmcs vmcs {this};
+	Vmcs vmcs {data};
 	vmptrld(vmcs.phys);
 
 	asm volatile("cli");
@@ -1776,11 +1852,11 @@ VmxVm::VmxVm() {
 	auto end = rdtsc();
 	asm volatile("sti");
 	assert(status == VmError::Success);
-	entry_exit_tsc_ticks = end - start;
+	guard->entry_exit_tsc_ticks = end - start;
 }
 
 kstd::expected<kstd::shared_ptr<evm::VirtualCpu>, int> VmxVm::create_vcpu() {
-	return {kstd::make_shared<Vmcs>(this)};
+	return {kstd::make_shared<Vmcs>(data)};
 }
 
 extern "C" [[gnu::used]] void vmcs_update_host_rsp(Vmcs* vmcs, u64 rsp) {
