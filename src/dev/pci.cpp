@@ -43,6 +43,7 @@ namespace pci {
 
 	namespace {
 		Mcfg* GLOBAL_MCFG = nullptr;
+		kstd::pair<u32, u32> ALLOCATED_IRQS[4] {};
 	}
 
 	void resume_from_suspend() {
@@ -359,21 +360,44 @@ namespace pci {
 			}
 		}
 		else {
-			u32 irq = x86_alloc_irq(1, flags & IrqFlags::Shared);
-			assert(irq);
-
 			u8 irq_pin = read(hdr0::IRQ_PIN);
 
 			auto legacy_irq = acpi::get_legacy_pci_irq(addr.seg, addr.bus, addr.dev, irq_pin);
 			assert(legacy_irq);
+			legacy_no_free = true;
 
-			IoApicIrqInfo info {
-				.delivery = IoApicDelivery::Fixed,
-				.polarity = legacy_irq->active_high ? IoApicPolarity::ActiveHigh : IoApicPolarity::ActiveLow,
-				.trigger = legacy_irq->edge_triggered ? IoApicTrigger::Edge : IoApicTrigger::Level,
-				.vec = static_cast<u8>(irq)
-			};
-			IO_APIC.register_irq(legacy_irq->gsi, info);
+			u32 irq = 0;
+			for (auto [gsi, alloc_irq] : ALLOCATED_IRQS) {
+				if (gsi == legacy_irq->gsi) {
+					irq = alloc_irq;
+					break;
+				}
+			}
+
+			if (irq == 0) {
+				irq = x86_alloc_irq(1, flags & IrqFlags::Shared);
+				assert(irq);
+
+				IoApicIrqInfo info {
+					.delivery = IoApicDelivery::Fixed,
+					.polarity = legacy_irq->active_high ? IoApicPolarity::ActiveHigh : IoApicPolarity::ActiveLow,
+					.trigger = legacy_irq->edge_triggered ? IoApicTrigger::Edge : IoApicTrigger::Level,
+					.vec = static_cast<u8>(irq)
+				};
+				IO_APIC.register_irq(legacy_irq->gsi, info);
+
+				bool allocated = false;
+				for (auto& alloc : ALLOCATED_IRQS) {
+					if (!alloc.second) {
+						alloc.first = legacy_irq->gsi;
+						alloc.second = irq;
+						allocated = true;
+						break;
+					}
+				}
+
+				assert(allocated);
+			}
 
 			enable_legacy_irq(false);
 			irqs[0] = irq;
@@ -383,9 +407,12 @@ namespace pci {
 	}
 
 	void Device::free_irqs() {
-		for (u32 i = 0; i < irqs.size(); ++i) {
-			x86_dealloc_irq(i, 1, _flags & IrqFlags::Shared);
+		if (!legacy_no_free) {
+			for (u32 i = 0; i < irqs.size(); ++i) {
+				x86_dealloc_irq(i, 1, _flags & IrqFlags::Shared);
+			}
 		}
+
 		irqs.clear();
 		irqs.shrink_to_fit();
 	}

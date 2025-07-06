@@ -320,5 +320,6 @@ namespace pci {
 		u32 power_cap_offset;
 		kstd::vector<u32> irqs;
 		IrqFlags _flags {};
+		bool legacy_no_free {};
 	};
 }
